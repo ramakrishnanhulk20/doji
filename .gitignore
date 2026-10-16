@@ -28,3 +28,6 @@ typechain-types/
 coverage/
 lcov.info
 broadcast/*/31337/
+
+# Foundry run logs (deploy evidence lives in deployments/ and the README)
+broadcast/
