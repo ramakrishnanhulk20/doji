@@ -1,0 +1,30 @@
+# Private planning files (never public)
+CLAUDE.md
+AGENT-RETROS.md
+INTAKE.md
+PLAN.md
+STATE.md
+DECISIONS.md
+SPEC.md
+docs/RD-BRIEF.md
+docs/AUDIT-PACKET.md
+.claude/
+scratchpad/
+reference/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Build output and dependencies
+node_modules/
+.next/
+.next-verify/
+out/
+cache/
+artifacts/
+typechain-types/
+coverage/
+lcov.info
+broadcast/*/31337/
