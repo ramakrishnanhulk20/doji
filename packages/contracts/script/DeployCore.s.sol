@@ -13,9 +13,11 @@ import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 ///         addresses in deployments/<chainId>.json. The file's "broadcast" field is false after a dry run, when
 ///         the addresses are only the ones the next two deployer transactions would produce.
 /// @dev Dry run: forge script script/DeployCore.s.sol --rpc-url mezo_testnet
-///      Deploy:  forge script script/DeployCore.s.sol --rpc-url mezo_testnet --broadcast
-///      Reads DEPLOYER_PRIVATE_KEY and DEPLOYER_ADDRESS from .env. The deployer is owner, guardian and treasury.
-///      Mainnet is refused on purpose: this build has no mainnet budget.
+///      Deploy:  forge script script/DeployCore.s.sol --rpc-url mezo_testnet --broadcast --skip-simulation --slow
+///      Rehearse first on an anvil fork with script/rehearse-live.sh, which uses the same flags.
+///      Reads DEPLOYER_PRIVATE_KEY and DEPLOYER_ADDRESS from .env, and DEPLOYMENTS_DIR if set (the rehearsal
+///      only). The deployer is owner, guardian and treasury. Mainnet is refused on purpose: this build has no
+///      mainnet budget.
 contract DeployCore is Script {
     struct ChainConfig {
         address veBTC;
@@ -36,7 +38,6 @@ contract DeployCore is Script {
     uint256 internal constant MAX_PROBE_IDS = 50;
     uint256 internal constant MIN_BTC_PRICE = 10_000e18;
     uint256 internal constant MAX_BTC_PRICE = 1_000_000e18;
-    string internal constant DEPLOYMENTS_DIR = "deployments";
 
     error UnsupportedChain(uint256 chainId);
     error KeyAddressMismatch(address fromKey, address configured);
@@ -62,6 +63,12 @@ contract DeployCore is Script {
             priceFeed: 0x86bCF0841622a5dAC14A313a15f96A95421b9366,
             lockLayoutWords: 3
         });
+    }
+
+    /// @dev An anvil fork of testnet also reports chain id 31611, so a rehearsal writing here would replace the
+    ///      real testnet record with addresses that exist only on anvil. rehearse-live.sh points this elsewhere.
+    function _deploymentsDir() internal view returns (string memory) {
+        return vm.envOr("DEPLOYMENTS_DIR", string("deployments"));
     }
 
     function _wallet(string memory keyVar, string memory addressVar) internal view returns (uint256 key, address account) {
@@ -154,8 +161,9 @@ contract DeployCore is Script {
         vm.serializeAddress(obj, "creditMarkets", address(cm));
         string memory json = vm.serializeAddress(obj, "loanManager", address(lm));
 
-        vm.createDir(DEPLOYMENTS_DIR, true);
-        string memory path = string.concat(DEPLOYMENTS_DIR, "/", vm.toString(block.chainid), ".json");
+        string memory dir = _deploymentsDir();
+        vm.createDir(dir, true);
+        string memory path = string.concat(dir, "/", vm.toString(block.chainid), ".json");
         vm.writeJson(json, path);
         console.log("wrote", path, broadcast ? "(broadcast)" : "(dry run: no code at these addresses yet)");
     }

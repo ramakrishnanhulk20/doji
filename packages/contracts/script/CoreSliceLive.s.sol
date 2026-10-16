@@ -44,6 +44,7 @@ interface IVeBTCLocks {
 /// @dev Dry run (no BTC needed): forge script script/CoreSliceLive.s.sol --rpc-url mezo_testnet --skip-simulation
 ///      Live run, after DeployCore is broadcast and the deployer holds at least 0.003 testnet BTC:
 ///        forge script script/CoreSliceLive.s.sol --rpc-url mezo_testnet --broadcast --skip-simulation --slow
+///      Rehearse both scripts first on an anvil fork with script/rehearse-live.sh, which uses the same flags.
 ///      Forge prints every transaction hash and saves them in broadcast/CoreSliceLive.s.sol/31611/run-latest.json.
 ///      The local run cannot execute Mezo's precompiles, so before anything runs it etches a stand-in over the
 ///      BTC ERC-20 precompile and mocks PriceFeed with the node's live price. Those changes stay local: the
@@ -116,7 +117,7 @@ contract CoreSliceLive is DeployCore {
         internal
         returns (CreditMarkets cm, LoanManager lm)
     {
-        string memory path = string.concat(DEPLOYMENTS_DIR, "/", vm.toString(block.chainid), ".json");
+        string memory path = string.concat(_deploymentsDir(), "/", vm.toString(block.chainid), ".json");
         if (vm.exists(path)) {
             string memory json = vm.readFile(path);
             if (vm.parseJsonBool(json, ".broadcast")) {
