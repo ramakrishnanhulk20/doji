@@ -1,0 +1,24 @@
+{
+  "name": "@doji/keeper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Resolves Doji loans and markets on Mezo testnet: one bounded pass, then exit.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "keeper": "tsc -p tsconfig.json && node out/index.js",
+    "keeper:dry": "tsc -p tsconfig.json && node out/index.js --dry"
+  },
+  "dependencies": {
+    "viem": "2.57.7"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "typescript": "7.0.2"
+  }
+}
