@@ -1,0 +1,12 @@
+{
+  "block": 16238938,
+  "broadcast": true,
+  "chainId": 31611,
+  "creditMarkets": "0x8D3C60B17AE7D5f252A0541135B83ede767b258b",
+  "deployer": "0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e",
+  "loanManager": "0x6Ff8EeC176D01c059c185d8FB4f8485D8B594b9f",
+  "lockLayoutWords": 3,
+  "musd": "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503",
+  "priceFeed": "0x86bCF0841622a5dAC14A313a15f96A95421b9366",
+  "veBTC": "0xB63fcCd03521Cf21907627bd7fA465C129479231"
+}
