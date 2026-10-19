@@ -28,4 +28,20 @@ interface IVeBTC {
     /// @notice Turns a permanent lock into a normal one that ends at the next week boundary after the
     ///         maximum lock time. Reverts while the position is voted.
     function unlockPermanent(uint256 tokenId) external;
+
+    /// @notice Locks `value` BTC, pulled from the caller with transferFrom, and mints the new position to `to`.
+    /// @dev The unlock time is floor((now + lockDuration) / 1 week) * 1 week. Reverts ZeroAmount,
+    ///      LockDurationNotInFuture or LockDurationTooLong.
+    /// @param value BTC to lock, 18 decimals.
+    /// @param lockDuration Seconds from now, rounded down to a week boundary.
+    /// @param to Receiver of the new position.
+    /// @return tokenId The new position's id.
+    function createLockFor(uint256 value, uint256 lockDuration, address to) external returns (uint256 tokenId);
+
+    /// @notice Pushes a normal, unexpired lock's end out to floor((now + lockDuration) / 1 week) * 1 week.
+    /// @dev Owner or approved address only. Reverts unless the new end is later than the current one and
+    ///      within the maximum lock time.
+    /// @param tokenId Position id.
+    /// @param lockDuration Seconds from now, rounded down to a week boundary.
+    function increaseUnlockTime(uint256 tokenId, uint256 lockDuration) external;
 }

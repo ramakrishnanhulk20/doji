@@ -19,7 +19,12 @@ import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 ///      Reads DEPLOYER_PRIVATE_KEY and DEPLOYER_ADDRESS from .env, and DEPLOYMENTS_DIR if set (the rehearsal
 ///      only). The deployer is owner, guardian and treasury. Risk settings are the drawdown study's
 ///      (docs/risk/parameters.md): 40% borrow limit, 65% line, auction floor 70% of the start value over 72 hours,
-///      and a 5% penalty. Mainnet is refused on purpose: this build has no mainnet budget.
+///      and a 5% penalty. A vote may list up to 30 pools, PoolsVoter's own limit. ValidatorsVoter is read from
+///      what testnet's veBTC really has (none today). The credit units start with an
+///      empty metadata URI until the app serves metadata; the owner sets it with setURI. LoanManager links the
+///      PassThrough library, which forge deploys through the standard CREATE2 deployer in the same broadcast,
+///      before CreditMarkets; the address check after deployment proves the prediction still held. Mainnet is
+///      refused on purpose: this build has no mainnet budget.
 contract DeployCore is Script {
     struct ChainConfig {
         address veBTC;
@@ -27,6 +32,8 @@ contract DeployCore is Script {
         address btc;
         address priceFeed;
         address poolsVoter;
+        address validatorsVoter;
+        address feeDistributor;
         uint256 lockLayoutWords;
     }
 
@@ -41,6 +48,8 @@ contract DeployCore is Script {
     uint16 internal constant FEE_SHARE_BPS = 1_000;
     uint128 internal constant MIN_OFFER = 10e18;
     uint32 internal constant MAX_TERM_SECONDS = uint32(4 * WEEK);
+    uint16 internal constant MAX_VOTES = 30;
+    string internal constant UNITS_URI = "";
 
     uint256 internal constant MAX_PROBE_IDS = 50;
     uint256 internal constant MIN_BTC_PRICE = 10_000e18;
@@ -55,6 +64,9 @@ contract DeployCore is Script {
     error PriceOutOfRange(uint256 price);
     error AddressPredictionFailed(address predicted, address deployed);
     error VoterMismatch(address veBTCVoter, address configured);
+    error NoFeeDistributor(address veBTC);
+    error SecondaryVotersUnknown(address veBTC);
+    error NotSecondaryVoter(address voter);
 
     function run() public virtual {
         (uint256 key, address deployer) = _wallet("DEPLOYER_PRIVATE_KEY", "DEPLOYER_ADDRESS");
@@ -65,15 +77,35 @@ contract DeployCore is Script {
 
     function _config() internal view returns (ChainConfig memory) {
         if (block.chainid != TESTNET_CHAIN_ID) revert UnsupportedChain(block.chainid);
+        address veBTC = 0xB63fcCd03521Cf21907627bd7fA465C129479231;
         // poolsVoter is testnet veBTC.voter(), read on 2026-10-19; _preflight re-reads it and refuses a mismatch.
+        // The fee distributor is whatever veBTC names now, so the two can never disagree.
         return ChainConfig({
-            veBTC: 0xB63fcCd03521Cf21907627bd7fA465C129479231,
+            veBTC: veBTC,
             musd: 0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503,
             btc: 0x7b7C000000000000000000000000000000000000,
             priceFeed: 0x86bCF0841622a5dAC14A313a15f96A95421b9366,
             poolsVoter: 0x72F8dd7F44fFa19E45955aa20A5486E8EB255738,
+            validatorsVoter: _testnetValidatorsVoter(veBTC),
+            feeDistributor: _veBTCDistributor(veBTC),
             lockLayoutWords: 3
         });
+    }
+
+    /// @dev veBTC cannot list its secondary voters, so this asks whether testnet's veBTC has any at all. Its older
+    ///      implementation (checked 2026-10-19) has no isSecondaryVoter, so no ValidatorsVoter can hold a vote and
+    ///      LoanManager is given none. If a testnet upgrade adds secondary voters this fails the deploy, because a
+    ///      voter left unset could block settle (C5, C26).
+    function _testnetValidatorsVoter(address veBTC) internal view returns (address) {
+        (bool supported,) = veBTC.staticcall(abi.encodeWithSignature("isSecondaryVoter(address)", address(0)));
+        if (supported) revert SecondaryVotersUnknown(veBTC);
+        return address(0);
+    }
+
+    function _veBTCDistributor(address veBTC) internal view returns (address distributor) {
+        (bool ok, bytes memory raw) = veBTC.staticcall(abi.encodeWithSignature("distributor()"));
+        distributor = ok && raw.length == 32 ? abi.decode(raw, (address)) : address(0);
+        if (distributor == address(0)) revert NoFeeDistributor(veBTC);
     }
 
     /// @dev An anvil fork of testnet also reports chain id 31611, so a rehearsal writing here would replace the
@@ -102,7 +134,7 @@ contract DeployCore is Script {
         vm.startBroadcast(key);
         address predicted = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 1);
         cm = new CreditMarkets(
-            cfg.musd, cfg.btc, predicted, deployer, deployer, deployer, FEE_SHARE_BPS, MIN_OFFER, MAX_TERM_SECONDS
+            cfg.musd, cfg.btc, predicted, deployer, deployer, deployer, FEE_SHARE_BPS, MIN_OFFER, MAX_TERM_SECONDS, UNITS_URI
         );
         lm = new LoanManager(
             cfg.veBTC,
@@ -112,7 +144,7 @@ contract DeployCore is Script {
             cfg.poolsVoter,
             address(cm),
             cfg.lockLayoutWords,
-            _settings(deployer)
+            _settings(deployer, cfg.feeDistributor, cfg.validatorsVoter)
         );
         vm.stopBroadcast();
 
@@ -121,10 +153,17 @@ contract DeployCore is Script {
         console.log("LoanManager  ", address(lm));
     }
 
-    function _settings(address deployer) internal pure returns (ILoanManager.Settings memory) {
+    function _settings(address deployer, address feeDistributor, address validatorsVoter)
+        internal
+        pure
+        returns (ILoanManager.Settings memory)
+    {
         return ILoanManager.Settings({
             owner: deployer,
             guardian: deployer,
+            feeDistributor: feeDistributor,
+            validatorsVoter: validatorsVoter,
+            maxVotes: MAX_VOTES,
             maxLtvBps: MAX_LTV_BPS,
             liqLtvBps: LIQ_LTV_BPS,
             minLoan: MIN_LOAN,
@@ -135,13 +174,23 @@ contract DeployCore is Script {
     }
 
     function _preflight(ChainConfig memory cfg) internal {
-        address[5] memory targets = [cfg.veBTC, cfg.musd, cfg.btc, cfg.priceFeed, cfg.poolsVoter];
+        address[6] memory targets = [cfg.veBTC, cfg.musd, cfg.btc, cfg.priceFeed, cfg.poolsVoter, cfg.feeDistributor];
         for (uint256 i; i < targets.length; ++i) {
             if (targets[i].code.length == 0) revert MissingCode(targets[i]);
         }
         (bool ok, bytes memory raw) = cfg.veBTC.staticcall(abi.encodeWithSignature("voter()"));
         address veVoter = ok && raw.length == 32 ? abi.decode(raw, (address)) : address(0);
         if (veVoter != cfg.poolsVoter) revert VoterMismatch(veVoter, cfg.poolsVoter);
+        if (cfg.validatorsVoter == address(0)) {
+            console.log("preflight: veBTC has no secondary voters here; ValidatorsVoter left unset");
+        } else {
+            if (cfg.validatorsVoter.code.length == 0) revert MissingCode(cfg.validatorsVoter);
+            (bool isSecondary, bytes memory answer) =
+                cfg.veBTC.staticcall(abi.encodeWithSignature("isSecondaryVoter(address)", cfg.validatorsVoter));
+            if (!isSecondary || answer.length != 32 || !abi.decode(answer, (bool))) {
+                revert NotSecondaryVoter(cfg.validatorsVoter);
+            }
+        }
         uint256 probeId = _probeLockLayout(cfg);
         uint256 price = _priceOnNode(cfg.priceFeed);
         if (price < MIN_BTC_PRICE || price > MAX_BTC_PRICE) revert PriceOutOfRange(price);
@@ -187,6 +236,8 @@ contract DeployCore is Script {
         vm.serializeAddress(obj, "btc", cfg.btc);
         vm.serializeAddress(obj, "priceFeed", cfg.priceFeed);
         vm.serializeAddress(obj, "poolsVoter", cfg.poolsVoter);
+        vm.serializeAddress(obj, "validatorsVoter", cfg.validatorsVoter);
+        vm.serializeAddress(obj, "feeDistributor", cfg.feeDistributor);
         vm.serializeUint(obj, "lockLayoutWords", cfg.lockLayoutWords);
         vm.serializeAddress(obj, "creditMarkets", address(cm));
         string memory json = vm.serializeAddress(obj, "loanManager", address(lm));

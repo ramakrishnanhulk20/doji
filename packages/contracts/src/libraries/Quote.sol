@@ -10,6 +10,7 @@ library Quote {
     uint256 internal constant BPS = 10_000;
     uint256 internal constant YEAR = 365 days;
 
+    /// @notice The fee share is above 10,000 basis points.
     error FeeShareAboveFull(uint256 feeShareBps);
 
     /// @notice Prices one fill: what the borrower owes at maturity and how it splits into credit units.

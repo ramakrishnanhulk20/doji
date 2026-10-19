@@ -111,7 +111,7 @@ contract ResolutionTest is LoanFixture {
         MockBTC other = new MockBTC();
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         CreditMarkets markets = new CreditMarkets(
-            address(musd), address(other), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK)
+            address(musd), address(other), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
         );
         vm.expectRevert(ILoanManager.BtcMismatch.selector);
         new LoanManager(address(ve), address(feed), address(musd), address(btc), address(voter), address(markets), 4, _settings());
@@ -119,15 +119,15 @@ contract ResolutionTest is LoanFixture {
 
     function test_RevertWhen_ConstructorZeroBtcOrVoter() public {
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        new LoanManager(address(ve), address(feed), address(musd), address(0), address(voter), address(cm), 4, _settings());
+        this.deployManager(address(0), address(voter), address(cm), _settings());
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        new LoanManager(address(ve), address(feed), address(musd), address(btc), address(0), address(cm), 4, _settings());
+        this.deployManager(address(btc), address(0), address(cm), _settings());
     }
 
     function test_RevertWhen_ConstructorAuctionParamsOutOfBounds() public {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         CreditMarkets markets = new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK)
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
         );
         ILoanManager.Settings memory settings = _settings();
         settings.penaltyBps = 1_001;
@@ -494,7 +494,7 @@ contract ResolutionTest is LoanFixture {
         vm.warp(_floorTime(TOKEN));
 
         vm.expectEmit(true, false, false, true, address(lm));
-        emit ILoanManager.SettlePrepared(TOKEN, true, false);
+        emit ILoanManager.SettlePrepared(TOKEN, true, false, false);
         vm.expectCall(address(voter), abi.encodeCall(IPoolsVoter.reset, (TOKEN)));
         vm.prank(bob);
         lm.prepareSettle(TOKEN);
@@ -530,7 +530,7 @@ contract ResolutionTest is LoanFixture {
         lm.settle(TOKEN);
 
         vm.expectEmit(true, false, false, true, address(lm));
-        emit ILoanManager.SettlePrepared(TOKEN, true, true);
+        emit ILoanManager.SettlePrepared(TOKEN, true, false, true);
         lm.prepareSettle(TOKEN);
         (, uint256 end, bool isPermanent) = lm.lockOf(TOKEN);
         assertFalse(isPermanent);

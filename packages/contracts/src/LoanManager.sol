@@ -13,20 +13,27 @@ import {ICreditMarkets} from "./interfaces/ICreditMarkets.sol";
 import {IVeBTC} from "./interfaces/IVeBTC.sol";
 import {IPriceFeed} from "./interfaces/IPriceFeed.sol";
 import {IPoolsVoter} from "./interfaces/IPoolsVoter.sol";
+import {IVeBTCVoter} from "./interfaces/IVeBTCVoter.sol";
+import {IFeeDistributor} from "./interfaces/IFeeDistributor.sol";
 import {LockReader} from "./libraries/LockReader.sol";
 import {Resolution} from "./libraries/Resolution.sol";
+import {PassThrough} from "./libraries/PassThrough.sol";
 
 /// @title LoanManager
 /// @notice Takes custody of veBTC positions and opens one fixed-term MUSD loan per position from
 ///         CreditMarkets offers. The borrower repays the fixed face by the maturity, or rolls it to a later
 ///         one, and takes the position back. An overdue or unsafe loan is sold in a falling-price auction in
 ///         which the borrower keeps everything above the debt and a penalty; if nobody buys, the Bitcoin is
-///         withdrawn once the lock ends and paid to that date's lenders. Doji never sells on a DEX.
+///         withdrawn once the lock ends and paid to that date's lenders. Doji never sells on a DEX. While a
+///         position is held, its borrower keeps voting, claiming fees and incentives and extending the lock
+///         through this contract, and a new user can lock BTC and borrow in one transaction.
 /// @dev Deliberately has no receive(), no onERC721Received, no payable function, no generic call and no
 ///      approval on veBTC. veBTC.withdraw pays through the BTC ERC-20 view (live source, and the mainnet
 ///      fork test), so native BTC never needs receiving (C18). A position can only become collateral through
-///      deposit(), which pulls it from the caller, so a token pushed in any other way never gets a borrower.
-///      Borrower payouts from resolutions wait as claimables, which this contract's balances always cover.
+///      deposit(), which pulls it from the caller, or lockAndDeposit(), which mints it here for the caller, so
+///      a token pushed in any other way never gets a borrower; the owner can only send such a token on with
+///      rescuePosition. Borrower payouts from resolutions and expired-lock fee claims wait as claimables, which
+///      this contract's balances always cover.
 contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
@@ -41,6 +48,10 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     uint128 public constant MIN_LOAN_FLOOR = 1e18;
     uint128 public constant MIN_LOAN_CEILING = 100_000e18;
     uint8 public constant ESCROW_NORMAL = 0;
+    /// @dev Mezo's PoolsVoter caps a vote at maxVotingNum = 30 pools (live read 2026-10-19).
+    uint16 private constant MAX_VOTES_CEILING = 30;
+    /// @dev Most tokens one reward claim may list; the gas justification sits with PassThrough.
+    uint256 public constant MAX_REWARD_TOKENS = PassThrough.MAX_REWARD_TOKENS;
     uint256 private constant BPS = 10_000;
     uint256 private constant PRICE_SCALE = 1e18;
 
@@ -49,8 +60,11 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     IERC20 public immutable musd;
     IERC20 public immutable btc;
     IPoolsVoter public immutable poolsVoter;
+    IVeBTCVoter public immutable validatorsVoter;
+    IFeeDistributor public immutable feeDistributor;
     ICreditMarkets public immutable creditMarkets;
     uint256 public immutable lockLayoutWords;
+    uint16 public immutable maxVotes;
 
     address public guardian;
     uint16 public maxLtvBps;
@@ -73,8 +87,19 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     /// @notice Wires LoanManager to fixed Mezo contracts and to the CreditMarkets deployed for it.
     /// @dev Reverts ZeroAddress, BadLockLayout (not 3 or 4), CreditMarketsMismatch unless CreditMarkets already
     ///      names this contract as its LoanManager, MusdMismatch or BtcMismatch unless both contracts use the
-    ///      same tokens, OwnableInvalidOwner, or a bound error. Gives CreditMarkets an unlimited MUSD
-    ///      allowance; BTC is approved per settle for the exact amount and spent in the same call.
+    ///      same tokens, MaxVotesOutOfBounds, DuplicateVoter (ValidatorsVoter equal to PoolsVoter),
+    ///      OwnableInvalidOwner, or a bound error. ValidatorsVoter may be zero on a chain whose veBTC has no
+    ///      secondary voters; prepareSettle then skips it. Gives CreditMarkets an
+    ///      unlimited MUSD allowance; BTC is approved per settle or lock for the exact amount and spent in the
+    ///      same call.
+    /// @param veBTC_ Mezo's veBTC proxy.
+    /// @param priceFeed_ MUSD's BTC PriceFeed.
+    /// @param musd_ The MUSD token.
+    /// @param btc_ The BTC ERC-20 view that veBTC locks and pays in.
+    /// @param poolsVoter_ Mezo's PoolsVoter, veBTC's primary voter.
+    /// @param creditMarkets_ The CreditMarkets deployed for this LoanManager.
+    /// @param lockLayoutWords_ Words veBTC's locked() returns on this chain: 3 on testnet, 4 on mainnet.
+    /// @param settings_ Owner, guardian, fee distributor, ValidatorsVoter, vote cap and starting parameters.
     constructor(
         address veBTC_,
         address priceFeed_,
@@ -87,9 +112,13 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     ) Ownable(settings_.owner) {
         if (
             veBTC_ == address(0) || priceFeed_ == address(0) || musd_ == address(0) || btc_ == address(0)
-                || poolsVoter_ == address(0) || creditMarkets_ == address(0)
+                || poolsVoter_ == address(0) || creditMarkets_ == address(0) || settings_.feeDistributor == address(0)
         ) revert ZeroAddress();
         if (lockLayoutWords_ != 3 && lockLayoutWords_ != 4) revert BadLockLayout(lockLayoutWords_);
+        if (settings_.maxVotes == 0 || settings_.maxVotes > MAX_VOTES_CEILING) {
+            revert MaxVotesOutOfBounds(settings_.maxVotes);
+        }
+        if (settings_.validatorsVoter == poolsVoter_) revert DuplicateVoter();
         if (ICreditMarkets(creditMarkets_).loanManager() != address(this)) revert CreditMarketsMismatch();
         if (ICreditMarkets(creditMarkets_).musd() != musd_) revert MusdMismatch();
         if (ICreditMarkets(creditMarkets_).btc() != btc_) revert BtcMismatch();
@@ -99,8 +128,11 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         musd = IERC20(musd_);
         btc = IERC20(btc_);
         poolsVoter = IPoolsVoter(poolsVoter_);
+        validatorsVoter = IVeBTCVoter(settings_.validatorsVoter);
+        feeDistributor = IFeeDistributor(settings_.feeDistributor);
         creditMarkets = ICreditMarkets(creditMarkets_);
         lockLayoutWords = lockLayoutWords_;
+        maxVotes = settings_.maxVotes;
 
         _setGuardian(settings_.guardian);
         // Auction params first: their floor check reads liqLtvBps, and the risk check then reads the floor.
@@ -124,6 +156,24 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
 
         veBTC.transferFrom(msg.sender, address(this), tokenId);
         if (veBTC.ownerOf(tokenId) != address(this)) revert CustodyCheckFailed(tokenId);
+    }
+
+    /// @inheritdoc ILoanManager
+    function lockAndDeposit(uint256 amount, uint256 lockDuration) external nonReentrant returns (uint256 tokenId) {
+        return _lockAndDeposit(amount, lockDuration);
+    }
+
+    /// @inheritdoc ILoanManager
+    function lockAndBorrow(
+        uint256 amount,
+        uint256 lockDuration,
+        uint64 maturity,
+        uint256[] calldata offerIds,
+        uint128[] calldata amounts,
+        uint16 maxAprBps
+    ) external nonReentrant returns (uint256 tokenId, uint256 principal, uint256 face) {
+        tokenId = _lockAndDeposit(amount, lockDuration);
+        (principal, face) = _openLoan(tokenId, maturity, offerIds, amounts, maxAprBps, false);
     }
 
     /// @inheritdoc ILoanManager
@@ -177,7 +227,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         emit Repaid(tokenId, msg.sender, paid, owedAfter);
         if (closes) emit LoanClosed(tokenId, maturity);
 
-        _pullMusd(msg.sender, paid);
+        _pullExact(musd, paid);
         creditMarkets.credit(maturity, paid, closes);
     }
 
@@ -192,6 +242,56 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         emit Withdrawn(tokenId, msg.sender);
 
         veBTC.transferFrom(address(this), msg.sender, tokenId);
+    }
+
+    /// @inheritdoc ILoanManager
+    function vote(uint256 tokenId, address[] calldata, uint256[] calldata) external nonReentrant {
+        _requirePassThrough(tokenId, true);
+        // The pools and weights are decoded inside PassThrough from this call's own arguments, which keeps
+        // LoanManager under the size limit; the id it votes with is the `tokenId` checked just above.
+        PassThrough.castVote(poolsVoter, address(veBTC), lockLayoutWords, maxVotes, tokenId, msg.data[4:]);
+    }
+
+    /// @inheritdoc ILoanManager
+    function resetVotes(uint256 tokenId) external nonReentrant {
+        _requirePassThrough(tokenId, false);
+        poolsVoter.reset(tokenId);
+    }
+
+    /// @inheritdoc ILoanManager
+    function claimRewards(uint256 tokenId, address[] calldata, address[][] calldata, address[][] calldata)
+        external
+        nonReentrant
+    {
+        _requirePassThrough(tokenId, false);
+        // The three lists are decoded inside PassThrough from this call's own arguments, with the same ABI
+        // rules, because handing nested calldata arrays over as arguments overflows the stack. The id it claims
+        // for is the `tokenId` checked just above.
+        PassThrough.forwardRewards(poolsVoter, tokenId, msg.data[4:]);
+    }
+
+    /// @inheritdoc ILoanManager
+    function claimRebase(uint256 tokenId) external nonReentrant {
+        _requirePassThrough(tokenId, false);
+        uint256 before = _btcBalance();
+        // The distributor's own return figure is ignored on purpose: what is credited is what was measured.
+        // slither-disable-next-line unused-return
+        // forge-lint: disable-next-line(unused-return)
+        feeDistributor.claim(tokenId);
+        uint256 credited = _btcBalance() - before;
+        if (credited != 0) {
+            claimableBtc[msg.sender] += credited;
+            totalClaimableBtc += credited;
+        }
+        // The fee distributor is fixed at deployment and pays BTC through the precompile, which runs no code.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit RebaseClaimed(tokenId, msg.sender, credited);
+    }
+
+    /// @inheritdoc ILoanManager
+    function extendLock(uint256 tokenId, uint256 lockDuration) external nonReentrant {
+        _requirePassThrough(tokenId, true);
+        veBTC.increaseUnlockTime(tokenId, lockDuration);
     }
 
     /// @inheritdoc ILoanManager
@@ -285,12 +385,14 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     function prepareSettle(uint256 tokenId) external nonReentrant {
         _requireFloorTimeReached(tokenId);
         _requireCustody(tokenId);
-        bool voteReset = veBTC.voted(tokenId);
+        bool poolsVote = _hasLiveVote(poolsVoter, tokenId);
+        bool validatorsVote = _hasLiveVote(validatorsVoter, tokenId);
         (,, bool isPermanent) = LockReader.read(address(veBTC), tokenId, lockLayoutWords);
-        if (!voteReset && !isPermanent) revert NothingToPrepare(tokenId);
-        emit SettlePrepared(tokenId, voteReset, isPermanent);
+        if (!poolsVote && !validatorsVote && !isPermanent) revert NothingToPrepare(tokenId);
+        emit SettlePrepared(tokenId, poolsVote, validatorsVote, isPermanent);
 
-        if (voteReset) poolsVoter.reset(tokenId);
+        if (poolsVote) poolsVoter.reset(tokenId);
+        if (validatorsVote) validatorsVoter.reset(tokenId);
         if (isPermanent) veBTC.unlockPermanent(tokenId);
     }
 
@@ -442,6 +544,35 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         emit BorrowsPausedSet(paused);
     }
 
+    /// @inheritdoc ILoanManager
+    function rescueToken(address token, address to, uint256 amount) external nonReentrant onlyOwner {
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        if (token == address(veBTC)) revert TokenNotRescuable(token);
+        // Only MUSD and BTC carry claimables; for any other token nothing is owed and the whole balance is free.
+        uint256 owedOut = 0;
+        if (token == address(musd)) owedOut = totalClaimableMusd;
+        else if (token == address(btc)) owedOut = totalClaimableBtc;
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        uint256 surplus = balance > owedOut ? balance - owedOut : 0;
+        if (amount > surplus) revert RescueExceedsSurplus(token, amount, surplus);
+        // The only call above is a balance read.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit Rescued(token, to, amount);
+        IERC20(token).safeTransfer(to, amount);
+    }
+
+    /// @inheritdoc ILoanManager
+    function rescuePosition(uint256 tokenId, address to) external nonReentrant onlyOwner {
+        if (to == address(0)) revert ZeroAddress();
+        if (_positions[tokenId].borrower != address(0)) revert PositionExists(tokenId);
+        _requireCustody(tokenId);
+        // The only call above is the veBTC ownerOf read.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit PositionRescued(tokenId, to);
+        veBTC.transferFrom(address(this), to, tokenId);
+    }
+
     /// @dev The one open-loan path (C8), used by borrow and by the borrow half of roll. The pause check lives
     ///      here and is skipped for roll only (C19); roll has already checked the borrower and that its loan is
     ///      Active and on time. The face is only known once CreditMarkets prices the fill, so the loan is
@@ -480,6 +611,49 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         });
 
         emit Borrowed(tokenId, msg.sender, maturity, principal, face);
+    }
+
+    /// @dev Mints a new lock straight to this contract and records the caller as its borrower (C1). Pausable
+    ///      like borrow (C19). The BTC pull is measured and exact; veBTC gets an allowance of exactly `amount`,
+    ///      set back to zero right after whatever veBTC spent (C17). The id veBTC returns is recorded only once
+    ///      ownerOf confirms this contract holds it and it passes the C2 test (C17). veBTC is fixed at
+    ///      deployment and mints without a receiver hook, so no outside code runs before the record is written.
+    // forge-lint: disable-next-item(reentrancy-no-eth,reentrancy-events,missing-events-access-control)
+    function _lockAndDeposit(uint256 amount, uint256 lockDuration) private returns (uint256 tokenId) {
+        if (borrowsPaused) revert BorrowsPaused();
+        if (amount == 0) revert ZeroAmount();
+        IERC20 coin = btc;
+        IVeBTC ve = veBTC;
+        _pullExact(coin, amount);
+
+        coin.forceApprove(address(ve), amount);
+        tokenId = ve.createLockFor(amount, lockDuration, address(this));
+        coin.forceApprove(address(ve), 0);
+        if (ve.ownerOf(tokenId) != address(this)) revert CustodyCheckFailed(tokenId);
+        _requireAcceptedCollateral(tokenId);
+        if (_positions[tokenId].borrower != address(0)) revert PositionExists(tokenId);
+
+        _positions[tokenId].borrower = msg.sender;
+        emit Deposited(tokenId, msg.sender);
+    }
+
+    /// @dev The one pass-through check (C4): the recorded borrower, the position still in custody (C2) and no
+    ///      auction, where the resolution steps own the position. `strict` adds what vote and extendLock need:
+    ///      an Active loan must be on time and safe at a fresh price, so neither runs on a loan that anyone may
+    ///      already send to auction. Maturities are a week apart, so timestamp drift does not matter.
+    // forge-lint: disable-next-item(block-timestamp)
+    function _requirePassThrough(uint256 tokenId, bool strict) private view {
+        _requireBorrower(tokenId);
+        _requireCustody(tokenId);
+        Loan storage loan = _loans[tokenId];
+        LoanState state = loan.state;
+        if (state == LoanState.Auction) revert LoanInAuction(tokenId);
+        if (!strict || state != LoanState.Active) return;
+        if (block.timestamp > loan.maturity) revert LoanOverdue(tokenId);
+        (,,, uint256 usdValue) = _collateral(tokenId);
+        if (Resolution.isUnsafe(uint256(loan.face) - loan.repaid, usdValue, loan.liqLtvBps)) {
+            revert LoanUnsafe(tokenId);
+        }
     }
 
     /// @dev The collateral and term checks of the open-loan path (C2, C6, C8, C24), returning the largest
@@ -534,7 +708,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         // forge-lint: disable-next-line(reentrancy-events)
         emit Rolled(tokenId, oldMaturity, newMaturity, owed, excess, topUp);
 
-        _pullMusd(msg.sender, topUp);
+        _pullExact(musd, topUp);
         creditMarkets.credit(oldMaturity, owed, true);
         if (excess != 0) musd.safeTransfer(msg.sender, excess);
     }
@@ -567,6 +741,13 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     /// @dev C2: once the position has left this contract, nothing but writeOff runs for its loan.
     function _requireCustody(uint256 tokenId) private view {
         if (veBTC.ownerOf(tokenId) != address(this)) revert NotInCustody(tokenId);
+    }
+
+    /// @dev C5: a voter holds a live vote for a position exactly while its usedWeights is above zero; the voter
+    ///      marks the position voted on veBTC at the same moment and its reset clears both. A zero voter address
+    ///      (no secondary voters on this chain) never holds one.
+    function _hasLiveVote(IVeBTCVoter voter, uint256 tokenId) private view returns (bool) {
+        return address(voter) != address(0) && voter.usedWeights(tokenId) != 0;
     }
 
     /// @dev Settle and its preparation run only on an unsold auction past its floor time (C12).
@@ -612,18 +793,18 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     /// @dev Pulls the sale price from the buyer, books the market's share and pays the penalty. The
     ///      borrower's share stays here as the claimable recorded before this runs (C11, C28).
     function _payOutSale(uint64 maturity, uint256 paid, uint256 toMarket, uint256 toTreasury) private {
-        _pullMusd(msg.sender, paid);
+        _pullExact(musd, paid);
         creditMarkets.credit(maturity, toMarket, true);
         if (toTreasury != 0) musd.safeTransfer(creditMarkets.treasury(), toTreasury);
     }
 
-    /// @dev The one MUSD intake (C17): only from the caller, measured, and exact or revert, so claimables and
-    ///      market credits are always backed by MUSD that really arrived.
-    function _pullMusd(address from, uint256 amount) private {
+    /// @dev The one intake for MUSD and BTC (C17): only from the caller, measured, and exact or revert, so
+    ///      claimables, market credits and new locks are always backed by tokens that really arrived.
+    function _pullExact(IERC20 token, uint256 amount) private {
         if (amount == 0) return;
-        uint256 before = musd.balanceOf(address(this));
-        musd.safeTransferFrom(from, address(this), amount);
-        uint256 received = musd.balanceOf(address(this)) - before;
+        uint256 before = token.balanceOf(address(this));
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = token.balanceOf(address(this)) - before;
         if (received != amount) revert TransferShortfall(amount, received);
     }
 

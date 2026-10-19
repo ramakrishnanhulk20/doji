@@ -23,50 +23,97 @@ interface ICreditMarkets {
         uint128 btcAtFinal;
     }
 
+    /// @notice `maker` escrowed `amount` MUSD as an offer for `maturity` at `aprBps`.
     event OfferPosted(
         uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint16 aprBps, uint128 amount
     );
+    /// @notice An offer's unfilled MUSD went back to its maker.
     event OfferCancelled(uint256 indexed offerId, address indexed maker, uint128 refunded);
+    /// @notice An offer lent `principal` MUSD to a loan owing `face` at `maturity`.
     event Filled(uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint256 principal, uint256 face);
+    /// @notice A market received `musdAmount` MUSD from LoanManager.
     event Credited(uint64 indexed maturity, uint256 musdAmount, bool closesLoan);
+    /// @notice A market received `btcAmount` BTC from a settled loan.
     event CreditedBtc(uint64 indexed maturity, uint256 btcAmount, bool closesLoan);
+    /// @notice `account` minted its recorded credit units for `maturity`.
     event UnitsClaimed(address indexed account, uint64 indexed maturity, uint256 units);
-    event MarketFinalized(uint64 indexed maturity, uint256 unitsAtFinal, uint256 musdAtFinal);
+    /// @notice A market closed for good; redemptions pay from these snapshots.
+    event MarketFinalized(uint64 indexed maturity, uint256 unitsAtFinal, uint256 musdAtFinal, uint256 btcAtFinal);
+    /// @notice `account` burned `units` and received its share of the market's MUSD and BTC.
     event Redeemed(address indexed account, uint64 indexed maturity, uint256 units, uint256 musdOut, uint256 btcOut);
+    /// @notice New fills will use this treasury share of interest.
     event FeeShareBpsSet(uint16 feeShareBps);
+    /// @notice New offers need at least this amount.
     event MinOfferSet(uint128 minOffer);
+    /// @notice Maturities may now be at most this far away.
     event MaxTermSecondsSet(uint32 maxTermSeconds);
-    event TreasurySet(address treasury);
-    event GuardianSet(address guardian);
+    /// @notice Future fee units go to this treasury.
+    event TreasurySet(address indexed treasury);
+    /// @notice The address that may pause new offers changed.
+    event GuardianSet(address indexed guardian);
+    /// @notice New offers were paused or resumed.
     event OffersPausedSet(bool paused);
+    /// @notice The metadata URI for every credit unit changed; clients replace {id} with the maturity.
+    event UriSet(string uri);
+    /// @notice The owner moved a stray ERC-20 that is neither MUSD nor BTC.
+    event Rescued(address indexed token, address indexed to, uint256 amount);
 
+    /// @notice An address argument or setting was the zero address.
     error ZeroAddress();
+    /// @notice An amount was zero where it must be positive.
     error ZeroAmount();
+    /// @notice Only LoanManager may fill offers and credit markets.
     error NotLoanManager();
+    /// @notice Only the offer's maker may cancel it.
     error NotMaker(uint256 offerId);
+    /// @notice Only the guardian or the owner may pause.
     error NotGuardianOrOwner();
+    /// @notice New offers are paused.
     error OffersPaused();
+    /// @notice The maturity is not a valid, open Thursday within the maximum term.
     error InvalidMaturity(uint64 maturity);
+    /// @notice The rate is above the hard-coded cap.
     error AprTooHigh(uint16 aprBps);
+    /// @notice The offer is below the minimum offer.
     error OfferTooSmall(uint128 amount, uint128 minOffer);
+    /// @notice No offer has this id.
     error OfferNotFound(uint256 offerId);
+    /// @notice The offer has nothing left to cancel.
     error OfferEmpty(uint256 offerId);
+    /// @notice A fill must list 1 to MAX_FILLS offers.
     error BadFillCount(uint256 count);
+    /// @notice Two arrays that pair up have different lengths.
     error LengthMismatch();
+    /// @notice A listed offer is for a different maturity.
     error WrongMaturity(uint256 offerId, uint64 offerMaturity, uint64 maturity);
+    /// @notice A listed offer's rate is above the borrower's maximum.
     error AprAboveMax(uint256 offerId, uint16 aprBps, uint16 maxAprBps);
+    /// @notice A listed offer has less left than the listed amount.
     error InsufficientRemaining(uint256 offerId, uint128 remaining, uint128 amount);
+    /// @notice The measured arrival differs from the amount pulled.
     error TransferMismatch(uint256 expected, uint256 received);
+    /// @notice The market has no open loan to credit.
     error NoOpenLoans(uint64 maturity);
+    /// @notice The market is already final.
     error MarketIsFinal(uint64 maturity);
+    /// @notice The market is not final yet.
     error NotFinal(uint64 maturity);
+    /// @notice The maturity has not passed.
     error NotMatured(uint64 maturity);
+    /// @notice The market still has open loans.
     error LoansStillOpen(uint64 maturity, uint64 openLoans);
+    /// @notice The market never had a loan.
     error EmptyMarket(uint64 maturity);
+    /// @notice The account has no units waiting for this maturity.
     error NothingToClaim(address account, uint64 maturity);
+    /// @notice The fee share is above 2000 basis points.
     error FeeShareOutOfBounds(uint16 feeShareBps);
+    /// @notice The minimum offer is outside 1 to 1,000,000 MUSD.
     error MinOfferOutOfBounds(uint128 minOffer);
+    /// @notice The maximum term is outside 1 to 12 weeks.
     error MaxTermOutOfBounds(uint32 maxTermSeconds);
+    /// @notice MUSD and BTC are recorded per market, so they are never rescued.
+    error TokenNotRescuable(address token);
 
     /// @notice Escrows `amount` MUSD from the caller as a fixed-rate offer for `maturity`.
     /// @dev Pulls exactly `amount` with transferFrom, so the caller approves this contract first.
@@ -219,4 +266,19 @@ interface ICreditMarkets {
     /// @notice Guardian or owner. Pauses or resumes postOffer only; cancel, fills, credits, claims,
     /// finalize and redeem are never paused. Reverts NotGuardianOrOwner. Emits OffersPausedSet.
     function setOffersPaused(bool paused) external;
+
+    /// @notice Owner only. Sets the ERC-1155 metadata URI shared by every maturity's credit units.
+    /// @dev Clients replace {id} with the maturity as 64 lowercase hex characters, per ERC-1155. Reverts
+    ///      OwnableUnauthorizedAccount. Emits UriSet.
+    /// @param newUri The new URI template.
+    function setURI(string calldata newUri) external;
+
+    /// @notice Owner only. Sends a stray ERC-20 that is neither MUSD nor BTC.
+    /// @dev MUSD and BTC are refused outright: their records are per offer and per market, so a share of
+    ///      them is never free to move. CreditMarkets keeps no record in any other token. Reverts
+    ///      OwnableUnauthorizedAccount, ZeroAddress, ZeroAmount or TokenNotRescuable. Emits Rescued.
+    /// @param token ERC-20 to send.
+    /// @param to Receiver.
+    /// @param amount Amount to send.
+    function rescueToken(address token, address to, uint256 amount) external;
 }

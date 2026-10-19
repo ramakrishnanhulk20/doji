@@ -45,7 +45,7 @@ contract CreditMarketsTest is Test {
         musd = new MockMUSD();
         btc = new MockBTC();
         cm = new CreditMarkets(
-            address(musd), address(btc), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM
+            address(musd), address(btc), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""
         );
         m1 = uint64((T0 / WEEK + 1) * WEEK);
         m2 = m1 + uint64(WEEK);
@@ -96,6 +96,14 @@ contract CreditMarketsTest is Test {
         cm.finalize(m1);
     }
 
+    /// @dev External so a constructor revert under vm.expectRevert is caught from a real call. Once the project
+    ///      links a library, forge deploys contracts in tests through vm.deployCode, and a revert there would end
+    ///      the test as a pass and skip every case after it. Takes the encoded constructor arguments because ten
+    ///      separate ones overflow the stack.
+    function newMarkets(bytes calldata args) external returns (CreditMarkets) {
+        return CreditMarkets(vm.deployCode("src/CreditMarkets.sol:CreditMarkets", args));
+    }
+
     function test_Constructor_SetsState() public view {
         assertEq(cm.musd(), address(musd));
         assertEq(cm.btc(), address(btc));
@@ -113,27 +121,27 @@ contract CreditMarketsTest is Test {
     function test_RevertWhen_ConstructorZeroAddress() public {
         address b = address(btc);
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(0), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        this.newMarkets(abi.encode(address(0), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(musd), address(0), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        this.newMarkets(abi.encode(address(musd), address(0), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(musd), b, address(0), owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        this.newMarkets(abi.encode(address(musd), b, address(0), owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(musd), b, loanManager, owner, address(0), treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, address(0), treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(musd), b, loanManager, owner, guardian, address(0), FEE_SHARE, MIN_OFFER, MAX_TERM);
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, address(0), FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new CreditMarkets(address(musd), b, loanManager, address(0), guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        this.newMarkets(abi.encode(address(musd), b, loanManager, address(0), guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
     }
 
     function test_RevertWhen_ConstructorParamsOutOfBounds() public {
         address b = address(btc);
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.FeeShareOutOfBounds.selector, 2_001));
-        new CreditMarkets(address(musd), b, loanManager, owner, guardian, treasury, 2_001, MIN_OFFER, MAX_TERM);
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, 2_001, MIN_OFFER, MAX_TERM, ""));
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MinOfferOutOfBounds.selector, 1e18 - 1));
-        new CreditMarkets(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, 1e18 - 1, MAX_TERM);
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, 1e18 - 1, MAX_TERM, ""));
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MaxTermOutOfBounds.selector, uint32(WEEK - 1)));
-        new CreditMarkets(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, uint32(WEEK - 1));
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, uint32(WEEK - 1), ""));
     }
 
     function test_PostOffer_EscrowsAndRecords() public {
@@ -463,7 +471,7 @@ contract CreditMarketsTest is Test {
         vm.warp(m1 + 1);
 
         vm.expectEmit(true, false, false, true, address(cm));
-        emit ICreditMarkets.MarketFinalized(m1, face, face);
+        emit ICreditMarkets.MarketFinalized(m1, face, face, 0);
         vm.prank(stranger);
         cm.finalize(m1);
 

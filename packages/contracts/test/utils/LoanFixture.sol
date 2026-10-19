@@ -10,9 +10,10 @@ import {MockBTC} from "./MockBTC.sol";
 import {MockVeBTC} from "./MockVeBTC.sol";
 import {MockPriceFeed} from "./MockPriceFeed.sol";
 import {MockPoolsVoter} from "./MockPoolsVoter.sol";
+import {MockFeeDistributor} from "./MockFeeDistributor.sol";
 
 /// @notice Shared deployment for the LoanManager resolution and roll tests: the real CreditMarkets and
-/// LoanManager on mocks for veBTC, PriceFeed, PoolsVoter, MUSD and BTC, at the risk study's settings
+/// LoanManager on mocks for veBTC, PriceFeed, PoolsVoter, ValidatorsVoter, MUSD and BTC, at the risk study's settings
 /// (40% borrow limit, 65% line, 70% floor, 72-hour auction, 5% penalty). One 1 BTC position worth 80,000 MUSD
 /// belongs to alice and locks until the third maturity; a lender has 100,000 MUSD on offer at each maturity.
 abstract contract LoanFixture is Test {
@@ -38,6 +39,8 @@ abstract contract LoanFixture is Test {
     MockVeBTC internal ve;
     MockPriceFeed internal feed;
     MockPoolsVoter internal voter;
+    MockPoolsVoter internal validators;
+    MockFeeDistributor internal dist;
     CreditMarkets internal cm;
     LoanManager internal lm;
 
@@ -66,6 +69,8 @@ abstract contract LoanFixture is Test {
         btc = new MockBTC();
         ve = new MockVeBTC(4, btc);
         voter = new MockPoolsVoter(ve);
+        validators = new MockPoolsVoter(ve);
+        dist = new MockFeeDistributor(ve, btc);
         feed = new MockPriceFeed(PRICE);
         (cm, lm) = _deploy();
 
@@ -86,10 +91,13 @@ abstract contract LoanFixture is Test {
         }
     }
 
-    function _settings() internal view returns (ILoanManager.Settings memory) {
+    function _settings() internal view virtual returns (ILoanManager.Settings memory) {
         return ILoanManager.Settings({
             owner: owner,
             guardian: guardian,
+            feeDistributor: address(dist),
+            validatorsVoter: address(validators),
+            maxVotes: 30,
             maxLtvBps: MAX_LTV,
             liqLtvBps: LIQ_LTV,
             minLoan: MIN_LOAN,
@@ -102,12 +110,22 @@ abstract contract LoanFixture is Test {
     function _deploy() internal returns (CreditMarkets markets, LoanManager manager) {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         markets = new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK)
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK), ""
         );
         manager = new LoanManager(
             address(ve), address(feed), address(musd), address(btc), address(voter), address(markets), 4, _settings()
         );
         assertEq(address(manager), predicted);
+    }
+
+    /// @dev External so a constructor revert under vm.expectRevert is caught from a real call. LoanManager links
+    ///      the PassThrough library, so forge deploys it through vm.deployCode, and a revert there would end the
+    ///      test as a pass and skip every case after it.
+    function deployManager(address btc_, address voter_, address markets, ILoanManager.Settings memory settings)
+        external
+        returns (LoanManager)
+    {
+        return new LoanManager(address(ve), address(feed), address(musd), btc_, voter_, markets, 4, settings);
     }
 
     function _deposit(address who, uint256 tokenId) internal {

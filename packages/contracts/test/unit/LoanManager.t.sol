@@ -21,6 +21,7 @@ import {MockBTC} from "../utils/MockBTC.sol";
 import {MockVeBTC} from "../utils/MockVeBTC.sol";
 import {MockPriceFeed} from "../utils/MockPriceFeed.sol";
 import {MockPoolsVoter} from "../utils/MockPoolsVoter.sol";
+import {MockFeeDistributor} from "../utils/MockFeeDistributor.sol";
 import {RevertingReceiver} from "../utils/RevertingReceiver.sol";
 
 contract LoanManagerTest is Test {
@@ -41,6 +42,7 @@ contract LoanManagerTest is Test {
     MockVeBTC internal ve;
     MockPriceFeed internal feed;
     MockPoolsVoter internal voter;
+    MockFeeDistributor internal dist;
     CreditMarkets internal cm;
     LoanManager internal lm;
 
@@ -65,6 +67,7 @@ contract LoanManagerTest is Test {
         btc = new MockBTC();
         ve = new MockVeBTC(4, btc);
         voter = new MockPoolsVoter(ve);
+        dist = new MockFeeDistributor(ve, btc);
         feed = new MockPriceFeed(PRICE);
         (cm, lm) = _deploy(4);
 
@@ -87,7 +90,7 @@ contract LoanManagerTest is Test {
     function _deploy(uint256 layoutWords) internal returns (CreditMarkets markets, LoanManager manager) {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         markets = new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK)
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK), ""
         );
         manager = _newManager(address(ve), address(feed), address(musd), address(markets), layoutWords, _settings());
         assertEq(address(manager), predicted);
@@ -96,7 +99,7 @@ contract LoanManagerTest is Test {
     function _marketsForNextDeploy() internal returns (CreditMarkets) {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         return new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK)
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK), ""
         );
     }
 
@@ -112,6 +115,9 @@ contract LoanManagerTest is Test {
         return ILoanManager.Settings({
             owner: owner,
             guardian: guardian_,
+            feeDistributor: address(dist),
+            validatorsVoter: address(0),
+            maxVotes: 30,
             maxLtvBps: maxLtv,
             liqLtvBps: liqLtv,
             minLoan: minLoan,
@@ -130,6 +136,28 @@ contract LoanManagerTest is Test {
         ILoanManager.Settings memory settings
     ) internal returns (LoanManager) {
         return new LoanManager(veBTC_, feed_, musd_, address(btc), address(voter), markets, layoutWords, settings);
+    }
+
+    /// @dev External so a constructor revert under vm.expectRevert is caught from a real call. LoanManager links
+    ///      the PassThrough library, so forge deploys it through vm.deployCode, and a revert there would end the
+    ///      test as a pass and skip every case after it. For reverts raised before the CreditMarkets check.
+    function newManager(
+        address veBTC_,
+        address feed_,
+        address musd_,
+        address markets,
+        uint256 layoutWords,
+        ILoanManager.Settings memory settings
+    ) external returns (LoanManager) {
+        return new LoanManager(veBTC_, feed_, musd_, address(btc), address(voter), markets, layoutWords, settings);
+    }
+
+    /// @dev Same reason as newManager, for reverts raised after the CreditMarkets check: the matching
+    ///      CreditMarkets is deployed inside the same call, because forge counts each external call the test
+    ///      makes as a transaction and moves this contract's nonce, which would break the address prediction.
+    function newPair(ILoanManager.Settings memory settings) external returns (LoanManager) {
+        CreditMarkets markets = _marketsForNextDeploy();
+        return _newManager(address(ve), address(feed), address(musd), address(markets), 4, settings);
     }
 
     function _deposit(address who, uint256 tokenId) internal {
@@ -173,7 +201,7 @@ contract LoanManagerTest is Test {
 
     function test_C27_ConstructorRevertsWhenMarketsPointElsewhere() public {
         CreditMarkets elsewhere = new CreditMarkets(
-            address(musd), address(btc), makeAddr("someoneElse"), owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK)
+            address(musd), address(btc), makeAddr("someoneElse"), owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
         );
         vm.expectRevert(ILoanManager.CreditMarketsMismatch.selector);
         _newManager(address(ve), address(feed), address(musd), address(elsewhere), 4, _settings());
@@ -183,7 +211,7 @@ contract LoanManagerTest is Test {
         MockMUSD other = new MockMUSD();
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         CreditMarkets markets = new CreditMarkets(
-            address(other), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK)
+            address(other), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
         );
         vm.expectRevert(ILoanManager.MusdMismatch.selector);
         _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings());
@@ -193,33 +221,30 @@ contract LoanManagerTest is Test {
         uint256[2] memory bad = [uint256(2), 5];
         for (uint256 i; i < bad.length; ++i) {
             vm.expectRevert(abi.encodeWithSelector(ILoanManager.BadLockLayout.selector, bad[i]));
-            _newManager(address(ve), address(feed), address(musd), address(cm), bad[i], _settings());
+            this.newManager(address(ve), address(feed), address(musd), address(cm), bad[i], _settings());
         }
     }
 
     function test_RevertWhen_ConstructorZeroAddress() public {
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        _newManager(address(0), address(feed), address(musd), address(cm), 4, _settings());
+        this.newManager(address(0), address(feed), address(musd), address(cm), 4, _settings());
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        _newManager(address(ve), address(0), address(musd), address(cm), 4, _settings());
+        this.newManager(address(ve), address(0), address(musd), address(cm), 4, _settings());
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        _newManager(address(ve), address(feed), address(0), address(cm), 4, _settings());
+        this.newManager(address(ve), address(feed), address(0), address(cm), 4, _settings());
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        _newManager(address(ve), address(feed), address(musd), address(0), 4, _settings());
+        this.newManager(address(ve), address(feed), address(musd), address(0), 4, _settings());
 
-        CreditMarkets markets = _marketsForNextDeploy();
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings(address(0), MAX_LTV, LIQ_LTV, MIN_LOAN));
+        this.newPair(_settings(address(0), MAX_LTV, LIQ_LTV, MIN_LOAN));
     }
 
     function test_RevertWhen_ConstructorParamsOutOfBounds() public {
-        CreditMarkets markets = _marketsForNextDeploy();
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.RiskParamsOutOfBounds.selector, 6_500, 6_500));
-        _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings(guardian, 6_500, 6_500, MIN_LOAN));
+        this.newPair(_settings(guardian, 6_500, 6_500, MIN_LOAN));
 
-        markets = _marketsForNextDeploy();
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.MinLoanOutOfBounds.selector, 0));
-        _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings(guardian, MAX_LTV, LIQ_LTV, 0));
+        this.newPair(_settings(guardian, MAX_LTV, LIQ_LTV, 0));
     }
 
     function test_Deposit_TakesCustodyAndRecordsBorrower() public {
@@ -514,7 +539,7 @@ contract LoanManagerTest is Test {
         LoanManager lmOnNothing;
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         CreditMarkets markets = new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK)
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
         );
         lmOnNothing = _newManager(makeAddr("noCode"), address(feed), address(musd), address(markets), 4, _settings());
         vm.expectRevert(LockReader.LockReadFailed.selector);

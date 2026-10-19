@@ -7,7 +7,9 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 /// @notice The single decoder for veBTC's locked(). Mezo testnet returns (amount, end, isPermanent) and
 ///         mainnet appends a boost word, so the caller states the layout it expects and anything else fails.
 library LockReader {
+    /// @notice locked() reverted or returned a size other than this chain's layout.
     error LockReadFailed();
+    /// @notice The locked amount is zero or negative.
     error BadLockAmount();
 
     /// @notice Reads and validates a position's lock.

@@ -59,6 +59,16 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     /// @dev `loanManager_` is precomputed from the deployer's nonce; LoanManager's own constructor then
     ///      refuses to deploy unless this contract points at it. Reverts ZeroAddress, OwnableInvalidOwner,
     ///      or a parameter bound error. Emits one event per parameter.
+    /// @param musd_ The MUSD token lenders post and borrowers repay in.
+    /// @param btc_ The BTC ERC-20 that settled loans pay markets in.
+    /// @param loanManager_ The only address allowed to fill offers and credit markets.
+    /// @param owner_ Starting owner.
+    /// @param guardian_ Address that may pause new offers alongside the owner.
+    /// @param treasury_ Receiver of fee units.
+    /// @param feeShareBps_ Treasury's share of interest, at most 2000.
+    /// @param minOffer_ Smallest offer, 1 to 1,000,000 MUSD.
+    /// @param maxTermSeconds_ Furthest a maturity may be from now, 1 to 12 weeks.
+    /// @param uri_ ERC-1155 metadata URI template for the credit units; may be empty until metadata is served.
     constructor(
         address musd_,
         address btc_,
@@ -68,8 +78,9 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         address treasury_,
         uint16 feeShareBps_,
         uint128 minOffer_,
-        uint32 maxTermSeconds_
-    ) ERC1155("") Ownable(owner_) {
+        uint32 maxTermSeconds_,
+        string memory uri_
+    ) ERC1155(uri_) Ownable(owner_) {
         if (musd_ == address(0) || btc_ == address(0) || loanManager_ == address(0)) revert ZeroAddress();
         musd = musd_;
         btc = btc_;
@@ -79,6 +90,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         _setFeeShareBps(feeShareBps_);
         _setMinOffer(minOffer_);
         _setMaxTermSeconds(maxTermSeconds_);
+        emit UriSet(uri_);
     }
 
     /// @inheritdoc ICreditMarkets
@@ -194,7 +206,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         market.musdAtFinal = market.collectedMusd;
         market.btcAtFinal = market.collectedBtc;
 
-        emit MarketFinalized(maturity, market.unitsAtFinal, market.musdAtFinal);
+        emit MarketFinalized(maturity, market.unitsAtFinal, market.musdAtFinal, market.btcAtFinal);
     }
 
     /// @inheritdoc ICreditMarkets
@@ -283,6 +295,21 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         if (msg.sender != guardian && msg.sender != owner()) revert NotGuardianOrOwner();
         offersPaused = paused;
         emit OffersPausedSet(paused);
+    }
+
+    /// @inheritdoc ICreditMarkets
+    function setURI(string calldata newUri) external onlyOwner {
+        _setURI(newUri);
+        emit UriSet(newUri);
+    }
+
+    /// @inheritdoc ICreditMarkets
+    function rescueToken(address token, address to, uint256 amount) external nonReentrant onlyOwner {
+        if (token == musd || token == btc) revert TokenNotRescuable(token);
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        emit Rescued(token, to, amount);
+        IERC20(token).safeTransfer(to, amount);
     }
 
     /// @dev Checks one listed offer against the borrow's terms, cuts its remainder before anything else, and

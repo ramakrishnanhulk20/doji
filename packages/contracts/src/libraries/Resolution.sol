@@ -17,12 +17,17 @@ library Resolution {
     /// @param owed MUSD still owed.
     /// @param usdValue Collateral value in MUSD wei.
     /// @param lineBps The loan's liquidation line in basis points.
+    /// @return True when the debt is above the line.
     function isUnsafe(uint256 owed, uint256 usdValue, uint256 lineBps) internal pure returns (bool) {
         return owed > Math.mulDiv(usdValue, lineBps, BPS);
     }
 
     /// @notice The lowest an auction may sell for (C29): max(start * floorBps / 10,000, min(owed, start)).
     /// @dev Never above the start value while floorBps is at most 10,000, so the curve only ever falls.
+    /// @param startValue Collateral value when the auction starts, in MUSD wei.
+    /// @param owed MUSD still owed.
+    /// @param floorBps Floor share of the start value in basis points.
+    /// @return The floor price in MUSD wei.
     function floorPrice(uint256 startValue, uint256 owed, uint256 floorBps) internal pure returns (uint256) {
         return Math.max(Math.mulDiv(startValue, floorBps, BPS), Math.min(owed, startValue));
     }
@@ -31,6 +36,11 @@ library Resolution {
     ///         `duration`, then flat at the floor.
     /// @dev The drop is rounded down, so the price is rounded up, in favour of the market and the borrower.
     ///      Callers keep floor <= start and duration > 0.
+    /// @param startValue Price at the auction's start, in MUSD wei.
+    /// @param floor Price the curve falls to, in MUSD wei.
+    /// @param elapsed Seconds since the auction started.
+    /// @param duration Seconds the curve takes to reach the floor.
+    /// @return The price now, in MUSD wei.
     function priceAt(uint256 startValue, uint256 floor, uint256 elapsed, uint256 duration)
         internal
         pure
@@ -41,12 +51,21 @@ library Resolution {
     }
 
     /// @notice The penalty on a debt in MUSD: owed * penaltyBps / 10,000, rounded down.
+    /// @param owed MUSD still owed.
+    /// @param penaltyBps Penalty in basis points.
+    /// @return The penalty in MUSD wei.
     function penalty(uint256 owed, uint256 penaltyBps) internal pure returns (uint256) {
         return Math.mulDiv(owed, penaltyBps, BPS);
     }
 
     /// @notice Splits a sale price (C11): the market min(P, D), the treasury min(penalty, P - min(P, D)), the
     ///         borrower the rest. The three always sum to `price`.
+    /// @param price MUSD the buyer paid.
+    /// @param owed MUSD still owed on the loan.
+    /// @param penaltyBps The auction's penalty in basis points.
+    /// @return toMarket MUSD to the loan's market.
+    /// @return toTreasury MUSD to the treasury.
+    /// @return toBorrower MUSD left for the borrower as a claimable.
     function splitSale(uint256 price, uint256 owed, uint256 penaltyBps)
         internal
         pure
@@ -62,6 +81,13 @@ library Resolution {
     ///         down), the borrower the rest. The three always sum to `received`.
     /// @dev Rounding the market's share up means lenders are never a wei short of the debt's BTC value.
     ///      `btcPrice` must be above zero; LoanManager's price function guarantees it.
+    /// @param received BTC measured arriving from veBTC.withdraw.
+    /// @param owed MUSD still owed on the loan.
+    /// @param penaltyBps The auction's penalty in basis points.
+    /// @param btcPrice MUSD per BTC, 18 decimals.
+    /// @return toMarket BTC to the loan's market.
+    /// @return toTreasury BTC to the treasury.
+    /// @return toBorrower BTC left for the borrower as a claimable.
     function splitSettle(uint256 received, uint256 owed, uint256 penaltyBps, uint256 btcPrice)
         internal
         pure

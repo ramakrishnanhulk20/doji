@@ -43,6 +43,8 @@ contract ResolutionForkTest is Test {
     address internal constant PRICE_FEED = 0xc5aC5A8892230E0A3e1c473881A2de7353fFcA88;
     address internal constant BTC = 0x7b7C000000000000000000000000000000000000;
     address internal constant POOLS_VOTER = 0x48233cCC97B87Ba93bCA212cbEe48e3210211f03;
+    address internal constant FEE_DISTRIBUTOR = 0xb58477e074265BdC7F7ca6100eD0f7De264F74A2;
+    address internal constant VALIDATORS_VOTER = 0xe99a9ad5Ed26BD30e4DB25397f378817e9b9515a;
     uint256 internal constant MAINNET_LAYOUT_WORDS = 4;
 
     uint256 internal constant WEEK = 604_800;
@@ -258,10 +260,13 @@ contract ResolutionForkTest is Test {
         console.log("maturity", maturity);
 
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-        cm = new CreditMarkets(MUSD, BTC, predicted, owner, owner, treasury, 1_000, 10e18, uint32(4 * WEEK));
+        cm = new CreditMarkets(MUSD, BTC, predicted, owner, owner, treasury, 1_000, 10e18, uint32(4 * WEEK), "");
         ILoanManager.Settings memory settings = ILoanManager.Settings({
             owner: owner,
             guardian: owner,
+            feeDistributor: FEE_DISTRIBUTOR,
+            validatorsVoter: VALIDATORS_VOTER,
+            maxVotes: 30,
             maxLtvBps: MAX_LTV,
             liqLtvBps: LIQ_LTV,
             minLoan: 10e18,
