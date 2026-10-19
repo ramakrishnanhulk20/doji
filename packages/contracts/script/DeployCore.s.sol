@@ -17,8 +17,11 @@ import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 /// @dev Dry run: forge script script/DeployCore.s.sol --rpc-url mezo_testnet
 ///      Deploy, in two steps so the explorer indexes the library's own creation and can verify it, from
 ///      packages/contracts with .env loaded (set -a; source .env; set +a):
-///        forge create src/libraries/PassThrough.sol:PassThrough --rpc-url mezo_testnet --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast
-///        forge script script/DeployCore.s.sol --rpc-url mezo_testnet --broadcast --skip-simulation --slow --libraries src/libraries/PassThrough.sol:PassThrough:<address printed by forge create>
+///        P=$(cast compute-address "$DEPLOYER_ADDRESS" --nonce $(cast nonce "$DEPLOYER_ADDRESS" --rpc-url mezo_testnet) | awk '{print $NF}')
+///        forge create src/libraries/PassThrough.sol:PassThrough --rpc-url mezo_testnet --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --libraries src/libraries/PassThrough.sol:PassThrough:$P
+///        forge script script/DeployCore.s.sol --rpc-url mezo_testnet --broadcast --skip-simulation --slow --libraries src/libraries/PassThrough.sol:PassThrough:$P
+///      Both commands take the same --libraries setting because solc writes it into the metadata hash at the end
+///      of the library's code, so the hash check below only matches a library compiled with it.
 ///      Before deploying anything, the script refuses a PassThrough address with no code or whose runtime code
 ///      differs from the compiled artifact, and records the library and its code hash.
 ///      Rehearse first on an anvil fork with script/rehearse-live.sh, which uses the same flags.
