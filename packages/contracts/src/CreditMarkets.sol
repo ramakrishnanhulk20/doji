@@ -15,9 +15,10 @@ import {Quote} from "./libraries/Quote.sol";
 /// @title CreditMarkets
 /// @notice Lenders post fixed-rate MUSD offers for a Thursday maturity and LoanManager fills them for
 ///         borrowers. Every maturity is its own market: lenders receive ERC-1155 credit units (token id =
-///         maturity, one unit = one MUSD due) and redeem them pro rata once every loan at that date is closed.
-/// @dev All MUSD sits in this one balance. Isolation between offers and maturities is bookkeeping, and every
-///      inflow is booked from a measured balance change, so a direct donation never reaches any record.
+///         maturity, one unit = one MUSD due) and redeem them pro rata once every loan at that date is closed,
+///         for MUSD from repayments and auctions and for BTC from settled loans.
+/// @dev All MUSD and BTC sit in this one balance. Isolation between offers and maturities is bookkeeping, and
+///      every inflow is booked from a measured balance change, so a direct donation never reaches any record.
 contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
@@ -34,6 +35,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     uint32 public constant MAX_TERM_CEILING = 12 * 604_800;
 
     address public immutable musd;
+    address public immutable btc;
     address public immutable loanManager;
 
     address public guardian;
@@ -53,12 +55,13 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         _;
     }
 
-    /// @notice Fixes MUSD and LoanManager for the life of the contract and sets the starting parameters.
+    /// @notice Fixes MUSD, BTC and LoanManager for the life of the contract and sets the starting parameters.
     /// @dev `loanManager_` is precomputed from the deployer's nonce; LoanManager's own constructor then
     ///      refuses to deploy unless this contract points at it. Reverts ZeroAddress, OwnableInvalidOwner,
     ///      or a parameter bound error. Emits one event per parameter.
     constructor(
         address musd_,
+        address btc_,
         address loanManager_,
         address owner_,
         address guardian_,
@@ -67,8 +70,9 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         uint128 minOffer_,
         uint32 maxTermSeconds_
     ) ERC1155("") Ownable(owner_) {
-        if (musd_ == address(0) || loanManager_ == address(0)) revert ZeroAddress();
+        if (musd_ == address(0) || btc_ == address(0) || loanManager_ == address(0)) revert ZeroAddress();
         musd = musd_;
+        btc = btc_;
         loanManager = loanManager_;
         _setGuardian(guardian_);
         _setTreasury(treasury_);
@@ -92,7 +96,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         _offers[offerId] = Offer({maker: msg.sender, maturity: maturity, aprBps: aprBps, remaining: amount});
         emit OfferPosted(offerId, msg.sender, maturity, aprBps, amount);
 
-        _pullExactly(msg.sender, amount);
+        _pullExactly(musd, msg.sender, amount);
     }
 
     /// @inheritdoc ICreditMarkets
@@ -148,7 +152,21 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         market.collectedMusd = (uint256(market.collectedMusd) + musdAmount).toUint128();
         emit Credited(maturity, musdAmount, closesLoan);
 
-        if (musdAmount != 0) _pullExactly(msg.sender, musdAmount);
+        if (musdAmount != 0) _pullExactly(musd, msg.sender, musdAmount);
+    }
+
+    /// @inheritdoc ICreditMarkets
+    function creditBtc(uint64 maturity, uint256 btcAmount, bool closesLoan) external nonReentrant onlyLoanManager {
+        Market storage market = _markets[maturity];
+        if (market.isFinal) revert MarketIsFinal(maturity);
+        if (market.openLoans == 0) revert NoOpenLoans(maturity);
+        if (btcAmount == 0 && !closesLoan) revert ZeroAmount();
+
+        if (closesLoan) market.openLoans -= 1;
+        market.collectedBtc = (uint256(market.collectedBtc) + btcAmount).toUint128();
+        emit CreditedBtc(maturity, btcAmount, closesLoan);
+
+        if (btcAmount != 0) _pullExactly(btc, msg.sender, btcAmount);
     }
 
     /// @inheritdoc ICreditMarkets
@@ -174,25 +192,33 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         market.isFinal = true;
         market.unitsAtFinal = market.faceTotal;
         market.musdAtFinal = market.collectedMusd;
+        market.btcAtFinal = market.collectedBtc;
 
         emit MarketFinalized(maturity, market.unitsAtFinal, market.musdAtFinal);
     }
 
     /// @inheritdoc ICreditMarkets
-    function redeem(uint64 maturity, uint256 units) external nonReentrant returns (uint256 musdOut) {
+    function redeem(uint64 maturity, uint256 units)
+        external
+        nonReentrant
+        returns (uint256 musdOut, uint256 btcOut)
+    {
         Market storage market = _markets[maturity];
         if (!market.isFinal) revert NotFinal(maturity);
         if (units == 0) revert ZeroAmount();
 
         _burn(msg.sender, maturity, units);
 
-        musdOut = Math.mulDiv(units, market.musdAtFinal, market.unitsAtFinal);
+        uint256 unitsAtFinal = market.unitsAtFinal;
+        musdOut = Math.mulDiv(units, market.musdAtFinal, unitsAtFinal);
         if (musdOut > units) musdOut = units;
-        // The only calls above are the internal burn and Math library; the MUSD transfer comes after this event.
+        btcOut = Math.mulDiv(units, market.btcAtFinal, unitsAtFinal);
+        // The only calls above are the internal burn and Math library; the transfers come after this event.
         // forge-lint: disable-next-line(reentrancy-events)
-        emit Redeemed(msg.sender, maturity, units, musdOut);
+        emit Redeemed(msg.sender, maturity, units, musdOut, btcOut);
 
-        IERC20(musd).safeTransfer(msg.sender, musdOut);
+        if (musdOut != 0) IERC20(musd).safeTransfer(msg.sender, musdOut);
+        if (btcOut != 0) IERC20(btc).safeTransfer(msg.sender, btcOut);
     }
 
     /// @inheritdoc ICreditMarkets
@@ -292,8 +318,9 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
 
     /// @dev Records are written for `amount` before this runs, so the measured arrival must match it exactly.
     ///      Reading the balance change, not the balance, means a donation sitting here changes nothing (C14).
-    function _pullExactly(address from, uint256 amount) private {
-        IERC20 token = IERC20(musd);
+    ///      `asset` is always one of the two immutables, MUSD or BTC.
+    function _pullExactly(address asset, address from, uint256 amount) private {
+        IERC20 token = IERC20(asset);
         uint256 before = token.balanceOf(address(this));
         token.safeTransferFrom(from, address(this), amount);
         uint256 received = token.balanceOf(address(this)) - before;

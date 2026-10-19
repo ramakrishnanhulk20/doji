@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-// Unit tests for CreditMarkets with an ordinary address standing in for LoanManager, so fills and credits
-// are driven directly. It does NOT cover: the real LoanManager's borrow and repay checks (LoanManager.t.sol),
-// real MUSD or Mezo state (test/fork), fee-on-transfer tokens beyond the exact-arrival check, unit transfers
-// between holders, or randomised sequences of posts, fills and redemptions across many maturities.
+// Unit tests for CreditMarkets with an ordinary address standing in for LoanManager, so fills and MUSD and
+// BTC credits are driven directly. It does NOT cover: the real LoanManager's borrow, repay, auction and settle
+// checks (LoanManager.t.sol, Resolution.t.sol), real MUSD, BTC or Mezo state (test/fork), fee-on-transfer
+// tokens beyond the exact-arrival check, unit transfers between holders, or randomised sequences of posts,
+// fills and redemptions across many maturities (CreditInvariants.t.sol).
 
 import {Test} from "forge-std/Test.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
@@ -13,6 +14,7 @@ import {CreditMarkets} from "../../src/CreditMarkets.sol";
 import {ICreditMarkets} from "../../src/interfaces/ICreditMarkets.sol";
 import {Quote} from "../../src/libraries/Quote.sol";
 import {MockMUSD} from "../utils/MockMUSD.sol";
+import {MockBTC} from "../utils/MockBTC.sol";
 import {RevertingReceiver} from "../utils/RevertingReceiver.sol";
 
 contract CreditMarketsTest is Test {
@@ -23,6 +25,7 @@ contract CreditMarketsTest is Test {
     uint32 internal constant MAX_TERM = uint32(4 * WEEK);
 
     MockMUSD internal musd;
+    MockBTC internal btc;
     CreditMarkets internal cm;
 
     address internal owner = makeAddr("owner");
@@ -40,7 +43,10 @@ contract CreditMarketsTest is Test {
     function setUp() public {
         vm.warp(T0);
         musd = new MockMUSD();
-        cm = new CreditMarkets(address(musd), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        btc = new MockBTC();
+        cm = new CreditMarkets(
+            address(musd), address(btc), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM
+        );
         m1 = uint64((T0 / WEEK + 1) * WEEK);
         m2 = m1 + uint64(WEEK);
 
@@ -50,6 +56,14 @@ contract CreditMarketsTest is Test {
             vm.prank(funded[i]);
             musd.approve(address(cm), type(uint256).max);
         }
+        btc.mint(loanManager, 100e18);
+        vm.prank(loanManager);
+        btc.approve(address(cm), type(uint256).max);
+    }
+
+    function _creditBtc(uint64 maturity, uint256 amount, bool closes) internal {
+        vm.prank(loanManager);
+        cm.creditBtc(maturity, amount, closes);
     }
 
     function _post(address maker, uint64 maturity, uint16 aprBps, uint128 amount) internal returns (uint256 id) {
@@ -84,6 +98,7 @@ contract CreditMarketsTest is Test {
 
     function test_Constructor_SetsState() public view {
         assertEq(cm.musd(), address(musd));
+        assertEq(cm.btc(), address(btc));
         assertEq(cm.loanManager(), loanManager);
         assertEq(cm.owner(), owner);
         assertEq(cm.guardian(), guardian);
@@ -96,25 +111,29 @@ contract CreditMarketsTest is Test {
     }
 
     function test_RevertWhen_ConstructorZeroAddress() public {
+        address b = address(btc);
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(0), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        new CreditMarkets(address(0), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(musd), address(0), owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        new CreditMarkets(address(musd), address(0), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(musd), loanManager, owner, address(0), treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        new CreditMarkets(address(musd), b, address(0), owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        new CreditMarkets(address(musd), loanManager, owner, guardian, address(0), FEE_SHARE, MIN_OFFER, MAX_TERM);
+        new CreditMarkets(address(musd), b, loanManager, owner, address(0), treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
+        new CreditMarkets(address(musd), b, loanManager, owner, guardian, address(0), FEE_SHARE, MIN_OFFER, MAX_TERM);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new CreditMarkets(address(musd), loanManager, address(0), guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
+        new CreditMarkets(address(musd), b, loanManager, address(0), guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM);
     }
 
     function test_RevertWhen_ConstructorParamsOutOfBounds() public {
+        address b = address(btc);
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.FeeShareOutOfBounds.selector, 2_001));
-        new CreditMarkets(address(musd), loanManager, owner, guardian, treasury, 2_001, MIN_OFFER, MAX_TERM);
+        new CreditMarkets(address(musd), b, loanManager, owner, guardian, treasury, 2_001, MIN_OFFER, MAX_TERM);
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MinOfferOutOfBounds.selector, 1e18 - 1));
-        new CreditMarkets(address(musd), loanManager, owner, guardian, treasury, FEE_SHARE, 1e18 - 1, MAX_TERM);
+        new CreditMarkets(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, 1e18 - 1, MAX_TERM);
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MaxTermOutOfBounds.selector, uint32(WEEK - 1)));
-        new CreditMarkets(address(musd), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, uint32(WEEK - 1));
+        new CreditMarkets(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, uint32(WEEK - 1));
     }
 
     function test_PostOffer_EscrowsAndRecords() public {
@@ -497,11 +516,11 @@ contract CreditMarketsTest is Test {
         uint256 lenderBefore = musd.balanceOf(lender);
 
         vm.expectEmit(true, true, false, true, address(cm));
-        emit ICreditMarkets.Redeemed(lender, m1, lenderUnits, lenderUnits);
+        emit ICreditMarkets.Redeemed(lender, m1, lenderUnits, lenderUnits, 0);
         vm.prank(lender);
-        uint256 lenderOut = cm.redeem(m1, lenderUnits);
+        (uint256 lenderOut,) = cm.redeem(m1, lenderUnits);
         vm.prank(treasury);
-        uint256 treasuryOut = cm.redeem(m1, treasuryUnits);
+        (uint256 treasuryOut,) = cm.redeem(m1, treasuryUnits);
 
         assertEq(lenderOut, lenderUnits);
         assertEq(treasuryOut, treasuryUnits);
@@ -520,7 +539,7 @@ contract CreditMarketsTest is Test {
 
         vm.startPrank(lender);
         uint256 units = cm.claimUnits(m1);
-        uint256 out = cm.redeem(m1, units);
+        (uint256 out,) = cm.redeem(m1, units);
         vm.stopPrank();
         assertEq(out, units * (face / 2) / face);
         assertLt(out, units);
@@ -546,7 +565,7 @@ contract CreditMarketsTest is Test {
 
         vm.startPrank(lender);
         uint256 units = cm.claimUnits(m1);
-        uint256 out = cm.redeem(m1, units);
+        (uint256 out,) = cm.redeem(m1, units);
         vm.stopPrank();
         assertEq(out, units);
     }
@@ -585,7 +604,8 @@ contract CreditMarketsTest is Test {
         assertEq(cm.marketOf(m1).musdAtFinal, face);
         vm.startPrank(lender);
         uint256 units = cm.claimUnits(m1);
-        assertEq(cm.redeem(m1, units), units);
+        (uint256 out,) = cm.redeem(m1, units);
+        assertEq(out, units);
         vm.stopPrank();
         assertEq(cm.offerOf(id).remaining, 500e18, "escrow untouched by the donation");
     }
@@ -702,5 +722,132 @@ contract CreditMarketsTest is Test {
         vm.prank(stranger);
         (bool ok,) = address(cm).call{value: 1}("");
         assertFalse(ok);
+    }
+
+    function test_CreditBtc_BooksAmountAndEmits() public {
+        uint256 id = _post(lender, m1, 800, 1_000e18);
+        _fillOne(m1, id, 500e18);
+        vm.expectEmit(true, false, false, true, address(cm));
+        emit ICreditMarkets.CreditedBtc(m1, 0.25e18, true);
+        _creditBtc(m1, 0.25e18, true);
+
+        ICreditMarkets.Market memory market = cm.marketOf(m1);
+        assertEq(market.collectedBtc, 0.25e18);
+        assertEq(market.collectedMusd, 0);
+        assertEq(market.openLoans, 0);
+        assertEq(btc.balanceOf(address(cm)), 0.25e18);
+    }
+
+    function test_CreditBtc_ClosingLowersOpenLoansOnce() public {
+        uint256 id = _post(lender, m1, 800, 1_000e18);
+        _fillOne(m1, id, 500e18);
+        _fillOne(m1, id, 100e18);
+        _creditBtc(m1, 0.1e18, false);
+        assertEq(cm.marketOf(m1).openLoans, 2, "a non-closing credit leaves the count");
+        _creditBtc(m1, 0.1e18, true);
+        assertEq(cm.marketOf(m1).openLoans, 1);
+        assertEq(cm.marketOf(m1).collectedBtc, 0.2e18);
+    }
+
+    function test_CreditBtc_ZeroAmountMayCloseALoan() public {
+        uint256 id = _post(lender, m1, 800, 1_000e18);
+        _fillOne(m1, id, 500e18);
+        _creditBtc(m1, 0, true);
+        assertEq(cm.marketOf(m1).openLoans, 0);
+        assertEq(cm.marketOf(m1).collectedBtc, 0);
+    }
+
+    function test_C27_CreditBtcOnlyLoanManager() public {
+        uint256 id = _post(lender, m1, 800, 1_000e18);
+        _fillOne(m1, id, 500e18);
+        address[3] memory others = [stranger, owner, lender];
+        for (uint256 i; i < others.length; ++i) {
+            vm.expectRevert(ICreditMarkets.NotLoanManager.selector);
+            vm.prank(others[i]);
+            cm.creditBtc(m1, 1e18, true);
+        }
+    }
+
+    function test_RevertWhen_CreditBtcNoOpenLoans() public {
+        vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.NoOpenLoans.selector, m1));
+        _creditBtc(m1, 1e18, true);
+    }
+
+    function test_RevertWhen_CreditBtcZeroWithoutClose() public {
+        uint256 id = _post(lender, m1, 800, 1_000e18);
+        _fillOne(m1, id, 500e18);
+        vm.expectRevert(ICreditMarkets.ZeroAmount.selector);
+        _creditBtc(m1, 0, false);
+    }
+
+    function test_RevertWhen_CreditBtcFinalMarket() public {
+        _repaidMarket(500e18);
+        vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MarketIsFinal.selector, m1));
+        _creditBtc(m1, 1e18, false);
+    }
+
+    function test_Finalize_SnapshotsBtc() public {
+        uint256 id = _post(lender, m1, 800, 1_000e18);
+        (, uint256 face) = _fillOne(m1, id, 500e18);
+        _fillOne(m1, id, 100e18);
+        _credit(m1, 100e18, true);
+        _creditBtc(m1, 0.3e18, true);
+        vm.warp(m1 + 1);
+        cm.finalize(m1);
+        ICreditMarkets.Market memory market = cm.marketOf(m1);
+        assertEq(market.btcAtFinal, 0.3e18);
+        assertEq(market.musdAtFinal, 100e18);
+        assertGt(market.unitsAtFinal, face);
+    }
+
+    function test_C15_RedeemPaysMusdAndBtcProRata() public {
+        uint256 idA = _post(lender, m1, 800, 1_000e18);
+        uint256 idB = _post(lender2, m1, 800, 1_000e18);
+        (, uint256 faceA) = _fillOne(m1, idA, 600e18);
+        _credit(m1, faceA, true);
+        _fillOne(m1, idB, 400e18);
+        _creditBtc(m1, 0.005e18 + 7, true);
+        vm.warp(m1 + 1);
+        cm.finalize(m1);
+        ICreditMarkets.Market memory market = cm.marketOf(m1);
+
+        address[3] memory holders = [lender, lender2, treasury];
+        uint256 paidMusd;
+        uint256 paidBtc;
+        for (uint256 i; i < holders.length; ++i) {
+            vm.startPrank(holders[i]);
+            uint256 units = cm.claimUnits(m1);
+            if (i == 0) {
+                vm.expectEmit(true, true, false, true, address(cm));
+                emit ICreditMarkets.Redeemed(
+                    lender,
+                    m1,
+                    units,
+                    units * market.musdAtFinal / market.unitsAtFinal,
+                    units * market.btcAtFinal / market.unitsAtFinal
+                );
+            }
+            (uint256 musdOut, uint256 btcOut) = cm.redeem(m1, units);
+            vm.stopPrank();
+            assertLe(musdOut, units, "never above one MUSD per unit");
+            assertEq(btcOut, units * market.btcAtFinal / market.unitsAtFinal, "BTC rounded down");
+            assertEq(btc.balanceOf(holders[i]), btcOut);
+            paidMusd += musdOut;
+            paidBtc += btcOut;
+        }
+        assertLe(paidMusd, market.musdAtFinal);
+        assertLe(paidBtc, market.btcAtFinal);
+        assertEq(btc.balanceOf(address(cm)), market.btcAtFinal - paidBtc, "only rounding dust stays");
+    }
+
+    function test_C14_BtcDonationChangesNothing() public {
+        uint256 id = _post(lender, m1, 800, 1_000e18);
+        _fillOne(m1, id, 500e18);
+        btc.mint(address(cm), 3e18);
+        _creditBtc(m1, 0.2e18, true);
+        assertEq(cm.marketOf(m1).collectedBtc, 0.2e18);
+        vm.warp(m1 + 1);
+        cm.finalize(m1);
+        assertEq(cm.marketOf(m1).btcAtFinal, 0.2e18, "the stray 3 BTC reaches no market");
     }
 }

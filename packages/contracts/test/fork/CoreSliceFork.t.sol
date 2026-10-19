@@ -27,6 +27,8 @@ contract CoreSliceForkTest is Test {
     address internal constant VEBTC = 0x3D4b1b884A7a1E59fE8589a3296EC8f8cBB6f279;
     address internal constant MUSD = 0xdD468A1DDc392dcdbEf6db6e34E89AA338F9F186;
     address internal constant PRICE_FEED = 0xc5aC5A8892230E0A3e1c473881A2de7353fFcA88;
+    address internal constant BTC = 0x7b7C000000000000000000000000000000000000;
+    address internal constant POOLS_VOTER = 0x48233cCC97B87Ba93bCA212cbEe48e3210211f03;
     uint256 internal constant MAINNET_LAYOUT_WORDS = 4;
 
     uint256 internal constant WEEK = 604_800;
@@ -106,11 +108,11 @@ contract CoreSliceForkTest is Test {
         uint256 lenderBefore = musd.balanceOf(lender);
         vm.startPrank(lender);
         uint256 lenderUnits = cm.claimUnits(maturity);
-        uint256 lenderOut = cm.redeem(maturity, lenderUnits);
+        (uint256 lenderOut,) = cm.redeem(maturity, lenderUnits);
         vm.stopPrank();
         vm.startPrank(treasury);
         uint256 treasuryUnits = cm.claimUnits(maturity);
-        uint256 treasuryOut = cm.redeem(maturity, treasuryUnits);
+        (uint256 treasuryOut,) = cm.redeem(maturity, treasuryUnits);
         vm.stopPrank();
 
         assertEq(lenderOut, lenderUnits, "lender paid one MUSD per unit");
@@ -127,8 +129,18 @@ contract CoreSliceForkTest is Test {
 
     function _deploy() internal {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-        cm = new CreditMarkets(MUSD, predicted, owner, owner, treasury, 1_000, 10e18, uint32(4 * WEEK));
-        lm = new LoanManager(VEBTC, PRICE_FEED, MUSD, address(cm), MAINNET_LAYOUT_WORDS, owner, owner, 5_000, 6_500, 10e18);
+        cm = new CreditMarkets(MUSD, BTC, predicted, owner, owner, treasury, 1_000, 10e18, uint32(4 * WEEK));
+        ILoanManager.Settings memory settings = ILoanManager.Settings({
+            owner: owner,
+            guardian: owner,
+            maxLtvBps: 5_000,
+            liqLtvBps: 6_500,
+            minLoan: 10e18,
+            penaltyBps: 500,
+            auctionFloorBps: 7_000,
+            auctionDuration: 72 hours
+        });
+        lm = new LoanManager(VEBTC, PRICE_FEED, MUSD, BTC, POOLS_VOTER, address(cm), MAINNET_LAYOUT_WORDS, settings);
         assertEq(address(lm), predicted);
         assertEq(cm.loanManager(), address(lm));
     }

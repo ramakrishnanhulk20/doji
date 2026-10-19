@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-// Unit tests for LoanManager wired to a real CreditMarkets, with mocks for veBTC, PriceFeed and MUSD. It does
-// NOT cover: real veBTC behaviour such as transfer rules, vote state or Mezo upgrades (test/fork does that for
-// one real position), auctions, roll, settle or reward pass-through (milestone 2), price moves after a loan
-// opens, or randomised sequences of borrows and repayments.
+// Unit tests for LoanManager's M1 surface (custody, borrow, repay, withdraw, views, settings) wired to a real
+// CreditMarkets, with mocks for veBTC, PriceFeed and MUSD. It does NOT cover: real veBTC behaviour such as
+// transfer rules, vote state or Mezo upgrades (test/fork does that for real positions), auctions, settle,
+// write-offs and claims (Resolution.t.sol), roll (Roll.t.sol), reward pass-through (milestone 2b), or
+// randomised sequences (CreditInvariants.t.sol).
 
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -16,8 +17,10 @@ import {ILoanManager} from "../../src/interfaces/ILoanManager.sol";
 import {LockReader} from "../../src/libraries/LockReader.sol";
 import {Quote} from "../../src/libraries/Quote.sol";
 import {MockMUSD} from "../utils/MockMUSD.sol";
+import {MockBTC} from "../utils/MockBTC.sol";
 import {MockVeBTC} from "../utils/MockVeBTC.sol";
 import {MockPriceFeed} from "../utils/MockPriceFeed.sol";
+import {MockPoolsVoter} from "../utils/MockPoolsVoter.sol";
 import {RevertingReceiver} from "../utils/RevertingReceiver.sol";
 
 contract LoanManagerTest is Test {
@@ -30,10 +33,14 @@ contract LoanManagerTest is Test {
     uint16 internal constant LIQ_LTV = 6_500;
     uint128 internal constant MIN_LOAN = 10e18;
     uint16 internal constant FEE_SHARE = 1_000;
+    // The M1 setter tests move the line up to 9000, so these tests keep the floor at its 9500 ceiling.
+    uint16 internal constant AUCTION_FLOOR = 9_500;
 
     MockMUSD internal musd;
+    MockBTC internal btc;
     MockVeBTC internal ve;
     MockPriceFeed internal feed;
+    MockPoolsVoter internal voter;
     CreditMarkets internal cm;
     LoanManager internal lm;
 
@@ -55,7 +62,9 @@ contract LoanManagerTest is Test {
         m2 = m1 + uint64(WEEK);
 
         musd = new MockMUSD();
-        ve = new MockVeBTC(4);
+        btc = new MockBTC();
+        ve = new MockVeBTC(4, btc);
+        voter = new MockPoolsVoter(ve);
         feed = new MockPriceFeed(PRICE);
         (cm, lm) = _deploy(4);
 
@@ -77,16 +86,50 @@ contract LoanManagerTest is Test {
 
     function _deploy(uint256 layoutWords) internal returns (CreditMarkets markets, LoanManager manager) {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-        markets = new CreditMarkets(address(musd), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK));
-        manager = new LoanManager(
-            address(ve), address(feed), address(musd), address(markets), layoutWords, owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN
+        markets = new CreditMarkets(
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK)
         );
+        manager = _newManager(address(ve), address(feed), address(musd), address(markets), layoutWords, _settings());
         assertEq(address(manager), predicted);
     }
 
     function _marketsForNextDeploy() internal returns (CreditMarkets) {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-        return new CreditMarkets(address(musd), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK));
+        return new CreditMarkets(
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK)
+        );
+    }
+
+    function _settings() internal view returns (ILoanManager.Settings memory) {
+        return _settings(guardian, MAX_LTV, LIQ_LTV, MIN_LOAN);
+    }
+
+    function _settings(address guardian_, uint16 maxLtv, uint16 liqLtv, uint128 minLoan)
+        internal
+        view
+        returns (ILoanManager.Settings memory)
+    {
+        return ILoanManager.Settings({
+            owner: owner,
+            guardian: guardian_,
+            maxLtvBps: maxLtv,
+            liqLtvBps: liqLtv,
+            minLoan: minLoan,
+            penaltyBps: 500,
+            auctionFloorBps: AUCTION_FLOOR,
+            auctionDuration: 72 hours
+        });
+    }
+
+    function _newManager(
+        address veBTC_,
+        address feed_,
+        address musd_,
+        address markets,
+        uint256 layoutWords,
+        ILoanManager.Settings memory settings
+    ) internal returns (LoanManager) {
+        return new LoanManager(veBTC_, feed_, musd_, address(btc), address(voter), markets, layoutWords, settings);
     }
 
     function _deposit(address who, uint256 tokenId) internal {
@@ -129,60 +172,54 @@ contract LoanManagerTest is Test {
     }
 
     function test_C27_ConstructorRevertsWhenMarketsPointElsewhere() public {
-        CreditMarkets elsewhere =
-            new CreditMarkets(address(musd), makeAddr("someoneElse"), owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK));
-        vm.expectRevert(ILoanManager.CreditMarketsMismatch.selector);
-        new LoanManager(
-            address(ve), address(feed), address(musd), address(elsewhere), 4, owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN
+        CreditMarkets elsewhere = new CreditMarkets(
+            address(musd), address(btc), makeAddr("someoneElse"), owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK)
         );
+        vm.expectRevert(ILoanManager.CreditMarketsMismatch.selector);
+        _newManager(address(ve), address(feed), address(musd), address(elsewhere), 4, _settings());
     }
 
     function test_RevertWhen_ConstructorMusdMismatch() public {
         MockMUSD other = new MockMUSD();
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-        CreditMarkets markets =
-            new CreditMarkets(address(other), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK));
-        vm.expectRevert(ILoanManager.MusdMismatch.selector);
-        new LoanManager(
-            address(ve), address(feed), address(musd), address(markets), 4, owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN
+        CreditMarkets markets = new CreditMarkets(
+            address(other), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK)
         );
+        vm.expectRevert(ILoanManager.MusdMismatch.selector);
+        _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings());
     }
 
     function test_RevertWhen_ConstructorBadLayout() public {
         uint256[2] memory bad = [uint256(2), 5];
         for (uint256 i; i < bad.length; ++i) {
             vm.expectRevert(abi.encodeWithSelector(ILoanManager.BadLockLayout.selector, bad[i]));
-            new LoanManager(
-                address(ve), address(feed), address(musd), address(cm), bad[i], owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN
-            );
+            _newManager(address(ve), address(feed), address(musd), address(cm), bad[i], _settings());
         }
     }
 
     function test_RevertWhen_ConstructorZeroAddress() public {
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        new LoanManager(address(0), address(feed), address(musd), address(cm), 4, owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN);
+        _newManager(address(0), address(feed), address(musd), address(cm), 4, _settings());
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        new LoanManager(address(ve), address(0), address(musd), address(cm), 4, owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN);
+        _newManager(address(ve), address(0), address(musd), address(cm), 4, _settings());
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        new LoanManager(address(ve), address(feed), address(0), address(cm), 4, owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN);
+        _newManager(address(ve), address(feed), address(0), address(cm), 4, _settings());
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        new LoanManager(address(ve), address(feed), address(musd), address(0), 4, owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN);
+        _newManager(address(ve), address(feed), address(musd), address(0), 4, _settings());
 
         CreditMarkets markets = _marketsForNextDeploy();
         vm.expectRevert(ILoanManager.ZeroAddress.selector);
-        new LoanManager(
-            address(ve), address(feed), address(musd), address(markets), 4, owner, address(0), MAX_LTV, LIQ_LTV, MIN_LOAN
-        );
+        _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings(address(0), MAX_LTV, LIQ_LTV, MIN_LOAN));
     }
 
     function test_RevertWhen_ConstructorParamsOutOfBounds() public {
         CreditMarkets markets = _marketsForNextDeploy();
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.RiskParamsOutOfBounds.selector, 6_500, 6_500));
-        new LoanManager(address(ve), address(feed), address(musd), address(markets), 4, owner, guardian, 6_500, 6_500, MIN_LOAN);
+        _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings(guardian, 6_500, 6_500, MIN_LOAN));
 
         markets = _marketsForNextDeploy();
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.MinLoanOutOfBounds.selector, 0));
-        new LoanManager(address(ve), address(feed), address(musd), address(markets), 4, owner, guardian, MAX_LTV, LIQ_LTV, 0);
+        _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings(guardian, MAX_LTV, LIQ_LTV, 0));
     }
 
     function test_Deposit_TakesCustodyAndRecordsBorrower() public {
@@ -476,11 +513,10 @@ contract LoanManagerTest is Test {
     function test_C6_ReaderRejectsMissingLockedFunction() public {
         LoanManager lmOnNothing;
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-        CreditMarkets markets =
-            new CreditMarkets(address(musd), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK));
-        lmOnNothing = new LoanManager(
-            makeAddr("noCode"), address(feed), address(musd), address(markets), 4, owner, guardian, MAX_LTV, LIQ_LTV, MIN_LOAN
+        CreditMarkets markets = new CreditMarkets(
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK)
         );
+        lmOnNothing = _newManager(makeAddr("noCode"), address(feed), address(musd), address(markets), 4, _settings());
         vm.expectRevert(LockReader.LockReadFailed.selector);
         lmOnNothing.lockOf(TOKEN);
     }
@@ -626,10 +662,10 @@ contract LoanManagerTest is Test {
 
         vm.startPrank(lender);
         uint256 units = cm.claimUnits(m1);
-        uint256 out = cm.redeem(m1, units);
+        (uint256 out,) = cm.redeem(m1, units);
         vm.stopPrank();
         vm.startPrank(treasury);
-        uint256 feeOut = cm.redeem(m1, cm.claimUnits(m1));
+        (uint256 feeOut,) = cm.redeem(m1, cm.claimUnits(m1));
         vm.stopPrank();
 
         assertEq(out, units);

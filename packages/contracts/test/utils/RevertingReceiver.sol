@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ICreditMarkets} from "../../src/interfaces/ICreditMarkets.sol";
 
-/// @notice A lender contract that refuses every token hook. If any Dojima flow ran its code, that flow
+/// @notice A lender contract that refuses every token hook. If any Doji flow ran its code, that flow
 /// would revert, so a borrow that succeeds against its offer proves no maker code ran.
 contract RevertingReceiver {
     error Refused();

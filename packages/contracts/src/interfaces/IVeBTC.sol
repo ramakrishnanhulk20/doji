@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 /// @title IVeBTC
-/// @notice The slice of Mezo's veBTC (vote-escrow BTC, an ERC-721) that Dojima calls.
+/// @notice The slice of Mezo's veBTC (vote-escrow BTC, an ERC-721) that Doji calls.
 /// @dev `locked()` is deliberately absent: its return shape differs between testnet (3 words)
 ///      and mainnet (4 words), so it is only ever read through LockReader.
 interface IVeBTC {
@@ -20,4 +20,12 @@ interface IVeBTC {
 
     /// @notice True while the position has a standing gauge vote.
     function voted(uint256 tokenId) external view returns (bool);
+
+    /// @notice Burns an expired, non-permanent, unvoted position and pays its locked BTC to the caller.
+    /// @dev Live source pays through the BTC ERC-20 view (`IERC20(token).safeTransfer`), not a native call.
+    function withdraw(uint256 tokenId) external;
+
+    /// @notice Turns a permanent lock into a normal one that ends at the next week boundary after the
+    ///         maximum lock time. Reverts while the position is voted.
+    function unlockPermanent(uint256 tokenId) external;
 }

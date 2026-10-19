@@ -19,6 +19,8 @@ interface ICreditMarkets {
         bool isFinal;
         uint128 unitsAtFinal;
         uint128 musdAtFinal;
+        uint128 collectedBtc;
+        uint128 btcAtFinal;
     }
 
     event OfferPosted(
@@ -27,9 +29,10 @@ interface ICreditMarkets {
     event OfferCancelled(uint256 indexed offerId, address indexed maker, uint128 refunded);
     event Filled(uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint256 principal, uint256 face);
     event Credited(uint64 indexed maturity, uint256 musdAmount, bool closesLoan);
+    event CreditedBtc(uint64 indexed maturity, uint256 btcAmount, bool closesLoan);
     event UnitsClaimed(address indexed account, uint64 indexed maturity, uint256 units);
     event MarketFinalized(uint64 indexed maturity, uint256 unitsAtFinal, uint256 musdAtFinal);
-    event Redeemed(address indexed account, uint64 indexed maturity, uint256 units, uint256 musdOut);
+    event Redeemed(address indexed account, uint64 indexed maturity, uint256 units, uint256 musdOut, uint256 btcOut);
     event FeeShareBpsSet(uint16 feeShareBps);
     event MinOfferSet(uint128 minOffer);
     event MaxTermSecondsSet(uint32 maxTermSeconds);
@@ -111,6 +114,16 @@ interface ICreditMarkets {
     /// @param closesLoan True on the payment that closes a loan; lowers the open-loan count by one.
     function credit(uint64 maturity, uint256 musdAmount, bool closesLoan) external;
 
+    /// @notice Books Bitcoin from a settled loan into a market, pulling the BTC from LoanManager.
+    /// @dev Only LoanManager, which approves exactly `btcAmount` first. Same rules as credit(): the booked
+    ///      amount is the measured balance increase and the pull reverts TransferMismatch unless exactly
+    ///      `btcAmount` arrives; a zero amount is allowed only when it closes a loan. Reverts MarketIsFinal,
+    ///      NoOpenLoans or ZeroAmount. Emits CreditedBtc.
+    /// @param maturity Market to credit.
+    /// @param btcAmount BTC to pull from LoanManager, 18 decimals.
+    /// @param closesLoan True on the credit that closes a loan; lowers the open-loan count by one.
+    function creditBtc(uint64 maturity, uint256 btcAmount, bool closesLoan) external;
+
     /// @notice Mints the caller's recorded credit units for `maturity` as ERC-1155 tokens.
     /// @dev Reverts NothingToClaim. Emits UnitsClaimed. A contract caller must accept ERC-1155 tokens.
     /// @param maturity Market whose units to mint.
@@ -118,18 +131,20 @@ interface ICreditMarkets {
     function claimUnits(uint64 maturity) external returns (uint256 minted);
 
     /// @notice Closes a market for good once its date has passed and every loan in it is closed.
-    /// @dev Anyone can call. Snapshots the units and MUSD that redemptions pay from. Reverts MarketIsFinal,
+    /// @dev Anyone can call. Snapshots the units, MUSD and BTC that redemptions pay from. Reverts MarketIsFinal,
     ///      NotMatured, LoansStillOpen or EmptyMarket. Emits MarketFinalized.
     /// @param maturity Market to finalize.
     function finalize(uint64 maturity) external;
 
-    /// @notice Burns the caller's units and pays their pro-rata share of the market's MUSD.
-    /// @dev Burns first, then pays units * musdAtFinal / unitsAtFinal rounded down, capped at one MUSD per
-    ///      unit. Reverts NotFinal, ZeroAmount, or if the caller holds fewer units. Emits Redeemed.
+    /// @notice Burns the caller's units and pays their pro-rata share of the market's MUSD and BTC.
+    /// @dev Burns first, then pays units * musdAtFinal / unitsAtFinal MUSD, capped at one MUSD per unit, and
+    ///      units * btcAtFinal / unitsAtFinal BTC, both rounded down. A zero part is not transferred.
+    ///      Reverts NotFinal, ZeroAmount, or if the caller holds fewer units. Emits Redeemed.
     /// @param maturity Market to redeem from.
     /// @param units Units to burn.
     /// @return musdOut MUSD paid.
-    function redeem(uint64 maturity, uint256 units) external returns (uint256 musdOut);
+    /// @return btcOut BTC paid.
+    function redeem(uint64 maturity, uint256 units) external returns (uint256 musdOut, uint256 btcOut);
 
     /// @notice Prices a fill at the current time and fee share.
     /// @dev Reverts InvalidMaturity.
@@ -158,6 +173,9 @@ interface ICreditMarkets {
 
     /// @notice The MUSD token, fixed at deployment.
     function musd() external view returns (address);
+
+    /// @notice The BTC ERC-20 that settled loans pay markets in, fixed at deployment.
+    function btc() external view returns (address);
 
     /// @notice Furthest a maturity may be from now, in seconds.
     function maxTermSeconds() external view returns (uint32);
