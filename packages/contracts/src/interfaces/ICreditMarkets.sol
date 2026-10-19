@@ -110,7 +110,7 @@ interface ICreditMarkets {
     error FeeShareOutOfBounds(uint16 feeShareBps);
     /// @notice The minimum offer is outside 1 to 1,000,000 MUSD.
     error MinOfferOutOfBounds(uint128 minOffer);
-    /// @notice The maximum term is outside 1 to 12 weeks.
+    /// @notice The maximum term is outside 1 to 4 weeks, veBTC's 28-day maximum lock.
     error MaxTermOutOfBounds(uint32 maxTermSeconds);
     /// @notice MUSD and BTC are recorded per market, so they are never rescued.
     error TokenNotRescuable(address token);
@@ -253,7 +253,7 @@ interface ICreditMarkets {
     /// Emits MinOfferSet.
     function setMinOffer(uint128 newMinOffer) external;
 
-    /// @notice Owner only. Sets the maximum term. Reverts MaxTermOutOfBounds outside 1 to 12 weeks.
+    /// @notice Owner only. Sets the maximum term. Reverts MaxTermOutOfBounds outside 1 to 4 weeks.
     /// Emits MaxTermSecondsSet.
     function setMaxTermSeconds(uint32 newMaxTermSeconds) external;
 

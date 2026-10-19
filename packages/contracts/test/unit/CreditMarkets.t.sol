@@ -653,8 +653,8 @@ contract CreditMarketsTest is Test {
         emit ICreditMarkets.MinOfferSet(1_000_000e18);
         cm.setMinOffer(1_000_000e18);
         vm.expectEmit(address(cm));
-        emit ICreditMarkets.MaxTermSecondsSet(uint32(12 * WEEK));
-        cm.setMaxTermSeconds(uint32(12 * WEEK));
+        emit ICreditMarkets.MaxTermSecondsSet(uint32(4 * WEEK));
+        cm.setMaxTermSeconds(uint32(4 * WEEK));
         vm.expectEmit(address(cm));
         emit ICreditMarkets.TreasurySet(newTreasury);
         cm.setTreasury(newTreasury);
@@ -665,7 +665,7 @@ contract CreditMarketsTest is Test {
 
         assertEq(cm.feeShareBps(), 2_000);
         assertEq(cm.minOffer(), 1_000_000e18);
-        assertEq(cm.maxTermSeconds(), 12 * WEEK);
+        assertEq(cm.maxTermSeconds(), 4 * WEEK);
         assertEq(cm.treasury(), newTreasury);
         assertEq(cm.guardian(), newGuardian);
     }
@@ -676,8 +676,8 @@ contract CreditMarketsTest is Test {
         cm.setFeeShareBps(2_001);
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MinOfferOutOfBounds.selector, 1_000_000e18 + 1));
         cm.setMinOffer(1_000_000e18 + 1);
-        vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MaxTermOutOfBounds.selector, uint32(12 * WEEK + 1)));
-        cm.setMaxTermSeconds(uint32(12 * WEEK + 1));
+        vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MaxTermOutOfBounds.selector, uint32(4 * WEEK + 1)));
+        cm.setMaxTermSeconds(uint32(4 * WEEK + 1));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
         cm.setTreasury(address(0));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);

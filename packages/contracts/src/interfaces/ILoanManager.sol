@@ -426,9 +426,11 @@ interface ILoanManager {
     function startAuction(uint256 tokenId) external;
 
     /// @notice Returns a recovered loan from Auction to Active. Anyone may call.
-    /// @dev Needs the loan in Auction, not overdue, in custody, and a fresh price showing
-    ///      owed <= value * liqLtvBps / 10,000. Deletes the auction; the next trigger starts a new one from a
-    ///      fresh value. Reverts NoAuction, LoanOverdue, NotInCustody, PriceUnavailable or StillUnsafe.
+    /// @dev Needs the loan in Auction with an auction that started at or before maturity (an LTV auction), the
+    ///      position in custody, and a fresh price showing owed <= value * liqLtvBps / 10,000. Works past maturity
+    ///      too: the loan then returns to Active but overdue, and startAuction restarts it at once as an overdue
+    ///      auction from a fresh value, which can never be cancelled. Deletes the auction. Reverts NoAuction,
+    ///      LoanOverdue (an auction started after maturity), NotInCustody, PriceUnavailable or StillUnsafe.
     ///      Emits AuctionCancelled.
     /// @param tokenId Position whose auction to cancel.
     function cancelAuction(uint256 tokenId) external;
@@ -441,8 +443,10 @@ interface ILoanManager {
     function auctionPrice(uint256 tokenId) external view returns (uint256 price);
 
     /// @notice Buys an auctioned position at the current auction price. Anyone may buy, the borrower too.
-    /// @dev Needs the loan in Auction, the position in custody and now <= deadline. Unless the loan is
-    ///      overdue, a fresh price must still show it unsafe. Pulls exactly the price P from the caller. With
+    /// @dev Needs the loan in Auction, the position in custody and now <= deadline. For an auction that started at
+    ///      or before maturity (an LTV auction) a fresh price must still show the loan unsafe, also past
+    ///      maturity; an auction started after maturity sells with no price. Pulls exactly the price P from the
+    ///      caller. With
     ///      D the debt still owed, the market gets min(P, D), the treasury min(penalty x D, P - min(P, D)) and
     ///      the borrower the rest as a MUSD claimable; the three sum to P. Deletes the loan, auction and
     ///      position, then sends the NFT with transferFrom, so a buyer contract that rejects ERC-721 hooks
@@ -456,24 +460,27 @@ interface ILoanManager {
 
     /// @notice Readies an unsold auctioned position for settle: clears every live vote veBTC counts and turns a
     ///         permanent lock into a normal one. Anyone may call.
-    /// @dev Needs the loan in Auction, the floor time reached and the position in custody. Resets PoolsVoter and
+    /// @dev Needs the loan in Auction, the floor time reached, the loan overdue or unsafe at a fresh price (a
+    ///      recovered LTV auction goes back through cancelAuction instead), and the position in custody. Resets
+    ///      PoolsVoter and
     ///      ValidatorsVoter each only when that voter reports a live vote for the position (usedWeights above
     ///      zero), never blind; a reset not yet allowed this epoch (the epoch of that vote, or an epoch's first
     ///      hour) reverts unchanged, and the next epoch allows it (C5, C26). Then veBTC.unlockPermanent when the
-    ///      lock is permanent. Never paused. Reverts NoAuction, FloorTimeNotReached, NotInCustody or
-    ///      NothingToPrepare. Emits SettlePrepared.
+    ///      lock is permanent. Never paused. Reverts NoAuction, FloorTimeNotReached, StillSafe, PriceUnavailable,
+    ///      NotInCustody or NothingToPrepare. Emits SettlePrepared.
     /// @param tokenId Position to prepare.
     function prepareSettle(uint256 tokenId) external;
 
     /// @notice Ends an unsold auction by withdrawing the Bitcoin and paying the market in BTC. Anyone may
     ///         call. No DEX sale happens.
-    /// @dev Needs the loan in Auction, the floor time reached, the position in custody, a normal lock whose
+    /// @dev Needs the loan in Auction, the floor time reached, the loan overdue or unsafe at a fresh price (so a
+    ///      safe loan is never settled before or at its maturity), the position in custody, a normal lock whose
     ///      end has passed, no standing vote and a fresh price. The BTC received is the measured change in
     ///      LoanManager's BTC balance around veBTC.withdraw. The market gets min(received, owed / price
     ///      rounded up), the treasury min(the rest, penalty x owed / price rounded down) and the borrower the
     ///      rest as a BTC claimable; the three sum to the BTC received. Deletes the loan, auction and
-    ///      position. Never paused. Reverts NoAuction, FloorTimeNotReached, NotInCustody, LockIsPermanent,
-    ///      LockNotEnded, StillVoted or PriceUnavailable. Emits Settled and LoanClosed.
+    ///      position. Never paused. Reverts NoAuction, FloorTimeNotReached, StillSafe, NotInCustody,
+    ///      LockIsPermanent, LockNotEnded, StillVoted or PriceUnavailable. Emits Settled and LoanClosed.
     /// @param tokenId Position to settle.
     function settle(uint256 tokenId) external;
 

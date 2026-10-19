@@ -5,26 +5,32 @@ import {Script, console} from "forge-std/Script.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 import {CreditMarkets} from "../src/CreditMarkets.sol";
 import {LoanManager} from "../src/LoanManager.sol";
+import {PassThrough} from "../src/libraries/PassThrough.sol";
 import {ILoanManager} from "../src/interfaces/ILoanManager.sol";
 import {IVeBTC} from "../src/interfaces/IVeBTC.sol";
 import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 
 /// @title DeployCore
-/// @notice Deploys CreditMarkets and LoanManager to Mezo testnet in two transactions and records the
-///         addresses in deployments/<chainId>.json. The file's "broadcast" field is false after a dry run, when
-///         the addresses are only the ones the next two deployer transactions would produce.
+/// @notice Deploys CreditMarkets and LoanManager to Mezo testnet in two transactions, against a PassThrough
+///         library already deployed, and records the addresses in deployments/<chainId>.json. A dry run writes
+///         deployments/<chainId>.dryrun.json instead, so it can never overwrite the record of a real deployment.
 /// @dev Dry run: forge script script/DeployCore.s.sol --rpc-url mezo_testnet
-///      Deploy:  forge script script/DeployCore.s.sol --rpc-url mezo_testnet --broadcast --skip-simulation --slow
+///      Deploy, in two steps so the explorer indexes the library's own creation and can verify it, from
+///      packages/contracts with .env loaded (set -a; source .env; set +a):
+///        forge create src/libraries/PassThrough.sol:PassThrough --rpc-url mezo_testnet --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast
+///        forge script script/DeployCore.s.sol --rpc-url mezo_testnet --broadcast --skip-simulation --slow --libraries src/libraries/PassThrough.sol:PassThrough:<address printed by forge create>
+///      Before deploying anything, the script refuses a PassThrough address with no code or whose runtime code
+///      differs from the compiled artifact, and records the library and its code hash.
 ///      Rehearse first on an anvil fork with script/rehearse-live.sh, which uses the same flags.
 ///      Reads DEPLOYER_PRIVATE_KEY and DEPLOYER_ADDRESS from .env, and DEPLOYMENTS_DIR if set (the rehearsal
 ///      only). The deployer is owner, guardian and treasury. Risk settings are the drawdown study's
 ///      (docs/risk/parameters.md): 40% borrow limit, 65% line, auction floor 70% of the start value over 72 hours,
 ///      and a 5% penalty. A vote may list up to 30 pools, PoolsVoter's own limit. ValidatorsVoter is read from
 ///      what testnet's veBTC really has (none today). The credit units start with an
-///      empty metadata URI until the app serves metadata; the owner sets it with setURI. LoanManager links the
-///      PassThrough library, which forge deploys through the standard CREATE2 deployer in the same broadcast,
-///      before CreditMarkets; the address check after deployment proves the prediction still held. Mainnet is
-///      refused on purpose: this build has no mainnet budget.
+///      empty metadata URI until the app serves metadata; the owner sets it with setURI. Without --libraries
+///      (a dry run or the rehearsal) forge deploys PassThrough itself through the standard CREATE2 deployer, and
+///      the same code check runs on that copy. The address check after deployment proves the LoanManager
+///      prediction still held. Mainnet is refused on purpose: this build has no mainnet budget.
 contract DeployCore is Script {
     struct ChainConfig {
         address veBTC;
@@ -67,6 +73,8 @@ contract DeployCore is Script {
     error NoFeeDistributor(address veBTC);
     error SecondaryVotersUnknown(address veBTC);
     error NotSecondaryVoter(address voter);
+    error MissingLibrary(address library_);
+    error LibraryCodeMismatch(address library_, bytes32 deployedHash, bytes32 expectedHash);
 
     function run() public virtual {
         (uint256 key, address deployer) = _wallet("DEPLOYER_PRIVATE_KEY", "DEPLOYER_ADDRESS");
@@ -121,7 +129,8 @@ contract DeployCore is Script {
     }
 
     /// @dev Fails the deploy unless the chain looks as LoanManager expects (threat model C22): every outside
-    ///      address has code, veBTC's own voter is the PoolsVoter configured here, a live lock decodes with this
+    ///      address has code, the linked PassThrough library is exactly the compiled one, veBTC's own voter is the
+    ///      PoolsVoter configured here, a live lock decodes with this
     ///      chain's layout and ends on a week boundary, and the oracle answers with a sane 18-decimal price.
     ///      CreditMarkets and LoanManager pointing at each other and sharing MUSD and BTC (C27) is enforced by
     ///      LoanManager's constructor.
@@ -191,11 +200,30 @@ contract DeployCore is Script {
                 revert NotSecondaryVoter(cfg.validatorsVoter);
             }
         }
+        console.log("preflight: PassThrough code matches the artifact at", address(PassThrough));
+        console.logBytes32(_passThroughCodeHash());
         uint256 probeId = _probeLockLayout(cfg);
         uint256 price = _priceOnNode(cfg.priceFeed);
         if (price < MIN_BTC_PRICE || price > MAX_BTC_PRICE) revert PriceOutOfRange(price);
         console.log("preflight: lock layout ok on tokenId", probeId);
         console.log("preflight: BTC price (18 dp)", price);
+    }
+
+    /// @dev The PassThrough address the compiler linked into LoanManager must hold exactly the compiled library: the
+    ///      artifact's runtime code, with the library's own address written into the PUSH20 at byte 1 that every
+    ///      library opens with (zero in the artifact, filled in at deployment so its state-changing functions
+    ///      refuse direct calls). Returns the code hash recorded with the deployment.
+    function _passThroughCodeHash() internal view returns (bytes32 deployedHash) {
+        address library_ = address(PassThrough);
+        if (library_.code.length == 0) revert MissingLibrary(library_);
+        bytes memory expected = vm.getDeployedCode("PassThrough.sol:PassThrough");
+        bytes20 own = bytes20(library_);
+        for (uint256 i; i < 20; ++i) {
+            expected[1 + i] = own[i];
+        }
+        deployedHash = keccak256(library_.code);
+        bytes32 expectedHash = keccak256(expected);
+        if (deployedHash != expectedHash) revert LibraryCodeMismatch(library_, deployedHash, expectedHash);
     }
 
     function _probeLockLayout(ChainConfig memory cfg) internal view returns (uint256) {
@@ -240,11 +268,17 @@ contract DeployCore is Script {
         vm.serializeAddress(obj, "feeDistributor", cfg.feeDistributor);
         vm.serializeUint(obj, "lockLayoutWords", cfg.lockLayoutWords);
         vm.serializeAddress(obj, "creditMarkets", address(cm));
+        // Forge links this script against the same library address as LoanManager, so explorer verification
+        // can read the link from the record instead of the broadcast log.
+        vm.serializeAddress(obj, "passThrough", address(PassThrough));
+        vm.serializeBytes32(obj, "passThroughCodeHash", _passThroughCodeHash());
         string memory json = vm.serializeAddress(obj, "loanManager", address(lm));
 
+        // Only a broadcast may write <chainId>.json, the record other scripts and the app trust.
         string memory dir = _deploymentsDir();
         vm.createDir(dir, true);
-        string memory path = string.concat(dir, "/", vm.toString(block.chainid), ".json");
+        string memory path =
+            string.concat(dir, "/", vm.toString(block.chainid), broadcast ? ".json" : ".dryrun.json");
         vm.writeJson(json, path);
         console.log("wrote", path, broadcast ? "(broadcast)" : "(dry run: no code at these addresses yet)");
     }

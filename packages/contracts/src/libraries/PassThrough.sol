@@ -5,14 +5,18 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ILoanManager} from "../interfaces/ILoanManager.sol";
 import {IPoolsVoter} from "../interfaces/IPoolsVoter.sol";
+import {IVeBTCVoter} from "../interfaces/IVeBTCVoter.sol";
+import {IVeBTC} from "../interfaces/IVeBTC.sol";
 import {LockReader} from "./LockReader.sol";
 
 /// @title PassThrough
-/// @notice The bodies of the borrower's vote and reward claim, run by LoanManager with delegatecall so they
-///         act as LoanManager, the position's owner on Mezo.
+/// @notice LoanManager's calls into Mezo's veBTC voters: the borrower's vote and reward claim, and the vote
+///         clearing settle needs. Run by LoanManager with delegatecall so they act as LoanManager, the position's
+///         owner on Mezo.
 /// @dev An external library only so LoanManager fits under the contract size limit. Its code is fixed and
 ///      linked when LoanManager is deployed, it keeps no state, and LoanManager runs the C4 check and holds its
-///      reentrancy lock around every call. Errors and events are LoanManager's own, so the UI decodes them
+///      reentrancy lock around every call (and, for clearForSettle, its floor-time, resolution and custody
+///      checks). Errors and events are LoanManager's own, so the UI decodes them
 ///      from ILoanManager and the logs carry LoanManager's address.
 library PassThrough {
     using SafeERC20 for IERC20;
@@ -22,6 +26,44 @@ library PassThrough {
     ///      mainnet fork (test/fork/PassThroughFork.t.sol), a tenth of Mezo's 10M block gas limit.
     uint256 internal constant MAX_REWARD_TOKENS = 16;
     uint256 private constant WEEK = 604_800;
+
+    /// @notice Clears every live vote veBTC counts for a position and turns a permanent lock into a normal one,
+    ///         so settle can withdraw it (C5, C26).
+    /// @dev Runs inside prepareSettle. Resets each voter only when it reports a live vote (usedWeights above
+    ///      zero), never blind; a zero voter address (no secondary voters on this chain) is skipped. A reset not yet
+    ///      allowed this epoch reverts unchanged and the next epoch allows it. Then veBTC.unlockPermanent when the
+    ///      lock is permanent. Reverts NothingToPrepare when there is no vote and no permanent lock. Emits
+    ///      SettlePrepared before any call.
+    /// @param poolsVoter Mezo's PoolsVoter.
+    /// @param validatorsVoter Mezo's ValidatorsVoter, or zero.
+    /// @param veBTC Mezo's veBTC.
+    /// @param tokenId Position being prepared.
+    /// @param isPermanent Whether its lock is permanent, as LoanManager's lock reader decoded it.
+    function clearForSettle(
+        IVeBTCVoter poolsVoter,
+        IVeBTCVoter validatorsVoter,
+        address veBTC,
+        uint256 tokenId,
+        bool isPermanent
+    ) external {
+        bool poolsVote = _hasLiveVote(poolsVoter, tokenId);
+        bool validatorsVote = _hasLiveVote(validatorsVoter, tokenId);
+        if (!poolsVote && !validatorsVote && !isPermanent) revert ILoanManager.NothingToPrepare(tokenId);
+        // The only calls above are usedWeights reads on voters fixed at deployment; every reset and the unlock
+        // come after this event.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit ILoanManager.SettlePrepared(tokenId, poolsVote, validatorsVote, isPermanent);
+
+        if (poolsVote) poolsVoter.reset(tokenId);
+        if (validatorsVote) validatorsVoter.reset(tokenId);
+        if (isPermanent) IVeBTC(veBTC).unlockPermanent(tokenId);
+    }
+
+    /// @dev C5: a voter holds a live vote for a position exactly while its usedWeights is above zero; the voter
+    ///      marks the position voted on veBTC at the same moment and its reset clears both.
+    function _hasLiveVote(IVeBTCVoter voter, uint256 tokenId) private view returns (bool) {
+        return address(voter) != address(0) && voter.usedWeights(tokenId) != 0;
+    }
 
     /// @notice Casts a position's gauge vote through PoolsVoter, refusing a vote a normal lock could not reset
     ///         before it ends (C5).

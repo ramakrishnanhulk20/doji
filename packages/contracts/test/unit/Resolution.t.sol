@@ -3,11 +3,14 @@ pragma solidity 0.8.28;
 
 // Unit and fuzz tests for how a Doji loan ends when it goes wrong: auction start, the price curve, cancel,
 // purchase, settle and its preparation, write-off, repayment during an auction, borrower claims, and the
-// auction settings, on the real CreditMarkets with mocks for veBTC, PriceFeed, PoolsVoter, MUSD and BTC.
+// auction settings, on the real CreditMarkets with mocks for veBTC, PriceFeed, PoolsVoter, MUSD and BTC. The
+// test_Finding tests are the backend review's regressions: a recovered auction cannot be settled or prepared,
+// the term never outlives a lock, and an LTV auction never sells on a stale curve past maturity.
 // It does NOT cover: the real veBTC withdraw, the real PoolsVoter or Mezo's BTC precompile
 // (test/fork/ResolutionFork.t.sol), roll (Roll.t.sol), randomised sequences across maturities
 // (CreditInvariants.t.sol), tokens that charge a fee on transfer, or votes cast through LoanManager (M2b).
 
+import {console} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {CreditMarkets} from "../../src/CreditMarkets.sol";
@@ -935,5 +938,115 @@ contract ResolutionTest is LoanFixture {
         assertEq(toTreasury, Math.min(payout - toMarket, (face * penalty / BPS) * 1e18 / settlePrice));
         assertEq(btc.balanceOf(address(lm)), lm.totalClaimableBtc());
         assertEq(btc.balanceOf(address(cm)), afterB.collectedBtc);
+    }
+
+    function test_Finding1_RecoveredAuctionCannotUnlockAPermanentLock() public {
+        ve.setLock(TOKEN, LOCK_BTC, 0, true);
+        _openLoan();
+        _makeUnsafe(TOKEN);
+        lm.startAuction(TOKEN);
+        feed.setPrice(PRICE);
+        vm.warp(_floorTime(TOKEN));
+        assertLt(block.timestamp, m1, "still before the due date");
+
+        vm.expectRevert(abi.encodeWithSelector(ILoanManager.StillSafe.selector, TOKEN));
+        vm.prank(bob);
+        lm.prepareSettle(TOKEN);
+        vm.expectRevert(abi.encodeWithSelector(ILoanManager.StillSafe.selector, TOKEN));
+        vm.prank(bob);
+        lm.settle(TOKEN);
+        (,, bool isPermanent) = lm.lockOf(TOKEN);
+        assertTrue(isPermanent, "the healthy permanent lock was not unlocked");
+
+        lm.cancelAuction(TOKEN);
+        assertEq(uint8(lm.loanOf(TOKEN).state), uint8(ILoanManager.LoanState.Active), "the way out is a cancel");
+    }
+
+    function test_Finding1_SafeLoanIsNotSettledAtLockEndEqualsMaturity() public {
+        ve.setLock(TOKEN, LOCK_BTC, m1, false);
+        uint256 face = _openLoan();
+        _makeUnsafe(TOKEN);
+        lm.startAuction(TOKEN);
+        feed.setPrice(PRICE);
+        vm.warp(m1);
+        assertGt(block.timestamp, _floorTime(TOKEN));
+
+        vm.expectRevert(abi.encodeWithSelector(ILoanManager.StillSafe.selector, TOKEN));
+        vm.prank(bob);
+        lm.settle(TOKEN);
+        vm.prank(alice);
+        lm.repay(TOKEN, face);
+        assertEq(lm.positionOf(TOKEN).borrower, alice, "inside the repay window the borrower keeps the position");
+        assertEq(cm.marketOf(m1).openLoans, 0);
+    }
+
+    function test_Finding1_UnsafeLoanStillSettlesAtLockEndEqualsMaturity() public {
+        ve.setLock(TOKEN, LOCK_BTC, m1, false);
+        _openLoan();
+        _makeUnsafe(TOKEN);
+        lm.startAuction(TOKEN);
+        vm.warp(m1);
+        lm.settle(TOKEN);
+        assertGt(cm.marketOf(m1).collectedBtc, 0, "a loan that still deserves resolution settles");
+    }
+
+    function test_Finding1b_MaxTermCannotExceedFourWeeks() public {
+        assertEq(cm.MAX_TERM_CEILING(), 4 * WEEK, "veBTC's 28-day maximum lock");
+        vm.startPrank(owner);
+        vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MaxTermOutOfBounds.selector, uint32(12 * WEEK)));
+        cm.setMaxTermSeconds(uint32(12 * WEEK));
+        vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MaxTermOutOfBounds.selector, uint32(4 * WEEK + 1)));
+        cm.setMaxTermSeconds(uint32(4 * WEEK + 1));
+        cm.setMaxTermSeconds(uint32(4 * WEEK));
+        vm.stopPrank();
+        assertEq(cm.maxTermSeconds(), 4 * WEEK);
+    }
+
+    function test_Finding2_RecoveredLtvAuctionPastMaturityRestartsFromAFreshValue() public {
+        uint256 face = _openLoan();
+        _makeUnsafe(TOKEN);
+        lm.startAuction(TOKEN);
+        ILoanManager.Auction memory stale = lm.auctionOf(TOKEN);
+        feed.setPrice(PRICE);
+        vm.warp(m1 + 1);
+        uint256 stalePrice = lm.auctionPrice(TOKEN);
+        assertLt(stalePrice, PRICE / 2, "the old curve would sell an 80,000 position for well under half");
+
+        vm.expectRevert(abi.encodeWithSelector(ILoanManager.StillSafe.selector, TOKEN));
+        _buy(buyer);
+
+        vm.expectEmit(true, false, false, true, address(lm));
+        emit ILoanManager.AuctionCancelled(TOKEN, face, PRICE);
+        vm.prank(bob);
+        lm.cancelAuction(TOKEN);
+        assertEq(uint8(lm.loanOf(TOKEN).state), uint8(ILoanManager.LoanState.Active));
+        assertTrue(lm.isOverdue(TOKEN));
+
+        vm.prank(bob);
+        lm.startAuction(TOKEN);
+        ILoanManager.Auction memory fresh = lm.auctionOf(TOKEN);
+        assertEq(fresh.startValue, PRICE, "restarted from the fresh value");
+        assertEq(fresh.startTime, block.timestamp);
+        assertGt(fresh.startValue, stale.startValue);
+
+        vm.expectRevert(abi.encodeWithSelector(ILoanManager.LoanOverdue.selector, TOKEN));
+        lm.cancelAuction(TOKEN);
+
+        uint256 paid = _buy(buyer);
+        assertEq(paid, PRICE, "the buyer pays the fresh price");
+        uint256 toBorrower = paid - face - face * PENALTY / BPS;
+        assertEq(lm.claimableMusd(alice), toBorrower, "the borrower's surplus comes from the fresh value");
+        assertGt(toBorrower, PRICE / 2);
+        console.log("stale price / fresh price / borrower surplus", stalePrice, paid, toBorrower);
+    }
+
+    function test_Finding2_UnsafeLtvAuctionPastMaturityStillSells() public {
+        uint256 face = _openLoan();
+        _makeUnsafe(TOKEN);
+        lm.startAuction(TOKEN);
+        vm.warp(m1 + 1);
+        _buy(buyer);
+        assertEq(cm.marketOf(m1).collectedMusd, face, "still unsafe, so the LTV auction sells");
+        assertEq(ve.ownerOf(TOKEN), buyer);
     }
 }

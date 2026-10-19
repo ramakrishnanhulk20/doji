@@ -32,7 +32,9 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     uint128 public constant MIN_OFFER_FLOOR = 1e18;
     uint128 public constant MIN_OFFER_CEILING = 1_000_000e18;
     uint32 public constant MIN_TERM_SECONDS = 604_800;
-    uint32 public constant MAX_TERM_CEILING = 12 * 604_800;
+    /// @dev veBTC's maximum lock is 28 days, so no loan, permanent lock or not, may run longer than the lock
+    ///      unlockPermanent leaves behind.
+    uint32 public constant MAX_TERM_CEILING = 4 * 604_800;
 
     address public immutable musd;
     address public immutable btc;
@@ -67,7 +69,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     /// @param treasury_ Receiver of fee units.
     /// @param feeShareBps_ Treasury's share of interest, at most 2000.
     /// @param minOffer_ Smallest offer, 1 to 1,000,000 MUSD.
-    /// @param maxTermSeconds_ Furthest a maturity may be from now, 1 to 12 weeks.
+    /// @param maxTermSeconds_ Furthest a maturity may be from now, 1 to 4 weeks.
     /// @param uri_ ERC-1155 metadata URI template for the credit units; may be empty until metadata is served.
     constructor(
         address musd_,

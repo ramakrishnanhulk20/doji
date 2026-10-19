@@ -31,3 +31,4 @@ broadcast/*/31337/
 
 # Foundry run logs (deploy evidence lives in deployments/ and the README)
 broadcast/
+packages/contracts/deployments/*.dryrun.json

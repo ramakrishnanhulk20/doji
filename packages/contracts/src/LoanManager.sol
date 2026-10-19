@@ -327,8 +327,11 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     function cancelAuction(uint256 tokenId) external nonReentrant {
         Loan storage loan = _loans[tokenId];
         if (loan.state != LoanState.Auction) revert NoAuction(tokenId);
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp > loan.maturity) revert LoanOverdue(tokenId);
+        // An auction started after maturity was started for being overdue and can never be cancelled. One started
+        // at or before maturity was an LTV auction: once a fresh price shows the loan safe it is cancelled even
+        // past maturity, so startAuction restarts it as an overdue auction from a fresh value instead of it
+        // selling on a stale curve. That restart can happen at most once.
+        if (_auctions[tokenId].startTime > loan.maturity) revert LoanOverdue(tokenId);
         _requireCustody(tokenId);
         (,,, uint256 usdValue) = _collateral(tokenId);
         uint256 owed = uint256(loan.face) - loan.repaid;
@@ -353,12 +356,10 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         if (loan.state != LoanState.Auction) revert NoAuction(tokenId);
         _requireCustody(tokenId);
         uint256 owed = uint256(loan.face) - loan.repaid;
-        // forge-lint: disable-next-line(block-timestamp)
-        if (block.timestamp <= loan.maturity) {
-            (,,, uint256 usdValue) = _collateral(tokenId);
-            if (!Resolution.isUnsafe(owed, usdValue, loan.liqLtvBps)) revert StillSafe(tokenId);
-        }
         Auction memory auction = _auctions[tokenId];
+        // An LTV auction (started at or before maturity) sells only while a fresh price still shows the loan
+        // unsafe, past maturity too; an overdue auction sells on its own curve with no price needed.
+        if (auction.startTime <= loan.maturity && !_unsafeNow(tokenId, owed, loan.liqLtvBps)) revert StillSafe(tokenId);
         paid = _priceOf(auction);
         // The price moves with time by design; maxPay and the deadline bound what a buyer can be charged.
         // forge-lint: disable-next-line(block-timestamp)
@@ -385,15 +386,10 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     function prepareSettle(uint256 tokenId) external nonReentrant {
         _requireFloorTimeReached(tokenId);
         _requireCustody(tokenId);
-        bool poolsVote = _hasLiveVote(poolsVoter, tokenId);
-        bool validatorsVote = _hasLiveVote(validatorsVoter, tokenId);
         (,, bool isPermanent) = LockReader.read(address(veBTC), tokenId, lockLayoutWords);
-        if (!poolsVote && !validatorsVote && !isPermanent) revert NothingToPrepare(tokenId);
-        emit SettlePrepared(tokenId, poolsVote, validatorsVote, isPermanent);
-
-        if (poolsVote) poolsVoter.reset(tokenId);
-        if (validatorsVote) validatorsVoter.reset(tokenId);
-        if (isPermanent) veBTC.unlockPermanent(tokenId);
+        // The resets and the unlock live in PassThrough with LoanManager's other calls into Mezo's voters, which
+        // keeps LoanManager under the size limit; the checks that decide whether this may run stay here.
+        PassThrough.clearForSettle(poolsVoter, validatorsVoter, address(veBTC), tokenId, isPermanent);
     }
 
     /// @inheritdoc ILoanManager
@@ -505,8 +501,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     function isUnsafe(uint256 tokenId) external view returns (bool) {
         Loan storage loan = _loans[tokenId];
         if (loan.state == LoanState.None) return false;
-        (,,, uint256 usdValue) = _collateral(tokenId);
-        return Resolution.isUnsafe(uint256(loan.face) - loan.repaid, usdValue, loan.liqLtvBps);
+        return _unsafeNow(tokenId, uint256(loan.face) - loan.repaid, loan.liqLtvBps);
     }
 
     /// @inheritdoc ILoanManager
@@ -650,10 +645,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         if (state == LoanState.Auction) revert LoanInAuction(tokenId);
         if (!strict || state != LoanState.Active) return;
         if (block.timestamp > loan.maturity) revert LoanOverdue(tokenId);
-        (,,, uint256 usdValue) = _collateral(tokenId);
-        if (Resolution.isUnsafe(uint256(loan.face) - loan.repaid, usdValue, loan.liqLtvBps)) {
-            revert LoanUnsafe(tokenId);
-        }
+        if (_unsafeNow(tokenId, uint256(loan.face) - loan.repaid, loan.liqLtvBps)) revert LoanUnsafe(tokenId);
     }
 
     /// @dev The collateral and term checks of the open-loan path (C2, C6, C8, C24), returning the largest
@@ -743,21 +735,28 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         if (veBTC.ownerOf(tokenId) != address(this)) revert NotInCustody(tokenId);
     }
 
-    /// @dev C5: a voter holds a live vote for a position exactly while its usedWeights is above zero; the voter
-    ///      marks the position voted on veBTC at the same moment and its reset clears both. A zero voter address
-    ///      (no secondary voters on this chain) never holds one.
-    function _hasLiveVote(IVeBTCVoter voter, uint256 tokenId) private view returns (bool) {
-        return address(voter) != address(0) && voter.usedWeights(tokenId) != 0;
-    }
-
-    /// @dev Settle and its preparation run only on an unsold auction past its floor time (C12).
+    /// @dev Settle and its preparation run only on an unsold auction past its floor time (C12), and only while the
+    ///      loan still deserves a resolution: overdue, or unsafe at a fresh price on its own line. A recovered LTV
+    ///      auction can therefore neither unlock a healthy permanent lock nor take the position before its due
+    ///      date; it goes back through cancelAuction. now == maturity is inside the repay window (C24), so a loan
+    ///      whose lock ends on its maturity cannot be settled at that instant while safe.
+    // forge-lint: disable-next-item(block-timestamp)
     function _requireFloorTimeReached(uint256 tokenId) private view returns (uint16 penalty) {
-        if (_loans[tokenId].state != LoanState.Auction) revert NoAuction(tokenId);
+        Loan storage loan = _loans[tokenId];
+        if (loan.state != LoanState.Auction) revert NoAuction(tokenId);
         Auction storage auction = _auctions[tokenId];
         uint256 floorTime = uint256(auction.startTime) + auction.duration;
-        // forge-lint: disable-next-line(block-timestamp)
         if (block.timestamp < floorTime) revert FloorTimeNotReached(tokenId, floorTime);
+        if (block.timestamp <= loan.maturity && !_unsafeNow(tokenId, uint256(loan.face) - loan.repaid, loan.liqLtvBps)) {
+            revert StillSafe(tokenId);
+        }
         penalty = auction.penaltyBps;
+    }
+
+    /// @dev The one unsafe test at a fresh price (C6, C7, C11): owed above the loan's own line on the current value.
+    function _unsafeNow(uint256 tokenId, uint256 owed, uint16 lineBps) private view returns (bool) {
+        (,,, uint256 usdValue) = _collateral(tokenId);
+        return Resolution.isUnsafe(owed, usdValue, lineBps);
     }
 
     /// @dev C12: the BTC a settle splits is the measured change in this contract's BTC balance around the
