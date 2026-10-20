@@ -90,7 +90,12 @@ export function BorrowScreen() {
     return position && !position.isPermanent ? all.filter((date) => date <= position.end) : all;
   }, [settings, now, position]);
 
-  const defaultDate = dates.find((date) => groups.some((group) => group.maturity === date)) ?? null;
+  // The default is the earliest Thursday whose offers can fill the minimum loan. If none can, the earliest with any offer.
+  const minLoan = settings?.minLoan ?? 0n;
+  const defaultDate =
+    dates.find((date) => groups.some((group) => group.maturity === date && group.available >= minLoan)) ??
+    dates.find((date) => groups.some((group) => group.maturity === date)) ??
+    null;
   const picked = maturityPick !== null && dates.includes(maturityPick) && groups.some((g) => g.maturity === maturityPick);
   const maturity = picked ? maturityPick : defaultDate;
   const group = maturity === null ? undefined : groups.find((candidate) => candidate.maturity === maturity);
@@ -400,7 +405,14 @@ export function BorrowScreen() {
                     />
                   )}
                   {index === 1 && (
-                    <DateStep dates={dates} groups={groups} selected={maturity} onSelect={setMaturityPick} status={offersStatus} />
+                    <DateStep
+                      dates={dates}
+                      groups={groups}
+                      selected={maturity}
+                      onSelect={setMaturityPick}
+                      status={offersStatus}
+                      minLoan={minLoan}
+                    />
                   )}
                   {index === 2 && (
                     <AmountStep

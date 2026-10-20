@@ -112,6 +112,7 @@ const REVERTS: Record<string, (args: Args) => string> = {
   NotGuardianOrOwner: () => "Only the guardian or the owner can do that.",
   ERC1155InsufficientBalance: () => "You don't hold that many credit units.",
   ERC1155MissingApprovalForAll: () => "That wallet hasn't approved you to move its credit units.",
+  ERC1155InvalidReceiver: () => "That address is a contract that can't receive credit units. Send them to a wallet instead.",
 };
 
 // Errors that name a refreshed offer list are the ones where the screen should reload.

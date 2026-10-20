@@ -13,7 +13,7 @@ const RECEIPT_ATTEMPTS = 8;
 const RECEIPT_RETRY_MS = 1_500;
 const EXPLORER_TX = "https://explorer.test.mezo.org/tx/";
 
-export type WriteTarget = "loanManager" | "creditMarkets" | "btc" | "veBTC";
+export type WriteTarget = "loanManager" | "creditMarkets" | "btc" | "veBTC" | "musd";
 
 export type WriteRequest = {
   /** The contract, by name. The address comes from the address book for the connected chain. */

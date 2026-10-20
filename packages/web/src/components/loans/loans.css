@@ -1,0 +1,639 @@
+/* My loans and the loan page. Tokens come from globals.css. The summary rows, date cards, amount fields, limit bar and
+   success card come from borrow.css, which both screens import. */
+
+.loan-unavailable {
+  color: var(--watch);
+}
+
+/* My loans: the grid of positions */
+.loans-grid {
+  display: grid;
+  gap: 24px;
+}
+
+@media (min-width: 900px) {
+  .loans-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.loan-skeleton {
+  display: block;
+  min-height: 360px;
+  border-radius: 8px;
+}
+
+.loan-subtitle-bar {
+  display: inline-block;
+  width: 320px;
+  max-width: 100%;
+  height: 22px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+.loans-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 40px 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.loans-empty-line {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.5;
+  color: var(--paper);
+}
+
+.loans-network {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 24px;
+}
+
+.claim-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 16px 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.claim-strip-text {
+  max-width: 70ch;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--paper);
+}
+
+/* Buttons a little shorter than the page-level ones, so a card's actions sit on one line */
+.btn.loan-btn {
+  height: 44px;
+  padding: 0 20px;
+}
+
+/* A position card */
+.loan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.loan-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.loan-card-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.2;
+  color: var(--paper);
+}
+
+.loan-card-title a {
+  padding-bottom: 2px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.status-chip[data-tone="safe"] {
+  color: var(--safe);
+  border-color: color-mix(in srgb, var(--safe) 40%, transparent);
+  background: color-mix(in srgb, var(--safe) 10%, transparent);
+}
+
+.status-chip[data-tone="watch"] {
+  color: var(--watch);
+  border-color: color-mix(in srgb, var(--watch) 40%, transparent);
+  background: color-mix(in srgb, var(--watch) 10%, transparent);
+}
+
+.status-chip[data-tone="auction"] {
+  color: var(--auction);
+  border-color: color-mix(in srgb, var(--auction) 40%, transparent);
+  background: color-mix(in srgb, var(--auction) 10%, transparent);
+}
+
+.status-chip[data-tone="dim"] {
+  color: var(--paper-dim);
+  border-color: color-mix(in srgb, var(--paper-dim) 40%, transparent);
+  background: color-mix(in srgb, var(--paper-dim) 10%, transparent);
+}
+
+.status-mark {
+  display: block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+}
+
+.status-mark[data-mark="circle"] {
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-mark[data-mark="diamond"] {
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  transform: rotate(45deg);
+}
+
+.status-mark[data-mark="square"] {
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.status-mark[data-mark="ring"] {
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.loan-rows {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.loan-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.loan-row dt {
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+
+.loan-row dd {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  text-align: right;
+  color: var(--paper);
+}
+
+.loan-limit-text {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.loan-limit-label {
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+
+.loan-limit-value {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  color: var(--paper);
+}
+
+.loan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.loan-open {
+  margin-left: auto;
+  padding-bottom: 2px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--paper-dim);
+}
+
+/* The repay and roll sheets: centred on a desktop, rising from the bottom on a phone */
+.loan-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(14, 12, 11, 0.7);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.loan-sheet {
+  width: 100%;
+  max-height: 92svh;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  background: var(--ink-2);
+}
+
+@media (min-width: 640px) {
+  .loan-sheet-overlay {
+    align-items: center;
+  }
+
+  .loan-sheet {
+    width: 560px;
+    padding: 32px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+}
+
+.loan-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.loan-sheet-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.2;
+  color: var(--paper);
+}
+
+.loan-sheet-close {
+  flex: none;
+  height: 40px;
+  margin: -6px -8px 0 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--paper-dim);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out;
+}
+
+.loan-sheet-close:hover:not(:disabled) {
+  background: var(--ink-3);
+  color: var(--paper);
+}
+
+.loan-sheet-close:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.loan-sheet-lead {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.amount-fixed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 64px;
+  padding: 0 20px;
+  border-radius: 8px;
+  background: var(--ink-3);
+}
+
+.amount-fixed-value {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 1.75rem;
+  font-weight: 500;
+  color: var(--paper);
+}
+
+.amount-fixed-unit {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+
+/* Date cards inside the roll sheet: a sideways strip on a phone, a grid from 640px */
+.roll-dates {
+  display: flex;
+  gap: 12px;
+  margin: 0 -4px 20px;
+  padding: 4px 4px 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+}
+
+.roll-dates .date-card {
+  flex: 0 0 168px;
+}
+
+@media (min-width: 640px) {
+  .roll-dates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+    overflow: visible;
+  }
+
+  .roll-dates .date-card,
+  .roll-dates .date-skeleton {
+    flex: none;
+  }
+}
+
+.roll-rows {
+  margin-top: 20px;
+}
+
+/* The public loan page */
+.loan-stack {
+  display: grid;
+  gap: 24px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 48px;
+  margin: 0;
+  padding: 4px 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.fact {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 18px 0;
+  border-top: 1px solid var(--line);
+}
+
+.fact:first-child {
+  border-top: 0;
+}
+
+@media (min-width: 768px) {
+  .facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fact:nth-child(-n + 2) {
+    border-top: 0;
+  }
+
+  .fact[data-wide] {
+    grid-column: 1 / -1;
+  }
+
+  .fact[data-wide]:nth-child(2) {
+    border-top: 1px solid var(--line);
+  }
+}
+
+.fact-label {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--paper-dim);
+}
+
+.fact-value {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--paper);
+}
+
+.fact-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.fact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 2px;
+  color: var(--paper);
+}
+
+.fact-link svg {
+  flex: none;
+  color: var(--paper-dim);
+}
+
+.fact-bar {
+  display: block;
+  width: 160px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+/* The buy card */
+.buy-card {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+@media (min-width: 768px) {
+  .buy-card {
+    padding: 32px;
+  }
+}
+
+.buy-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.2;
+  color: var(--paper);
+}
+
+.buy-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 20px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 2.5rem;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--paper);
+}
+
+.buy-price-unit {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--paper-dim);
+}
+
+.buy-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 40px;
+  margin: 20px 0 0;
+}
+
+.buy-fact {
+  display: grid;
+  gap: 4px;
+}
+
+.buy-fact dt {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--paper-dim);
+}
+
+.buy-fact dd {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  color: var(--paper);
+}
+
+.buy-split {
+  margin: 24px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--paper);
+}
+
+.loan-chart {
+  margin-top: 28px;
+}
+
+.loan-chart-svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.loan-chart-text {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  fill: var(--paper-dim);
+}
+
+.loan-chart-text-strong {
+  fill: var(--paper);
+}
+
+.loan-chart-price {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 1600ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.loan-chart[data-drawn="true"] .loan-chart-price {
+  stroke-dashoffset: 0;
+}
+
+.loan-chart-caption {
+  margin: 8px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--paper-dim);
+}
+
+/* Steps anyone can run */
+.anyone {
+  display: grid;
+  gap: 12px;
+}
+
+.anyone-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 16px 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.anyone-why {
+  flex: 1 1 320px;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.market-link {
+  justify-self: start;
+  padding-bottom: 2px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loan-chart-price {
+    transition: none;
+    stroke-dashoffset: 0;
+  }
+
+  .loan-sheet-close {
+    transition: none;
+  }
+}

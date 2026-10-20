@@ -191,9 +191,11 @@ type DateStepProps = {
   selected: number | null;
   onSelect: (maturity: number) => void;
   status: "loading" | "error" | "ready";
+  /** A date whose offers add up to less than this can still be picked, but is marked. */
+  minLoan: bigint;
 };
 
-export function DateStep({ dates, groups, selected, onSelect, status }: DateStepProps) {
+export function DateStep({ dates, groups, selected, onSelect, status, minLoan }: DateStepProps) {
   return (
     <section className="borrow-step">
       <StepHeader number="02" title="Due date" />
@@ -222,6 +224,9 @@ export function DateStep({ dates, groups, selected, onSelect, status }: DateStep
                   <>
                     <span className="date-card-rate">{formatApr(group.bestAprBps / 100)}</span>
                     <span className="date-card-available">{fmtMusd(group.available)} MUSD available</span>
+                    {minLoan > 0n && group.available < minLoan && (
+                      <span className="date-card-available">below the {fmtMusd(minLoan)} MUSD minimum</span>
+                    )}
                   </>
                 ) : (
                   <span className="date-card-available">no offers yet</span>

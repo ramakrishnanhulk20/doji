@@ -1,0 +1,494 @@
+/* The Lend screen. The form, summary card, date cards, success card and sheets reuse the classes in borrow.css. */
+
+/* Date cards: the best rate sits on one line with its small label. */
+.lend-best {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.lend-rate-field .amount-unit {
+  right: 20px;
+}
+
+.lend-rate-field .amount-input {
+  padding-right: 120px;
+}
+
+.lend-summary .summary-row dd,
+.lend-card .summary-row dd {
+  margin-left: auto;
+}
+
+.lend-row-note {
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--paper-dim);
+}
+
+.lend-posted-line {
+  margin: 12px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+/* The two lists under the form */
+.lend-lists {
+  display: grid;
+  gap: 72px;
+  margin-top: 80px;
+}
+
+.lend-list-title {
+  margin: 0 0 24px;
+  font-size: 1.75rem;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.15;
+  color: var(--paper);
+}
+
+.lend-empty {
+  margin: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.lend-empty-problem {
+  color: var(--watch);
+}
+
+.lend-skeletons {
+  display: grid;
+  gap: 8px;
+}
+
+.lend-skeleton {
+  display: block;
+  height: 56px;
+  border-radius: 8px;
+}
+
+.lend-card-skeleton {
+  display: block;
+  height: 280px;
+  border-radius: 8px;
+}
+
+/* Status chips: a word and a mark, in the cold palette. */
+.lend-chip {
+  --tone: var(--paper-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--tone);
+  white-space: nowrap;
+}
+
+.lend-chip[data-tone="safe"] {
+  --tone: var(--safe);
+}
+
+.lend-chip[data-tone="watch"] {
+  --tone: var(--watch);
+}
+
+.lend-chip-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--tone);
+}
+
+.lend-chip[data-tone="safe"] .lend-chip-mark {
+  border-radius: 50%;
+}
+
+.lend-chip[data-tone="watch"] .lend-chip-mark {
+  transform: rotate(45deg) scale(0.9);
+}
+
+.lend-chip[data-tone="neutral"] .lend-chip-mark {
+  background: transparent;
+  border: 1.5px solid var(--tone);
+  border-radius: 2px;
+}
+
+/* Your offers: a table from 900px, cards below. */
+.lend-offers {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lend-offers th {
+  padding: 0 16px 12px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.lend-offers td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 14px;
+  color: var(--paper);
+  vertical-align: middle;
+  transition: background-color 160ms ease-out;
+}
+
+.lend-offers tbody tr:hover td {
+  background: var(--ink-2);
+}
+
+.lend-action {
+  position: relative;
+  text-align: right;
+}
+
+.btn.lend-small {
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+.lend-popover {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 12px;
+  z-index: 30;
+  width: 280px;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--ink-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  text-align: left;
+}
+
+.lend-popover-text {
+  margin: 0;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper);
+}
+
+.lend-popover-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.lend-popover-keep,
+.lend-popover-confirm {
+  flex: 1;
+  height: 40px;
+  border-radius: 8px;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--paper);
+  cursor: pointer;
+  transition:
+    background-color 180ms ease-out,
+    border-color 180ms ease-out;
+}
+
+.lend-popover-keep {
+  border: 1px solid rgba(241, 230, 210, 0.35);
+  background: transparent;
+}
+
+.lend-popover-keep:hover {
+  border-color: rgba(241, 230, 210, 0.8);
+  background: rgba(241, 230, 210, 0.06);
+}
+
+.lend-popover-confirm {
+  border: 1px solid transparent;
+  background: var(--beni-deep);
+}
+
+.lend-popover-confirm:hover {
+  background: var(--beni-hover);
+}
+
+@media (max-width: 899px) {
+  .lend-offers,
+  .lend-offers tbody,
+  .lend-offers tr,
+  .lend-offers td {
+    display: block;
+  }
+
+  .lend-offers thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .lend-offers tr {
+    position: relative;
+    margin-bottom: 12px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--ink-2);
+  }
+
+  .lend-offers td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 6px 0;
+    border: 0;
+  }
+
+  .lend-offers tbody tr:hover td {
+    background: transparent;
+  }
+
+  .lend-offers td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--paper-dim);
+  }
+
+  .lend-action {
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+
+  .lend-popover {
+    top: calc(100% + 4px);
+    right: 0;
+    width: min(280px, 100%);
+  }
+}
+
+/* Your credit units */
+.lend-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  .lend-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+  }
+}
+
+.lend-card {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.lend-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lend-card-date {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.2;
+  color: var(--paper);
+}
+
+.lend-dd-action {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.lend-help {
+  flex: 0 0 100%;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.lend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.lend-action-note {
+  flex: 0 0 100%;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.lend-text-action {
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+
+/* Send form and withdraw sheet fields */
+.lend-send {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink);
+}
+
+.lend-field {
+  display: grid;
+  gap: 8px;
+}
+
+.lend-field label {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.lend-input-wrap {
+  position: relative;
+}
+
+.lend-input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-3);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 14px;
+  color: var(--paper);
+  transition: border-color 160ms ease-out;
+}
+
+.lend-input:hover {
+  border-color: var(--line-strong);
+}
+
+.lend-input:focus-visible {
+  border-color: var(--beni-text);
+}
+
+.lend-input-wrap .lend-input {
+  padding-right: 76px;
+}
+
+.lend-field-note {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+  overflow-wrap: anywhere;
+}
+
+.lend-field-problem {
+  color: var(--watch);
+}
+
+.lend-send-actions,
+.lend-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.lend-modal-date {
+  margin: 0 0 8px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.lend-modal-field {
+  margin-top: 24px;
+}
+
+.lend-get {
+  margin: 20px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--paper);
+}
+
+.lend-watch-note {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--watch) 40%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--watch) 10%, transparent);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--watch);
+}
+
+.lend-modal-actions {
+  margin-top: 24px;
+}
+
+.btn.lend-modal-confirm {
+  flex: 1;
+  min-width: 160px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lend-offers td,
+  .lend-input,
+  .lend-popover-keep,
+  .lend-popover-confirm {
+    transition: none;
+  }
+}

@@ -79,7 +79,7 @@ function Card({ card, index, now, counting, reduced }: CardProps) {
           <dd>{cell(card.offerCount, formatCount)}</dd>
         </div>
         <div className="board-row">
-          <dt>lent</dt>
+          <dt>due to lenders</dt>
           <dd>
             {cell(card.lent, formatMusd)} MUSD
           </dd>
@@ -106,7 +106,7 @@ function ErrorCard({ maturity, now }: { maturity: number; now: number }) {
         <p className="board-rate-label">retrying</p>
       </div>
       <dl className="board-rows">
-        {["on offer", "offers", "lent", "open loans"].map((label) => (
+        {["on offer", "offers", "due to lenders", "open loans"].map((label) => (
           <div key={label} className="board-row">
             <dt>{label}</dt>
             <dd className="is-unavailable">unavailable</dd>

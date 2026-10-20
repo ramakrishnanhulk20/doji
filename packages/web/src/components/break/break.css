@@ -1,0 +1,335 @@
+/* Try to break it: the switch, the twelve attack cards and their results. Tokens come from globals.css. */
+.break-controls {
+  margin-bottom: 32px;
+}
+
+.break-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.break-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.break-switch-tab {
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--paper-dim);
+  cursor: pointer;
+  transition:
+    color 160ms ease-out,
+    background-color 160ms ease-out,
+    border-color 160ms ease-out;
+}
+
+.break-switch-tab:hover:not(:disabled, [aria-disabled="true"]) {
+  color: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.break-switch-tab[aria-pressed="true"] {
+  background: var(--ink-3);
+  color: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.break-switch-tab[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.break-switch-tab:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.break-runall {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.break-progress {
+  order: -1;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--paper-dim);
+}
+
+.break-account {
+  max-width: 72ch;
+  margin: 16px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--paper-dim);
+}
+
+.break-account-address {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--paper);
+  overflow-wrap: anywhere;
+}
+
+.break-text-button {
+  padding: 0 0 1px;
+  border: 0;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 1px;
+  background-color: transparent;
+  font: inherit;
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.break-text-button:hover {
+  color: var(--beni-text);
+}
+
+.break-strip {
+  margin: 0 0 24px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--watch) 40%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--watch) 10%, transparent);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--watch);
+}
+
+.break-strip .break-text-button {
+  color: var(--paper);
+}
+
+/* The grid */
+.break-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .break-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+}
+
+.break-cell {
+  display: flex;
+  min-width: 0;
+}
+
+.break-skeleton {
+  display: block;
+  height: 260px;
+  border-radius: 8px;
+}
+
+/* One attack */
+.break-card {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.break-card-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.2;
+  color: var(--paper);
+}
+
+.break-card-line {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--paper-dim);
+}
+
+.break-code {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--ink-3);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--paper);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.break-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.break-rule {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--paper-dim);
+}
+
+.break-link {
+  display: inline-block;
+  padding: 4px 1px;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 calc(100% - 3px);
+  background-size: 100% 1px;
+  color: var(--paper);
+  transition: color 160ms ease-out;
+}
+
+.break-link:hover {
+  color: var(--beni-text);
+}
+
+.break-card .break-run {
+  height: 48px;
+  padding: 0 22px;
+}
+
+/* The result */
+.break-result {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.break-result:empty {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.break-result > * {
+  animation: break-result-in 220ms ease-out both;
+}
+
+@keyframes break-result-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.break-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--paper);
+}
+
+.break-verdict-watch {
+  color: var(--watch);
+}
+
+.break-mark {
+  display: inline-block;
+  flex: none;
+}
+
+.break-mark-circle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--safe);
+}
+
+.break-mark-diamond {
+  width: 9px;
+  height: 9px;
+  margin: 0 0.5px;
+  background: var(--watch);
+  transform: rotate(45deg);
+}
+
+.break-error-name {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.break-detail {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.break-block {
+  margin: 10px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--paper-dim);
+}
+
+.break-closing {
+  margin: 48px 0 0;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--paper-dim);
+}
+
+@media (max-width: 639px) {
+  .break-runall {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .break-runall .btn {
+    width: 100%;
+  }
+
+  .break-progress {
+    order: 0;
+    min-height: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .break-switch-tab,
+  .break-link {
+    transition: none;
+  }
+
+  .break-result > * {
+    animation: none;
+  }
+}
