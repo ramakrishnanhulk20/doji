@@ -8,6 +8,7 @@ import { useSwitchChain } from "wagmi";
 import { creditMarketsAbi } from "../../abi/creditMarkets";
 import { useLendData, useLendNow } from "../../hooks/useLendData";
 import { useLendWrite } from "../../hooks/useLendWrite";
+import { useStepFlow, type FlowStep } from "../../hooks/useStepFlow";
 import type { WriteResult } from "../../hooks/useWrite";
 import { roundDownToCent } from "../../lib/borrow";
 import {
@@ -26,7 +27,6 @@ import {
 import { useReducedMotion } from "../../lib/motion-mode";
 import { formatApr, formatDate, type ThursdayCard } from "../../lib/stats";
 import { APP_CHAIN_ID } from "../../lib/wagmi";
-import type { StepperStep } from "../app/Stepper";
 import { openConnectModal } from "../app/connect-modal-store";
 import { fmtMusd, musdFieldText, parseAmount } from "../borrow/format";
 import { LendAmountStep, LendDateStep, RateStep } from "./OfferSteps";
@@ -37,13 +37,7 @@ import { UnitsCards, type Act } from "./UnitsCards";
 import "../borrow/borrow.css";
 import "./lend.css";
 
-type Flow = {
-  steps: LendStep[];
-  /** Steps finished so far. */
-  done: number;
-  running: boolean;
-  failedAt: number | null;
-};
+type RunStep = LendStep & FlowStep;
 
 const NO_DATES: ThursdayCard[] = [];
 
@@ -57,7 +51,7 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
   const [maturityPick, setMaturityPick] = useState<number | null>(initialDate);
   const [rateText, setRateText] = useState("");
   const [amountText, setAmountText] = useState("");
-  const [flow, setFlow] = useState<Flow | null>(null);
+  const engine = useStepFlow<RunStep>();
   const [result, setResult] = useState<Posted | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [runningKey, setRunningKey] = useState<string | null>(null);
@@ -109,7 +103,7 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
 
   // A new choice of any input clears a failed run, so "Try again" never repeats stale numbers.
   useEffect(() => {
-    setFlow((current) => (current && current.running ? current : null));
+    if (!engine.running) engine.reset();
   }, [maturity, rateText, amountText]);
 
   const paused = settings?.offersPaused === true;
@@ -132,40 +126,32 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
     return null;
   })();
 
-  const runSteps = async (steps: LendStep[], from: number) => {
+  const executeStep = (step: LendStep): Promise<WriteResult> =>
+    step.id === "approve-musd"
+      ? send(approveMusdCall(amountWei), `Approved ${fmtMusd(amountWei)} MUSD for Doji.`)
+      : send(postOfferCall(maturity ?? 0, aprBps ?? 0, amountWei), "Your offer is live.");
+
+  const runSteps = async (steps: readonly LendStep[], from: number) => {
     if (maturity === null || aprBps === null) return;
-    setFlow({ steps, done: from, running: true, failedAt: null });
-    let outcome: WriteResult | null = null;
+    // Each step carries a runner built from the numbers on screen now, so a retry never repeats stale ones.
+    const runnable: RunStep[] = steps.map((step) => ({ id: step.id, label: step.label, run: () => executeStep(step) }));
+    const { ok, last } = await engine.start(runnable, from);
 
-    for (let index = from; index < steps.length; index++) {
-      const step = steps[index] as LendStep;
-      outcome =
-        step.id === "approve-musd"
-          ? await send(approveMusdCall(amountWei), `Approved ${fmtMusd(amountWei)} MUSD for Doji.`)
-          : await send(postOfferCall(maturity, aprBps, amountWei), "Your offer is live.");
-
-      if (!outcome.ok) {
-        setFlow({ steps, done: index, running: false, failedAt: index });
-        return;
-      }
-      setFlow({ steps, done: index + 1, running: index + 1 < steps.length, failedAt: null });
-    }
-
-    if (outcome?.ok) {
-      const [log] = parseEventLogs({ abi: creditMarketsAbi as Abi, eventName: "OfferPosted", logs: outcome.receipt.logs });
+    if (ok && last?.ok) {
+      const [log] = parseEventLogs({ abi: creditMarketsAbi as Abi, eventName: "OfferPosted", logs: last.receipt.logs });
       const args = (log?.args ?? {}) as { offerId?: bigint };
-      setResult({ offerId: args.offerId ?? 0n, amount: amountWei, aprBps, maturity, hash: outcome.hash });
-      setFlow(null);
+      setResult({ offerId: args.offerId ?? 0n, amount: amountWei, aprBps, maturity, hash: last.hash });
+      engine.reset();
       setSheetOpen(false);
     }
   };
 
   const onConfirm = () => {
-    if (flow && flow.failedAt !== null) void runSteps(flow.steps, flow.failedAt);
+    if (engine.failedAt !== null && engine.steps) void runSteps(engine.steps, engine.failedAt);
     else void runSteps(plannedSteps, 0);
   };
 
-  const running = flow?.running === true || busy;
+  const running = engine.running || busy;
 
   const confirm: ConfirmButton = (() => {
     if (paused) return { label: lendProblemText({ kind: "paused" }), disabled: true, loading: false, onClick: () => undefined };
@@ -175,9 +161,10 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
     }
     if (emptyReason) return { label: emptyReason, disabled: true, loading: false, onClick: () => undefined };
     if (checkReason) return { label: checkReason, disabled: true, loading: false, onClick: () => undefined };
+    if (engine.confirming) return { label: "Waiting for confirmation", disabled: true, loading: false, onClick: () => undefined };
     if (running) return { label: "Working...", disabled: true, loading: true, onClick: () => undefined };
-    if (flow && flow.failedAt !== null) {
-      return { label: `Try again from step ${flow.failedAt + 1}`, disabled: false, loading: false, onClick: onConfirm };
+    if (engine.failedAt !== null) {
+      return { label: `Try again from step ${engine.failedAt + 1}`, disabled: false, loading: false, onClick: onConfirm };
     }
     return {
       label: `Post offer: ${fmtMusd(amountWei)} MUSD at ${formatApr((aprBps as number) / 100)} until ${formatDate(maturity as number)}`,
@@ -187,18 +174,7 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
     };
   })();
 
-  const stepperSteps: StepperStep[] = (flow ? flow.steps : amountWei > 0n && !emptyReason ? plannedSteps : []).map((step, index) => ({
-    id: step.id,
-    label: step.label,
-    state:
-      flow && index < flow.done
-        ? "done"
-        : flow && flow.failedAt === index
-          ? "failed"
-          : flow && flow.running && index === flow.done
-            ? "current"
-            : "pending",
-  }));
+  const stepperSteps = engine.rows(amountWei > 0n && !emptyReason ? plannedSteps : []);
 
   const summary: OfferSummaryData = {
     amount: amountWei,

@@ -4,11 +4,13 @@ import { useSyncExternalStore } from "react";
 
 export type Toast = {
   id: string;
-  kind: "wallet" | "sending" | "done" | "problem";
+  kind: "wallet" | "sending" | "stalled" | "done" | "problem";
   title: string;
   detail?: string;
   /** Explorer link for the transaction, when there is one. */
   href?: string;
+  /** A button on the toast, for a transaction that is still unconfirmed. */
+  action?: { label: string; run: () => void };
 };
 
 const DONE_CLOSES_AFTER_MS = 8_000;

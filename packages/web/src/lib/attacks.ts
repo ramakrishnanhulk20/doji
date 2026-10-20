@@ -1,18 +1,14 @@
 import {
-  BaseError,
-  ContractFunctionRevertedError,
-  decodeErrorResult,
   parseAbi,
   parseUnits,
   type Abi,
   type Address,
-  type Hex,
   type PublicClient,
 } from "viem";
 import { creditMarketsAbi } from "../abi/creditMarkets";
 import { loanManagerAbi } from "../abi/loanManager";
 import { addressBook, demoLoan } from "./addresses";
-import { explainError } from "./errors";
+import { explainError, findRevert } from "./errors";
 import { readOpenAuctions, scanOpenOffers, type OpenAuction, type OpenOffer } from "./stats";
 
 export const STRANGER: Address = "0x000000000000000000000000000000000000dEaD";
@@ -325,29 +321,12 @@ export type AttackOutcome =
   | { kind: "through"; block: number }
   | { kind: "unreachable"; detail: string };
 
-// Mezo's voter answers a second vote in the same week with this error, which neither Doji ABI declares.
-const voterErrorsAbi = parseAbi(["error AlreadyVotedOrDeposited()"]);
-const knownAbi = [...loanManagerAbi, ...creditMarketsAbi, ...voterErrorsAbi] as unknown as Abi;
-
 const OUTSIDE_DETAIL: Record<string, string> = {
   AlreadyVotedOrDeposited: "Mezo's voter allows one vote per position each week, and this position has already used it.",
 };
 
 /** The name of the contract error behind a failed simulation, or null when the failure was not a refusal by the contract. */
-export function revertName(error: unknown): string | null {
-  if (!(error instanceof BaseError)) return null;
-  const reverted = error.walk((inner) => inner instanceof ContractFunctionRevertedError);
-  if (!(reverted instanceof ContractFunctionRevertedError)) return null;
-  if (reverted.data?.errorName) return reverted.data.errorName;
-  if (reverted.raw) {
-    try {
-      return decodeErrorResult({ abi: knownAbi, data: reverted.raw as Hex }).errorName;
-    } catch {
-      return reverted.signature ?? reverted.raw.slice(0, 10);
-    }
-  }
-  return reverted.signature ?? "unknown error";
-}
+export const revertName = (error: unknown): string | null => findRevert(error)?.name ?? null;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

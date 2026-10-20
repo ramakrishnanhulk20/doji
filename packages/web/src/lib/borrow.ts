@@ -167,6 +167,8 @@ export type BuildStepsInput =
       tokenId: bigint;
       /** True when getApproved already names LoanManager. */
       alreadyApproved: boolean;
+      /** True when Doji already holds the position and it has no loan, so only the borrow is left. */
+      heldByDoji?: boolean;
     };
 
 /** The steps the confirm button walks through. A step that is already done on chain is left out. */
@@ -177,6 +179,8 @@ export function buildBorrowSteps(input: BuildStepsInput): BorrowStep[] {
     steps.push({ id: "lock-and-borrow", label: "Lock and borrow" });
     return steps;
   }
+
+  if (input.heldByDoji) return [{ id: "borrow", label: "Borrow" }];
 
   const steps: BorrowStep[] = [];
   if (!input.alreadyApproved) steps.push({ id: "approve-position", label: `Approve veBTC #${input.tokenId}` });

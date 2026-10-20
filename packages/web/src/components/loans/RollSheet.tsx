@@ -105,6 +105,7 @@ export function RollSheet({ view, client, settings, offers, wallet, send, busy, 
     if (!gate.isConnected) return { label: "Connect wallet to roll", disabled: false, loading: false, onClick: gate.connect };
     if (gate.wrongChain) return { label: "Switch to Mezo testnet", disabled: false, loading: false, onClick: gate.switchNetwork };
     if (reason) return { label: reason, disabled: true, loading: false, onClick: () => undefined };
+    if (flow.confirming) return { label: "Waiting for confirmation", disabled: true, loading: false, onClick: () => undefined };
     if (running) return { label: "Working...", disabled: true, loading: true, onClick: () => undefined };
     if (flow.failedAt !== null) {
       return {

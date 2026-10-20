@@ -3,6 +3,22 @@ import { createPublicClient, createWalletClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mezoTestnetChain } from "./chains";
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Mezo's public RPC answers some calls with "header not found" when a node behind it is a block late, so a read that
+// fails that way is asked again, up to three times in all.
+async function withRetry<T>(run: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (error) {
+      const message = error instanceof Error ? `${error.message} ${(error as { details?: string }).details ?? ""}` : "";
+      if (attempt >= 3 || !/header not found/i.test(message)) throw error;
+      await sleep(500);
+    }
+  }
+}
+
 // Development only. Signs with the key in NEXT_PUBLIC_DEV_TEST_KEY so real flows can be driven without a browser
 // wallet. wagmi.ts loads this file only when NODE_ENV is "development", and nothing is added unless the variable is
 // set. The key is never logged or shown.
@@ -29,13 +45,31 @@ function devTestWallet() {
           case "wallet_addEthereumChain":
             return null;
           case "eth_sendTransaction": {
-            const tx = params[0] as { to?: Hex; data?: Hex; value?: Hex; gas?: Hex };
+            const tx = params[0] as { to?: Hex; data?: Hex; value?: Hex };
+            const value = tx.value ? BigInt(tx.value) : undefined;
+
+            // Every field is given here, so viem never asks the node to fill the transaction in. Mezo's node answers
+            // that call with the bare minimum gas on many tries, and then refuses the signed transaction.
+            const estimated = await withRetry(() =>
+              publicClient.estimateGas({ account: account.address, to: tx.to, data: tx.data, value }),
+            );
+            const nonce = await withRetry(() =>
+              publicClient.getTransactionCount({ address: account.address, blockTag: "pending" }),
+            );
+            const fees = await withRetry(() => publicClient.estimateFeesPerGas());
+            const priced =
+              fees.gasPrice !== undefined
+                ? { type: "legacy" as const, gasPrice: fees.gasPrice }
+                : { type: "eip1559" as const, maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas };
+
             return walletClient.sendTransaction({
               to: tx.to,
               data: tx.data,
-              value: tx.value ? BigInt(tx.value) : undefined,
-              gas: tx.gas ? BigInt(tx.gas) : undefined,
-            });
+              value,
+              gas: (estimated * 125n) / 100n,
+              nonce,
+              ...priced,
+            } as never);
           }
           case "personal_sign":
             return account.signMessage({ message: { raw: params[0] as Hex } });

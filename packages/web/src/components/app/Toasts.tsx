@@ -11,7 +11,7 @@ export function Toasts() {
       {toasts.map((toast) => (
         <div key={toast.id} className="toast" data-kind={toast.kind}>
           <span className="toast-mark" aria-hidden="true">
-            {toast.kind === "wallet" || toast.kind === "sending" ? (
+            {toast.kind === "wallet" || toast.kind === "sending" || toast.kind === "stalled" ? (
               <Seal size={20} title="" busy />
             ) : toast.kind === "done" ? (
               <span className="toast-circle" />
@@ -26,6 +26,11 @@ export function Toasts() {
               <a className="link-draw toast-link" href={toast.href} target="_blank" rel="noopener noreferrer">
                 View transaction
               </a>
+            )}
+            {toast.action && (
+              <button type="button" className="toast-action" onClick={toast.action.run}>
+                {toast.action.label}
+              </button>
             )}
           </div>
           <button type="button" className="toast-close" aria-label="Close" onClick={() => dismissToast(toast.id)}>

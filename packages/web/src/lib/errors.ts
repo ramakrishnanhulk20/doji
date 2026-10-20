@@ -5,6 +5,7 @@ import {
   UserRejectedRequestError,
   decodeErrorResult,
   formatUnits,
+  parseAbi,
   type Abi,
   type Hex,
 } from "viem";
@@ -118,11 +119,14 @@ const REVERTS: Record<string, (args: Args) => string> = {
 // Errors that name a refreshed offer list are the ones where the screen should reload.
 const REFRESH = new Set(["AprAboveMax", "InsufficientRemaining", "OfferEmpty", "OfferNotFound", "WrongMaturity"]);
 
-const knownAbi = [...loanManagerAbi, ...creditMarketsAbi] as unknown as Abi;
+// Mezo's voter answers a second vote in the same week with this error, which neither Doji ABI declares.
+const voterErrorsAbi = parseAbi(["error AlreadyVotedOrDeposited()"]);
+const knownAbi = [...loanManagerAbi, ...creditMarketsAbi, ...voterErrorsAbi] as unknown as Abi;
 
-type Revert = { name: string; args: Args; reason?: string };
+export type Revert = { name: string; args: Args; reason?: string };
 
-function findRevert(error: unknown): Revert | null {
+/** The contract error behind a failed call, decoded with every ABI Doji knows, or null when it was not a revert. */
+export function findRevert(error: unknown): Revert | null {
   if (!(error instanceof BaseError)) return null;
   const reverted = error.walk((inner) => inner instanceof ContractFunctionRevertedError);
   if (!(reverted instanceof ContractFunctionRevertedError)) return null;
@@ -153,11 +157,41 @@ function isRejection(error: unknown): boolean {
   return /user rejected|user denied|rejected the request|request rejected/i.test(message);
 }
 
+/** Every message in the chain of causes, so the node's own words are found under viem's generic ones. */
+function allText(error: unknown): string {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current; depth++) {
+    if (current instanceof Error) parts.push(current.message);
+    const inner = current as { shortMessage?: string; details?: string; cause?: unknown };
+    if (inner.shortMessage) parts.push(inner.shortMessage);
+    if (inner.details) parts.push(inner.details);
+    current = inner.cause;
+  }
+  return parts.join(" ");
+}
+
 function isOutOfGas(error: unknown): boolean {
   if (error instanceof BaseError && error.walk((inner) => inner instanceof InsufficientFundsError)) return true;
-  const message = error instanceof Error ? error.message : String(error);
-  return /insufficient funds/i.test(message);
+  return /insufficient funds/i.test(allText(error));
 }
+
+// Refusals from the node itself, before anything reaches the chain.
+const NODE_REFUSALS: readonly { pattern: RegExp; detail: string }[] = [
+  {
+    pattern: /intrinsic gas too low|gas too low|gas limit below/i,
+    detail: "The node refused the transaction's gas limit. Try again; Doji will estimate it afresh.",
+  },
+  { pattern: /header not found/i, detail: "A Mezo node was a moment behind. Try again in a few seconds." },
+  {
+    pattern: /nonce too low|already known/i,
+    detail: "This transaction was already sent. Check the explorer before sending it again.",
+  },
+  {
+    pattern: /replacement transaction underpriced/i,
+    detail: "A transaction from this wallet is still waiting. Wait for it, then try again.",
+  },
+];
 
 /** The plain-words text for a failed write, with the title the toast shows. */
 export function explainError(error: unknown, context: ErrorContext = {}): Explained {
@@ -178,6 +212,8 @@ export function explainError(error: unknown, context: ErrorContext = {}): Explai
   if (isOutOfGas(error)) {
     return { title, detail: "Not enough test BTC to pay for gas. Get some from the Mezo faucet." };
   }
+  const refusal = NODE_REFUSALS.find((candidate) => candidate.pattern.test(allText(error)));
+  if (refusal) return { title, detail: refusal.detail };
 
   const revert = findRevert(error);
   if (revert) {
@@ -194,6 +230,23 @@ export function explainError(error: unknown, context: ErrorContext = {}): Explai
   }
   const short = error instanceof BaseError ? error.shortMessage : error instanceof Error ? error.message : String(error);
   return { title, detail: `The transaction would fail: ${short.split("\n")[0]?.slice(0, 160) ?? "unknown error"}.` };
+}
+
+/** The sentence for a mined transaction that reverted, from the revert data when it could be found. */
+export function explainReverted(data: Hex | null): Explained {
+  if (data) {
+    try {
+      const decoded = decodeErrorResult({ abi: knownAbi, data });
+      const known = REVERTS[decoded.errorName];
+      return {
+        title: "Failed",
+        detail: known ? known((decoded.args ?? []) as Args) : `The transaction failed: ${decoded.errorName}.`,
+      };
+    } catch {
+      // The data is not one of Doji's errors, so the plain sentence below is used.
+    }
+  }
+  return { title: "Failed", detail: "The transaction was sent but failed on chain. Open it on the explorer to see why." };
 }
 
 /** What the connect modal says when a wallet does not connect. */

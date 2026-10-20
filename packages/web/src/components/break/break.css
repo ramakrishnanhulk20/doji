@@ -333,3 +333,23 @@
     animation: none;
   }
 }
+
+/* The count under the run controls after Run all. */
+.break-tally {
+  margin: 20px 0 16px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.break-tally-safe {
+  color: var(--safe);
+}
+
+.break-tally-watch {
+  color: var(--watch);
+}
+
+.break-tally-dim {
+  color: var(--paper-dim);
+}

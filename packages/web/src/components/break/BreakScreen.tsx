@@ -28,6 +28,8 @@ export function BreakScreen() {
   const [results, setResults] = useState<Record<string, Stored>>({});
   const [running, setRunning] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ index: number; total: number } | null>(null);
+  // The address a finished Run all was for, so the tally shows only for results that are still on screen.
+  const [ranFor, setRanFor] = useState<string | null>(null);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -61,16 +63,31 @@ export function BreakScreen() {
   const runAll = async () => {
     if (!attacks || busy) return;
     const runnable = attacks.filter((attack) => attack.unavailable === null);
+    setRanFor(null);
     try {
       for (const [index, attack] of runnable.entries()) {
         if (!alive.current) return;
         setProgress({ index, total: runnable.length });
+        // The card that is running scrolls into view, so a long grid never runs out of sight.
+        document
+          .getElementById(`attack-${attack.id}`)
+          ?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
         await simulate(attack);
       }
+      if (alive.current) setRanFor(account);
     } finally {
       if (alive.current) setProgress(null);
     }
   };
+
+  const outcomes = (attacks ?? []).map((attack) => {
+    const stored = results[attack.id];
+    return stored && stored.call === attack.call && stored.account === account ? stored.outcome : null;
+  });
+  const refused = outcomes.filter((outcome) => outcome?.kind === "refused" && outcome.matches).length;
+  const unexpected = outcomes.filter((outcome) => outcome !== null && !(outcome.kind === "refused" && outcome.matches)).length;
+  const notRunnable = (attacks ?? []).filter((attack) => attack.unavailable !== null).length;
+  const showTally = attacks !== null && ranFor === account && !busy;
 
   const rise = reduced ? { initial: false as const } : { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 } };
 
@@ -104,6 +121,16 @@ export function BreakScreen() {
           </p>
         )}
 
+        {showTally && attacks && (
+          <p className="break-tally" aria-live="polite">
+            <span className="break-tally-safe">
+              {refused} of {attacks.length} refused
+            </span>
+            {unexpected > 0 && <span className="break-tally-watch"> · {unexpected} unexpected</span>}
+            {notRunnable > 0 && <span className="break-tally-dim"> · {notRunnable} could not run here</span>}
+          </p>
+        )}
+
         <div className="break-grid" aria-busy={attacks === null && !failed}>
           {attacks
             ? attacks.map((attack, index) => {
@@ -112,6 +139,7 @@ export function BreakScreen() {
                 return (
                   <motion.div
                     key={attack.id}
+                    id={`attack-${attack.id}`}
                     className="break-cell"
                     initial={reduced ? false : { opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}

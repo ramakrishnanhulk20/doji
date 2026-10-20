@@ -8,6 +8,7 @@ import { useSwitchChain } from "wagmi";
 import { erc20Abi, veBtcAbi } from "../../abi/external";
 import { loanManagerAbi } from "../../abi/loanManager";
 import { useBorrowData } from "../../hooks/useBorrowData";
+import { useStepFlow, type FlowStep } from "../../hooks/useStepFlow";
 import { useWrite, type WriteResult } from "../../hooks/useWrite";
 import { addressBook } from "../../lib/addresses";
 import {
@@ -29,7 +30,6 @@ import { explainProblem } from "../../lib/errors";
 import { useReducedMotion } from "../../lib/motion-mode";
 import { formatDate } from "../../lib/stats";
 import { APP_CHAIN_ID } from "../../lib/wagmi";
-import type { StepperStep } from "../app/Stepper";
 import { openConnectModal } from "../app/connect-modal-store";
 import { fmtExact, fmtMusd, mulDivWei, musdFieldText, parseAmount } from "./format";
 import { AmountStep, CollateralStep, DateStep } from "./Steps";
@@ -41,13 +41,7 @@ const BOOK = addressBook[APP_CHAIN_ID];
 /** BTC kept back by Max so the wallet can still pay for gas. */
 const GAS_RESERVE = parseUnits("0.0002", 18);
 
-type Flow = {
-  steps: BorrowStep[];
-  /** Steps finished so far. */
-  done: number;
-  running: boolean;
-  failedAt: number | null;
-};
+type RunStep = BorrowStep & FlowStep;
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -72,13 +66,31 @@ export function BorrowScreen() {
   const [positionId, setPositionId] = useState<bigint | null>(null);
   const [maturityPick, setMaturityPick] = useState<number | null>(null);
   const [principalText, setPrincipalText] = useState("");
-  const [flow, setFlow] = useState<Flow | null>(null);
+  const engine = useStepFlow<RunStep>();
   const [result, setResult] = useState<Borrowed | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // /borrow?position={id} opens the veBTC tab on that position. It is read once, when the page opens.
+  const [wantedPosition, setWantedPosition] = useState<bigint | null>(null);
+
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("position");
+    if (raw && /^\d+$/.test(raw)) {
+      setTab("position");
+      setWantedPosition(BigInt(raw));
+    }
+  }, []);
 
   const settings = data.settings.data;
   const price = data.price.data;
   const positionList = data.positions.data;
+
+  // Once the wallet's positions are in, the requested one is selected if it can back a loan, and the request ends.
+  useEffect(() => {
+    if (wantedPosition === null || positionList === undefined) return;
+    const match = positionList.find((item) => item.id === wantedPosition && item.accepted);
+    if (match) setPositionId(match.id);
+    setWantedPosition(null);
+  }, [wantedPosition, positionList]);
   const position = tab === "position" && positionId !== null ? positionList?.find((item) => item.id === positionId) : undefined;
 
   const groups = useMemo(() => groupOffersByDate(data.offers.data ?? []), [data.offers.data]);
@@ -156,12 +168,14 @@ export function BorrowScreen() {
         allowanceCovers: allowanceWei !== undefined && allowanceWei >= btcWei,
       });
     }
-    return position ? buildBorrowSteps({ path: "position", tokenId: position.id, alreadyApproved: position.approved }) : [];
+    return position
+      ? buildBorrowSteps({ path: "position", tokenId: position.id, alreadyApproved: position.approved, heldByDoji: position.inDoji })
+      : [];
   }, [tab, btcWei, allowanceWei, position]);
 
   // A new choice of any input clears a failed run, so "Try again" never repeats stale numbers.
   useEffect(() => {
-    setFlow((current) => (current && current.running ? current : null));
+    if (!engine.running) engine.reset();
   }, [tab, btcText, positionId, maturity, principalText]);
 
   const problem = (() => {
@@ -194,96 +208,85 @@ export function BorrowScreen() {
     return null;
   })();
 
-  const runSteps = async (steps: BorrowStep[], from: number) => {
-    if (maturity === null) return;
-    setFlow({ steps, done: from, running: true, failedAt: null });
-    let outcome: WriteResult | null = null;
-
-    for (let index = from; index < steps.length; index++) {
-      const step = steps[index] as BorrowStep;
-      const at = nowSeconds();
-      const succeeded = `${fmtMusd(principalWei)} MUSD is in your wallet.`;
-
-      switch (step.id) {
-        case "approve-btc":
-          outcome = await write({
-            target: "btc",
-            abi: erc20Abi as Abi,
-            functionName: "approve",
-            args: [BOOK.loanManager, btcWei],
-            successLine: `Approved ${fmtExact(btcWei)} BTC for Doji.`,
-          });
-          break;
-        case "lock-and-borrow":
-          outcome = await write({
-            target: "loanManager",
-            abi: loanManagerAbi as Abi,
-            functionName: "lockAndBorrow",
-            args: [btcWei, lockDurationFor(maturity, at), BigInt(maturity), selection.offerIds, selection.amounts, selection.maxAprBps],
-            successLine: succeeded,
-            action: "lock",
-          });
-          break;
-        case "approve-position":
-          outcome = await write({
-            target: "veBTC",
-            abi: veBtcAbi as Abi,
-            functionName: "approve",
-            args: [BOOK.loanManager, position?.id ?? 0n],
-            successLine: `veBTC #${position?.id} approved for Doji.`,
-          });
-          break;
-        case "deposit":
-          outcome = await write({
-            target: "loanManager",
-            abi: loanManagerAbi as Abi,
-            functionName: "deposit",
-            args: [position?.id ?? 0n],
-            successLine: `veBTC #${position?.id} is with Doji.`,
-          });
-          break;
-        case "borrow":
-          outcome = await write({
-            target: "loanManager",
-            abi: loanManagerAbi as Abi,
-            functionName: "borrow",
-            args: [position?.id ?? 0n, BigInt(maturity), selection.offerIds, selection.amounts, selection.maxAprBps],
-            successLine: succeeded,
-          });
-          break;
-      }
-
-      if (!outcome || !outcome.ok) {
-        setFlow({ steps, done: index, running: false, failedAt: index });
-        return;
-      }
-      setFlow({ steps, done: index + 1, running: index + 1 < steps.length, failedAt: null });
+  const executeStep = (step: BorrowStep, at: number): Promise<WriteResult> => {
+    const succeeded = `${fmtMusd(principalWei)} MUSD is in your wallet.`;
+    const id = position?.id ?? 0n;
+    switch (step.id) {
+      case "approve-btc":
+        return write({
+          target: "btc",
+          abi: erc20Abi as Abi,
+          functionName: "approve",
+          args: [BOOK.loanManager, btcWei],
+          successLine: `Approved ${fmtExact(btcWei)} BTC for Doji.`,
+        });
+      case "lock-and-borrow":
+        return write({
+          target: "loanManager",
+          abi: loanManagerAbi as Abi,
+          functionName: "lockAndBorrow",
+          args: [btcWei, lockDurationFor(maturity ?? 0, at), BigInt(maturity ?? 0), selection.offerIds, selection.amounts, selection.maxAprBps],
+          successLine: succeeded,
+          action: "lock",
+        });
+      case "approve-position":
+        return write({
+          target: "veBTC",
+          abi: veBtcAbi as Abi,
+          functionName: "approve",
+          args: [BOOK.loanManager, id],
+          successLine: `veBTC #${id} approved for Doji.`,
+        });
+      case "deposit":
+        return write({
+          target: "loanManager",
+          abi: loanManagerAbi as Abi,
+          functionName: "deposit",
+          args: [id],
+          successLine: `veBTC #${id} is with Doji.`,
+        });
+      case "borrow":
+        return write({
+          target: "loanManager",
+          abi: loanManagerAbi as Abi,
+          functionName: "borrow",
+          args: [id, BigInt(maturity ?? 0), selection.offerIds, selection.amounts, selection.maxAprBps],
+          successLine: succeeded,
+        });
     }
+  };
 
-    if (outcome?.ok) {
-      const [log] = parseEventLogs({ abi: loanManagerAbi as Abi, eventName: "Borrowed", logs: outcome.receipt.logs });
+  const runSteps = async (steps: readonly BorrowStep[], from: number) => {
+    if (maturity === null) return;
+    // Each step carries a runner built from the numbers on screen now, so a retry never repeats stale ones.
+    const runnable: RunStep[] = steps.map((step) => ({
+      id: step.id,
+      label: step.label,
+      run: () => executeStep(step, nowSeconds()),
+    }));
+    const { ok, last } = await engine.start(runnable, from);
+
+    if (ok && last?.ok) {
+      const [log] = parseEventLogs({ abi: loanManagerAbi as Abi, eventName: "Borrowed", logs: last.receipt.logs });
       const args = (log?.args ?? {}) as { tokenId?: bigint; principal?: bigint; face?: bigint };
       setResult({
         tokenId: args.tokenId ?? position?.id ?? 0n,
         principal: args.principal ?? principalWei,
         face: args.face ?? face ?? 0n,
         maturity,
-        hash: outcome.hash,
+        hash: last.hash,
       });
-      setFlow(null);
+      engine.reset();
       setSheetOpen(false);
     }
   };
 
   const onConfirm = () => {
-    if (flow && flow.failedAt !== null) {
-      void runSteps(flow.steps, flow.failedAt);
-    } else {
-      void runSteps(plannedSteps, 0);
-    }
+    if (engine.failedAt !== null && engine.steps) void runSteps(engine.steps, engine.failedAt);
+    else void runSteps(plannedSteps, 0);
   };
 
-  const running = flow?.running === true || busy;
+  const running = engine.running || busy;
 
   const confirm: ConfirmButton = (() => {
     if (problem) return { label: problem, disabled: true, loading: false, onClick: () => undefined };
@@ -293,9 +296,10 @@ export function BorrowScreen() {
     }
     if (emptyReason) return { label: emptyReason, disabled: true, loading: false, onClick: () => undefined };
     if (checkReason) return { label: checkReason, disabled: true, loading: false, onClick: () => undefined };
+    if (engine.confirming) return { label: "Waiting for confirmation", disabled: true, loading: false, onClick: () => undefined };
     if (running) return { label: "Working...", disabled: true, loading: true, onClick: () => undefined };
-    if (flow && flow.failedAt !== null) {
-      return { label: `Try again from step ${flow.failedAt + 1}`, disabled: false, loading: false, onClick: onConfirm };
+    if (engine.failedAt !== null) {
+      return { label: `Try again from step ${engine.failedAt + 1}`, disabled: false, loading: false, onClick: onConfirm };
     }
     const label =
       tab === "lock"
@@ -304,20 +308,7 @@ export function BorrowScreen() {
     return { label, disabled: false, loading: false, onClick: onConfirm };
   })();
 
-  const stepperSteps: StepperStep[] = (flow ? flow.steps : principalWei > 0n && !emptyReason ? plannedSteps : []).map(
-    (step, index) => ({
-      id: step.id,
-      label: step.label,
-      state:
-        flow && index < flow.done
-          ? "done"
-          : flow && flow.failedAt === index
-            ? "failed"
-            : flow && flow.running && index === flow.done
-              ? "current"
-              : "pending",
-    }),
-  );
+  const stepperSteps = engine.rows(principalWei > 0n && !emptyReason ? plannedSteps : []);
 
   const summary: SummaryData = {
     collateralText: tab === "lock" ? (btcWei > 0n ? `${fmtExact(btcWei)} BTC` : null) : position ? `veBTC #${position.id}` : null,

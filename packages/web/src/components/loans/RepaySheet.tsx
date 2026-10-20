@@ -80,6 +80,7 @@ export function RepaySheet({ view, wallet, fullOnly, send, busy, onClose }: Repa
     if (!gate.isConnected) return { label: "Connect wallet to repay", disabled: false, loading: false, onClick: gate.connect };
     if (gate.wrongChain) return { label: "Switch to Mezo testnet", disabled: false, loading: false, onClick: gate.switchNetwork };
     if (reason) return { label: reason, disabled: true, loading: false, onClick: () => undefined };
+    if (flow.confirming) return { label: "Waiting for confirmation", disabled: true, loading: false, onClick: () => undefined };
     if (running) return { label: "Working...", disabled: true, loading: true, onClick: () => undefined };
     if (flow.failedAt !== null) {
       return { label: `Try again from step ${flow.failedAt + 1}`, disabled: false, loading: false, onClick: () => void flow.retry().then((done) => done && onClose()) };

@@ -637,3 +637,56 @@
     transition: none;
   }
 }
+
+/* A step whose transaction was sent and waits for Mezo to confirm it. */
+.stepper-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.stepper-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.stepper-note a {
+  color: var(--paper);
+  padding-bottom: 1px;
+}
+
+.stepper-action,
+.toast-action {
+  padding: 0 0 1px;
+  border: 0;
+  background-color: transparent;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 1px;
+  font: inherit;
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.stepper-action:hover,
+.toast-action:hover {
+  color: var(--beni-text);
+}
+
+.toast-action {
+  display: inline-block;
+  margin: 8px 0 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.stepper-step[data-state="confirming"] {
+  color: var(--paper);
+}
+
+.stepper-step[data-state="confirming"] .stepper-mark {
+  border-color: transparent;
+}

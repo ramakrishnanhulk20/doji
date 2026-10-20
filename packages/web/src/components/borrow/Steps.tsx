@@ -165,7 +165,10 @@ export function CollateralStep(props: CollateralStepProps) {
                     checked={props.selectedId === position.id}
                     onChange={() => props.onSelectPosition(position.id)}
                   />
-                  <span className="position-id">veBTC #{String(position.id)}</span>
+                  <span className="position-id">
+                    veBTC #{String(position.id)}
+                    {position.inDoji && <span className="position-tag">in Doji</span>}
+                  </span>
                   <span className="position-amount">{fmtBtc(position.amount, 4)} BTC</span>
                   <span className="position-lock">
                     {position.isPermanent ? "permanent lock" : `locked until ${formatDate(position.end)}`}

@@ -3,7 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import type { PublicClient } from "viem";
 import { useAccount, useBalance, usePublicClient } from "wagmi";
-import { readBorrowSettings, readBtcAllowance, readPositions, readPrice } from "../lib/borrow-reads";
+import { readBorrowSettings, readBtcAllowance, readPositions, readPrice, type Position } from "../lib/borrow-reads";
+import { STATE_NONE, readPositionViews, readWalletPositionIds } from "../lib/loans";
 import { scanOpenOffers } from "../lib/stats";
 import { APP_CHAIN_ID } from "../lib/wagmi";
 
@@ -60,5 +61,49 @@ export function useBorrowData() {
     retry: false,
   });
 
-  return { client, address, walletReady, isConnected, chainId, offers, settings, price, balance, allowance, positions };
+  // Positions the wallet already put into Doji that carry no loan: they can borrow again with no approval or deposit.
+  const held = useQuery({
+    queryKey: ["doji-held-positions", address, price.data?.toString()],
+    queryFn: async (): Promise<Position[]> => {
+      const ids = await readWalletPositionIds(client as PublicClient, address as `0x${string}`);
+      const views = await readPositionViews(client as PublicClient, ids);
+      return views
+        .filter((view) => view.loan.state === STATE_NONE && view.lock !== null)
+        .map((view) => {
+          const lock = view.lock as NonNullable<typeof view.lock>;
+          return {
+            id: view.id,
+            amount: lock.amount,
+            end: lock.end,
+            isPermanent: lock.isPermanent,
+            accepted: true,
+            approved: true,
+            inDoji: true,
+            value: view.value ?? (lock.amount * (price.data as bigint)) / 10n ** 18n,
+          };
+        });
+    },
+    enabled: client !== undefined && walletReady && price.data !== undefined,
+    refetchInterval: POLL_MS,
+    retry: false,
+  });
+
+  // The wallet's own positions first, then the ones Doji holds.
+  const walletList = positions.data;
+  const heldList = held.data;
+  const merged = walletList === undefined ? undefined : [...walletList, ...(heldList ?? [])];
+
+  return {
+    client,
+    address,
+    walletReady,
+    isConnected,
+    chainId,
+    offers,
+    settings,
+    price,
+    balance,
+    allowance,
+    positions: { data: merged, isLoading: positions.isLoading || held.isLoading, isError: positions.isError },
+  };
 }

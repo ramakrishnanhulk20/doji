@@ -77,6 +77,8 @@ export type Position = {
   accepted: boolean;
   /** getApproved already names LoanManager. */
   approved: boolean;
+  /** Doji already holds this position for the wallet and it has no loan, so it needs no approval or deposit. */
+  inDoji: boolean;
   /** amount times the oracle price, MUSD, 18 decimals. */
   value: bigint;
 };
@@ -119,6 +121,7 @@ export async function readPositions(client: PublicClient, owner: Address, price:
       isPermanent: lock[2],
       accepted: escrow === NORMAL_ESCROW && grant === ZERO_ADDRESS,
       approved: approvedTo.toLowerCase() === book.loanManager.toLowerCase(),
+      inDoji: false,
       value: (lock[0] * price) / 10n ** 18n,
     };
   });
