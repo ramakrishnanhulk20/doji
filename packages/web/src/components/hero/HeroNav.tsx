@@ -1,13 +1,14 @@
 "use client";
 
-import type { MouseEvent } from "react";
+import Link from "next/link";
 import { cssVars } from "../../lib/css-vars";
 import { Seal } from "../Seal";
 
-const LINKS = ["How it works", "Lend", "Docs"] as const;
-
-// The lab has no pages to open, so every link is an anchor to "#" that stays put.
-const stay = (event: MouseEvent<HTMLAnchorElement>) => event.preventDefault();
+const LINKS = [
+  { label: "How it works", href: "#how" },
+  { label: "Lend", href: "/lend" },
+  { label: "Docs", href: "/docs" },
+] as const;
 
 export function HeroNav() {
   return (
@@ -17,11 +18,17 @@ export function HeroNav() {
         <span className="hero-brand-name display-face">Doji</span>
       </div>
       <ul className="hero-links">
-        {LINKS.map((label) => (
-          <li key={label}>
-            <a className="hero-link" href="#" onClick={stay}>
-              {label}
-            </a>
+        {LINKS.map((link) => (
+          <li key={link.label}>
+            {link.href.startsWith("/") ? (
+              <Link className="hero-link" href={link.href}>
+                {link.label}
+              </Link>
+            ) : (
+              <a className="hero-link" href={link.href}>
+                {link.label}
+              </a>
+            )}
           </li>
         ))}
       </ul>

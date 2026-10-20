@@ -4,9 +4,9 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useLiveStats } from "../../hooks/useLiveStats";
 import { cssVars } from "../../lib/css-vars";
 import { formatApr, formatBlock, formatBtc, formatDate, formatMusd, formatUsdCompact } from "../../lib/stats";
+import { CountValue } from "../CountValue";
 import { CREDIT_TIPS } from "./copy";
 
-const COUNT_MS = 1100;
 const COLUMN_START_MS = 1500;
 const COLUMN_STEP_MS = 90;
 const NBSP = " ";
@@ -16,62 +16,6 @@ type ReadState = "loading" | "error" | "ready";
 function readState(query: { data: unknown; isError: boolean }): ReadState {
   if (query.data !== undefined) return "ready";
   return query.isError ? "error" : "loading";
-}
-
-type CountValueProps = {
-  value: number;
-  format: (value: number) => string;
-  /** Milliseconds after the hero mounted before the count may start, so it plays while the column is visible. */
-  startAfterMs: number;
-  reduced: boolean;
-};
-
-// The count writes straight to the text node on each animation frame, so React never re-renders for it.
-function CountValue({ value, format, startAfterMs, reduced }: CountValueProps) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const mountedAt = useRef(0);
-  const formatRef = useRef(format);
-  const hasCounted = useRef(false);
-
-  useEffect(() => {
-    mountedAt.current = performance.now();
-  }, []);
-
-  useEffect(() => {
-    formatRef.current = format;
-  });
-
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-
-    if (hasCounted.current || reduced) {
-      hasCounted.current = true;
-      element.textContent = formatRef.current(value);
-      return;
-    }
-
-    element.textContent = formatRef.current(0);
-    let frame = 0;
-    const wait = Math.max(0, startAfterMs - (performance.now() - mountedAt.current));
-    const timer = window.setTimeout(() => {
-      const start = performance.now();
-      const step = (now: number) => {
-        const progress = Math.min(1, (now - start) / COUNT_MS);
-        element.textContent = formatRef.current(value * (1 - Math.pow(1 - progress, 3)));
-        if (progress < 1) frame = requestAnimationFrame(step);
-        else hasCounted.current = true;
-      };
-      frame = requestAnimationFrame(step);
-    }, wait);
-
-    return () => {
-      window.clearTimeout(timer);
-      cancelAnimationFrame(frame);
-    };
-  }, [value, reduced, startAfterMs]);
-
-  return <span ref={ref} />;
 }
 
 type CreditProps = {

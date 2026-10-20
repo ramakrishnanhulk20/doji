@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { Seal } from "./Seal";
 import "./button.css";
@@ -12,7 +13,7 @@ type ButtonProps = {
   disabled?: boolean;
   /** Lab only: holds a hover or focus look so it can sit next to the other states. */
   forceState?: "hover" | "focus";
-  /** When set the button renders as an anchor. "#" is a dead link that does nothing. */
+  /** When set the button renders as a link: a Next link for "/" routes, an anchor otherwise. "#" does nothing. */
   href?: string;
   className?: string;
   style?: CSSProperties;
@@ -61,6 +62,22 @@ export function Button({
       {loading && <Seal size={16} title="" busy className="btn-seal" />}
     </>
   );
+
+  if (href !== undefined && href.startsWith("/")) {
+    return (
+      <Link
+        href={href}
+        className={classes}
+        style={style}
+        aria-busy={loading || undefined}
+        aria-disabled={disabled || undefined}
+        tabIndex={disabled ? -1 : undefined}
+        data-loading={loading || undefined}
+      >
+        {content}
+      </Link>
+    );
+  }
 
   if (href !== undefined) {
     const onClick = (event: MouseEvent<HTMLAnchorElement>) => {

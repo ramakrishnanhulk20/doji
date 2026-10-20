@@ -35,10 +35,10 @@ export function TitleBlock({ headline }: { headline: HeadlineChoice }) {
         {SUBLINE}
       </p>
       <div className="hero-actions">
-        <Button href="#" arrow className="enter" style={cssVars({ "--delay": "1380ms" })}>
+        <Button href="/borrow" arrow className="enter" style={cssVars({ "--delay": "1380ms" })}>
           Borrow MUSD
         </Button>
-        <Button href="#" variant="secondary" className="enter" style={cssVars({ "--delay": "1460ms" })}>
+        <Button href="/lend" variant="secondary" className="enter" style={cssVars({ "--delay": "1460ms" })}>
           Lend MUSD
         </Button>
       </div>

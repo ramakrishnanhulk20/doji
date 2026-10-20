@@ -169,6 +169,20 @@ a {
   animation: shimmer-sweep 1.2s linear infinite;
 }
 
+/* The three candles draw in one after another: each wick and body grows from its middle. */
+.seal-part {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+svg[data-drawn="false"] .seal-part {
+  transform: scaleY(0);
+}
+
+svg[data-drawn="true"] .seal-part {
+  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1) var(--candle-delay, 0ms);
+}
+
 @keyframes wick-breathe {
   0%,
   100% {
@@ -195,6 +209,10 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  svg[data-drawn] .seal-part {
+    transition: none;
+  }
+
   .grain,
   .seal-wick-busy,
   .net-dot {
