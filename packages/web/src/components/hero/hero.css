@@ -1,0 +1,665 @@
+.hero {
+  --hero-h: max(100svh, 640px);
+  --stage-h: max(var(--hero-h), calc(100vw / 2.39));
+  --stage-w: calc(var(--stage-h) * 2400 / 1004);
+  --p: 0;
+  position: relative;
+  isolation: isolate;
+  height: var(--hero-h);
+  overflow: hidden;
+  background: var(--ink);
+}
+
+.hero-replay {
+  display: contents;
+}
+
+/* The print stage: sized and placed with CSS only, so the art stays anchored at every viewport.
+   The second left value keeps the cartouche 24px inside the right edge even at the 1.08 entrance scale:
+   with the scale origin at 92%, the cartouche's right edge (96.3% of the stage) sits at 96.65% there. */
+.print-stage {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: min(calc((100vw - var(--stage-w)) * 0.97), calc(100vw - 24px - var(--stage-w) * 0.9665));
+  width: var(--stage-w);
+  height: var(--stage-h);
+  aspect-ratio: 2400 / 1004;
+  container-type: size;
+  transform: translateY(calc(-50% + var(--p) * 18%));
+  animation: stage-fade 900ms ease-out backwards;
+}
+
+/* The scale origin sits on the cartouche, so the push-in moves toward the title plate and never shoves the
+   cartouche out of the frame. */
+.stage-motion {
+  position: absolute;
+  inset: 0;
+  transform-origin: 92% 8%;
+  animation:
+    stage-enter 2200ms cubic-bezier(0.16, 1, 0.3, 1) backwards,
+    stage-drift 26s ease-in-out 2200ms infinite alternate;
+}
+
+.stage-motion picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.print-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.92) contrast(1.05) brightness(0.9);
+}
+
+@keyframes stage-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes stage-enter {
+  from {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes stage-drift {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.04);
+  }
+}
+
+/* Our cartouche sits exactly over the print's own title box. */
+.cartouche {
+  position: absolute;
+  left: 88.3%;
+  top: 0.6%;
+  width: 8%;
+  height: 19.4%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--beni-deep);
+  /* The stamp grows down and sideways from the top edge, so it never crosses the top of the frame. */
+  transform-origin: 50% 0;
+  animation: cartouche-stamp 640ms linear 1200ms backwards;
+}
+
+.cartouche::before {
+  content: "";
+  position: absolute;
+  inset: 6%;
+  border: 1px solid var(--paper);
+  pointer-events: none;
+}
+
+/* The spec size of 4.1cqw makes the two characters about 197px tall in a 175px box at 1440 x 900, so they wrap into
+   two columns. 2.5cqw keeps one column with the seal below it inside the inner line. */
+.cartouche-text {
+  font-family: var(--font-doji-kanji), var(--font-shippori), serif;
+  font-weight: 800;
+  font-size: 2.5cqw;
+  white-space: nowrap;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  color: var(--paper);
+  writing-mode: vertical-rl;
+}
+
+.cartouche-seal {
+  width: 14%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+@keyframes cartouche-stamp {
+  0% {
+    opacity: 0;
+    scale: 1.18;
+    box-shadow: 0 0 0 0 rgba(196, 54, 70, 0.35);
+    animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  37.5% {
+    opacity: 1;
+    scale: 1;
+    box-shadow: 0 0 0 6px rgba(196, 54, 70, 0.35);
+    animation-timing-function: ease-out;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+    box-shadow: 0 0 0 6px rgba(196, 54, 70, 0);
+  }
+}
+
+/* Layers over the stage. They belong to the hero, not the stage, so the parallax never lifts the scrims. */
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.layer-bottom {
+  background: linear-gradient(
+    to top,
+    #0e0c0b 0%,
+    rgba(14, 12, 11, 0.9) 16%,
+    rgba(14, 12, 11, 0.5) 40%,
+    rgba(14, 12, 11, 0) 64%
+  );
+}
+
+.layer-left {
+  background: linear-gradient(
+    to right,
+    rgba(14, 12, 11, 0.72) 0%,
+    rgba(14, 12, 11, 0.32) 36%,
+    rgba(14, 12, 11, 0) 58%
+  );
+}
+
+.layer-vignette {
+  background: radial-gradient(120% 90% at 62% 42%, rgba(14, 12, 11, 0) 55%, rgba(14, 12, 11, 0.55) 100%);
+}
+
+.layer-top {
+  background: linear-gradient(to bottom, rgba(14, 12, 11, 0.7), rgba(14, 12, 11, 0) 128px);
+}
+
+/* Entrances. Each element sets --delay (and --rise when it is not 24px). */
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise, 24px));
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.enter {
+  animation: enter-rise 600ms cubic-bezier(0.22, 1, 0.36, 1) var(--delay, 0ms) backwards;
+}
+
+/* Nav */
+.hero-nav {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 72px;
+  padding: 0 64px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 40px;
+}
+
+.hero-brand-seal {
+  width: 28px;
+  height: 28px;
+}
+
+.hero-brand-name {
+  font-size: 22px;
+  font-weight: var(--display-wordmark-weight);
+  line-height: 1;
+}
+
+.hero-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  margin: 0 32px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hero-link {
+  position: relative;
+  display: inline-block;
+  padding: 6px 0;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--paper-dim);
+  transition: color 200ms ease-out;
+}
+
+.hero-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 200ms ease-out;
+}
+
+.hero-link:hover,
+.hero-link:focus-visible {
+  color: var(--paper);
+}
+
+.hero-link:hover::after,
+.hero-link:focus-visible::after {
+  transform: scaleX(1);
+}
+
+.net-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+/* Title block */
+.title-block {
+  position: absolute;
+  z-index: 3;
+  left: 64px;
+  bottom: 152px;
+  max-width: 760px;
+  transform: translateY(calc(var(--p) * -80px));
+  opacity: clamp(0, calc((0.9 - var(--p)) / 0.5), 1);
+}
+
+.eyebrow {
+  margin: 0 0 20px;
+}
+
+.wordmark {
+  display: flow-root;
+  margin: 0 0 0.3em;
+  font-size: clamp(4.5rem, min(13.5vw, 21vh), 12rem);
+  font-weight: var(--display-wordmark-weight);
+  line-height: 0.88;
+  letter-spacing: -0.035em;
+}
+
+/* The padding gives the clip room for the tall and hanging strokes; the negative margin keeps the layout unchanged. */
+.wordmark-line {
+  display: block;
+  overflow: hidden;
+  padding: 0.06em 0.05em 0.24em;
+  margin: -0.06em -0.05em -0.24em;
+  white-space: nowrap;
+}
+
+.wordmark-letter {
+  display: inline-block;
+  animation: letter-rise 900ms cubic-bezier(0.22, 1, 0.36, 1) calc(600ms + var(--i) * 60ms) backwards;
+}
+
+@keyframes letter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(40%);
+  }
+  35% {
+    opacity: 1;
+  }
+}
+
+.headline {
+  margin: 0 0 16px;
+  max-width: 20ch;
+  font-size: clamp(1.625rem, 2.7vw, 2.625rem);
+  font-weight: var(--display-headline-weight);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.headline-line {
+  display: block;
+}
+
+.subline {
+  margin: 0 0 32px;
+  max-width: 54ch;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--paper-dim);
+}
+
+.hero-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* Credits row */
+.credits {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 104px;
+  padding: 0 64px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 24px;
+  align-items: center;
+  background: linear-gradient(to top, rgba(14, 12, 11, 0.92), rgba(14, 12, 11, 0.6));
+  opacity: clamp(0, calc((0.7 - var(--p)) / 0.4), 1);
+}
+
+/* The top border is its own line so it can draw across. */
+.credits::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--line);
+  transform-origin: left center;
+  animation: line-draw 700ms ease-out 1500ms backwards;
+}
+
+@keyframes line-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.credit {
+  position: relative;
+  min-width: 0;
+  border-radius: 8px;
+}
+
+.credit-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 1.375rem;
+  font-weight: 500;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--paper);
+}
+
+.credit-label {
+  margin-top: 2px;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--paper);
+}
+
+.credit-source {
+  margin-top: 2px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.25;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.credit-bar {
+  display: block;
+  width: 120px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.credit-bar-source {
+  display: block;
+  width: 140px;
+  height: 11px;
+  margin-top: 1px;
+  border-radius: 3px;
+}
+
+.credit-unavailable {
+  color: var(--watch);
+}
+
+.credit-tip {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  bottom: calc(100% + 12px);
+  width: max-content;
+  max-width: 280px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: normal;
+  color: var(--paper);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition:
+    opacity 160ms ease-out,
+    transform 160ms ease-out,
+    visibility 0s linear 160ms;
+}
+
+.credit-tip[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+}
+
+.live-dot {
+  position: relative;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--safe);
+}
+
+.live-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--safe);
+  animation: ring-pulse 600ms ease-out forwards;
+}
+
+@keyframes ring-pulse {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* Phone: 375 x 812. The print becomes a hand scroll that unrolls as the hero leaves. */
+@media (max-width: 767px) {
+  .hero {
+    --stage-h: var(--hero-h);
+  }
+
+  .print-stage {
+    left: clamp(
+      calc(100vw - var(--stage-w)),
+      calc(50vw - (0.5 + 0.32 * var(--p)) * var(--stage-w)),
+      0px
+    );
+    transform: translateY(-50%);
+  }
+
+  .layer-bottom {
+    background: linear-gradient(
+      to top,
+      #0e0c0b 0%,
+      rgba(14, 12, 11, 0.9) 30%,
+      rgba(14, 12, 11, 0.5) 55%,
+      rgba(14, 12, 11, 0) 72%
+    );
+  }
+
+  .hero-nav {
+    height: 60px;
+    padding: 0 20px;
+  }
+
+  .hero-brand-seal {
+    width: 24px;
+    height: 24px;
+  }
+
+  .hero-brand-name {
+    font-size: 20px;
+  }
+
+  .hero-links {
+    display: none;
+  }
+
+  .net-tag {
+    margin-left: auto;
+  }
+
+  /* 0.3em leaves the j only 11px clear of the headline at 375 wide in option A, so the phone gets a little more. */
+  .wordmark {
+    margin-bottom: 0.35em;
+    font-size: 4.5rem;
+  }
+
+  .title-block {
+    left: 20px;
+    right: 20px;
+    bottom: 208px;
+    max-width: none;
+    transform: none;
+    opacity: 1;
+  }
+
+  .subline {
+    font-size: 1rem;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-actions .btn {
+    width: 100%;
+  }
+
+  .credits {
+    height: 176px;
+    padding: 16px 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+    row-gap: 16px;
+    align-content: center;
+    align-items: start;
+    opacity: 1;
+  }
+
+  .credit-value {
+    font-size: 1.125rem;
+  }
+
+  .credit:nth-child(even) .credit-tip {
+    left: auto;
+    right: 0;
+  }
+}
+
+/* Reduced motion: no scale, drift, parallax, pan, letter stagger or count-up. Everything fades in over 200ms. */
+@media (prefers-reduced-motion: reduce) {
+  .print-stage {
+    animation: fade-in 200ms ease-out backwards;
+  }
+
+  .stage-motion {
+    animation: none;
+  }
+
+  .enter,
+  .wordmark-letter,
+  .cartouche,
+  .credits::before {
+    animation: fade-in 200ms ease-out backwards;
+  }
+
+  .live-ring {
+    display: none;
+  }
+
+  .credit-tip {
+    transition: none;
+  }
+
+  .hero-link,
+  .hero-link::after {
+    transition: none;
+  }
+}
+
+.hero[data-motion="reduced"] .print-stage {
+  animation: fade-in 200ms ease-out backwards;
+}
+
+.hero[data-motion="reduced"] .stage-motion {
+  animation: none;
+}
+
+.hero[data-motion="reduced"] .enter,
+.hero[data-motion="reduced"] .wordmark-letter,
+.hero[data-motion="reduced"] .cartouche,
+.hero[data-motion="reduced"] .credits::before {
+  animation: fade-in 200ms ease-out backwards;
+}
+
+.hero[data-motion="reduced"] .live-ring {
+  display: none;
+}
+
+.hero[data-motion="reduced"] .credit-tip,
+.hero[data-motion="reduced"] .hero-link,
+.hero[data-motion="reduced"] .hero-link::after {
+  transition: none;
+}

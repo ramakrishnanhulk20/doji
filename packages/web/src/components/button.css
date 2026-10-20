@@ -1,0 +1,88 @@
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 180ms ease-out,
+    border-color 180ms ease-out,
+    transform 180ms ease-out;
+}
+
+.btn-primary {
+  background: var(--beni-deep);
+  color: var(--paper);
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: rgba(241, 230, 210, 0.35);
+  color: var(--paper);
+}
+
+.btn-arrow {
+  flex: none;
+  transition: transform 180ms ease-out;
+}
+
+.btn-primary:is(:hover, .is-hover):not(:disabled, [aria-disabled="true"], [aria-busy="true"]) {
+  background: var(--beni-hover);
+  transform: translateY(-1px);
+}
+
+.btn:is(:hover, .is-hover):not(:disabled, [aria-disabled="true"], [aria-busy="true"]) .btn-arrow {
+  transform: translateX(4px);
+}
+
+.btn-secondary:is(:hover, .is-hover):not(:disabled, [aria-disabled="true"], [aria-busy="true"]) {
+  border-color: rgba(241, 230, 210, 0.8);
+  background: rgba(241, 230, 210, 0.06);
+}
+
+/* After the hover rules on purpose: a press cancels the lift. */
+.btn:active:not(:disabled, [aria-disabled="true"], [aria-busy="true"]) {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn.is-focus {
+  outline: 2px solid var(--beni-text);
+  outline-offset: 3px;
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The label stays in the layout so the button keeps its width while the seal replaces it visually. */
+.btn[data-loading] .btn-label,
+.btn[data-loading] .btn-arrow {
+  opacity: 0;
+}
+
+.btn-seal {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: -8px 0 0 -8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn-arrow {
+    transition: none;
+  }
+}

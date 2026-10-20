@@ -28,6 +28,12 @@ typechain-types/
 coverage/
 lcov.info
 broadcast/*/31337/
+*.tsbuildinfo
+next-env.d.ts
+# Written from packages/contracts/deployments before every dev and build run
+packages/web/src/generated/
+# Re-written by next dev on every start
+packages/web/AGENTS.md
 
 # Foundry run logs (deploy evidence lives in deployments/ and the README)
 broadcast/

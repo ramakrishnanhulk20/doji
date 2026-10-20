@@ -1,0 +1,211 @@
+.lab-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 120px;
+  z-index: 100;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.lab-toggle {
+  display: none;
+}
+
+.lab-title,
+.lab-field-label {
+  display: block;
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.lab-title {
+  margin-bottom: 10px;
+}
+
+.lab-field + .lab-field {
+  margin-top: 10px;
+}
+
+.lab-field-label {
+  margin-bottom: 4px;
+}
+
+.lab-segments {
+  display: flex;
+  gap: 4px;
+}
+
+.lab-segment {
+  position: relative;
+  flex: 1;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--paper-dim);
+  cursor: pointer;
+  transition:
+    color 160ms ease-out,
+    background-color 160ms ease-out,
+    border-color 160ms ease-out;
+}
+
+.lab-segment:hover {
+  color: var(--paper);
+  background: rgba(241, 230, 210, 0.06);
+  border-color: var(--line-strong);
+}
+
+.lab-segment[aria-pressed="true"] {
+  color: var(--paper);
+}
+
+.lab-segment-active {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: var(--ink-3);
+}
+
+.lab-segment-text {
+  position: relative;
+}
+
+.lab-replay {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin-top: 12px;
+  border: 1px solid rgba(241, 230, 210, 0.35);
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--paper);
+  cursor: pointer;
+  transition:
+    border-color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+.lab-replay:hover {
+  border-color: rgba(241, 230, 210, 0.8);
+  background: rgba(241, 230, 210, 0.06);
+}
+
+/* Phone: the panel folds into a 40 by 40 button labelled Lab, under the network tag. It opens downward. */
+@media (max-width: 767px) {
+  .lab-panel {
+    top: 68px;
+    right: 12px;
+    bottom: auto;
+  }
+
+  .lab-panel[data-open="false"] {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+
+  .lab-panel[data-open="false"] .lab-body {
+    display: none;
+  }
+
+  .lab-panel[data-open="true"] {
+    width: min(280px, calc(100vw - 24px));
+  }
+
+  .lab-panel[data-open="true"] .lab-title {
+    display: none;
+  }
+
+  .lab-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 38px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--paper-dim);
+    cursor: pointer;
+    transition:
+      color 160ms ease-out,
+      background-color 160ms ease-out;
+  }
+
+  .lab-toggle:hover {
+    color: var(--paper);
+    background: rgba(241, 230, 210, 0.06);
+  }
+
+  .lab-panel[data-open="true"] .lab-toggle {
+    height: 28px;
+    margin-bottom: 8px;
+    justify-content: flex-start;
+    padding: 0 4px;
+  }
+}
+
+/* Palette section pieces */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--chip) 40%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--chip) 10%, transparent);
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--chip);
+}
+
+.chip-mark {
+  width: 8px;
+  height: 8px;
+  background: var(--chip);
+}
+
+.chip-mark-circle {
+  border-radius: 50%;
+}
+
+.chip-mark-diamond {
+  transform: rotate(45deg) scale(0.9);
+}
+
+.image-credit-link {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition:
+    color 200ms ease-out,
+    background-size 200ms ease-out;
+}
+
+.image-credit-link:hover,
+.image-credit-link:focus-visible {
+  color: var(--paper);
+  background-size: 100% 1px;
+}
