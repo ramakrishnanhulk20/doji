@@ -26,12 +26,17 @@ interface ILoanManager {
         address borrower;
     }
 
+    /// @dev The LTV limits and the three auction terms are copied from the globals when the loan opens or
+    ///      rolls (C19), so a later setter call never reaches an open loan. Packs into two storage slots.
     struct Loan {
         uint64 maturity;
         uint128 face;
         uint128 repaid;
         uint16 maxLtvBps;
         uint16 liqLtvBps;
+        uint16 penaltyBps;
+        uint16 auctionFloorBps;
+        uint32 auctionDuration;
         LoanState state;
     }
 
@@ -83,7 +88,7 @@ interface ILoanManager {
     event GuardianSet(address indexed guardian);
     /// @notice New borrows and lock creation were paused or resumed.
     event BorrowsPausedSet(bool paused);
-    /// @notice New auctions will use these settings.
+    /// @notice Loans opened or rolled from now on will be auctioned on these settings.
     event AuctionParamsSet(uint16 penaltyBps, uint16 auctionFloorBps, uint32 auctionDuration);
     /// @notice A loan went to auction, with the curve snapshotted for its whole life.
     event AuctionStarted(
@@ -257,6 +262,8 @@ interface ILoanManager {
     error RescueExceedsSurplus(address token, uint256 amount, uint256 surplus);
     /// @notice veBTC is never moved by rescueToken; stray positions go through rescuePosition.
     error TokenNotRescuable(address token);
+    /// @notice Ownership can never be given up, so the rescue paths always keep an owner.
+    error RenounceDisabled();
 
     /// @notice Hands a veBTC position to LoanManager and records the caller as its borrower.
     /// @dev The caller must own the position and approve this contract for that single token first.
@@ -332,13 +339,15 @@ interface ILoanManager {
     function repay(uint256 tokenId, uint256 amount) external returns (uint256 paid);
 
     /// @notice Rolls an Active loan into a new one at a later maturity, repaying the old market in full.
-    /// @dev Borrower only, at or before the old maturity, and never paused (C19). The new loan goes through
-    ///      the same open-loan path as borrow (offer, maturity, lock-end, LTV, minimum-loan and collateral
-    ///      checks, fresh LTV snapshots); its principal comes to LoanManager. If the principal covers what
-    ///      is owed, the excess goes to the caller; otherwise the shortfall is pulled from the caller.
-    ///      Reverts NotBorrower, LoanNotActive, LoanOverdue, MaturityNotLater, TopUpTooHigh,
-    ///      TransferShortfall, any borrow revert except BorrowsPaused, and any fill revert. Emits LoanClosed for
-    ///      the old loan, Borrowed for the new one (principal and face), then Rolled.
+    /// @dev Borrower only, at or before the old maturity. The new loan goes through the same open-loan path
+    ///      as borrow (offer, maturity, lock-end, LTV, minimum-loan and collateral checks, fresh snapshots of
+    ///      the LTV limits and auction terms); its principal comes to LoanManager. If the principal covers what
+    ///      is owed, the excess goes to the caller; otherwise the shortfall is pulled from the caller. While
+    ///      borrows are paused a roll that would pay anything out reverts BorrowsPaused, because that is new
+    ///      borrowing; refinancing and top-up rolls still work while paused (C19). Reverts NotBorrower,
+    ///      LoanNotActive, LoanOverdue, MaturityNotLater, TopUpTooHigh, TransferShortfall, BorrowsPaused (paused
+    ///      with an excess), any other borrow revert, and any fill revert. Emits LoanClosed for the old loan,
+    ///      Borrowed for the new one (principal and face), then Rolled.
     /// @param tokenId Position whose loan to roll.
     /// @param newMaturity Thursday 00:00 UTC date of the new loan, later than the old one.
     /// @param offerIds Offers to take, all for `newMaturity`.
@@ -419,9 +428,10 @@ interface ILoanManager {
     /// @notice Puts an overdue or unsafe loan up for sale in a falling-price auction. Anyone may call.
     /// @dev Needs the loan Active, the position in custody and a fresh price, and either now > maturity or
     ///      owed > value * the loan's liqLtvBps / 10,000. Snapshots the start value (the collateralValue
-    ///      figure), the floor max(value * auctionFloorBps / 10,000, min(owed, value)), the duration and the
-    ///      penalty. Never paused. Reverts LoanNotActive, NotInCustody, PriceUnavailable, a LockReader error,
-    ///      or NotLiquidatable. Emits AuctionStarted.
+    ///      figure), the floor max(value * floor share / 10,000, min(owed, value)), the duration and the
+    ///      penalty. The floor share, duration and penalty come from the loan's own snapshot, taken when it
+    ///      opened or last rolled, never from the current settings. Never paused. Reverts LoanNotActive,
+    ///      NotInCustody, PriceUnavailable, a LockReader error, or NotLiquidatable. Emits AuctionStarted.
     /// @param tokenId Position whose loan to auction.
     function startAuction(uint256 tokenId) external;
 
@@ -435,23 +445,27 @@ interface ILoanManager {
     /// @param tokenId Position whose auction to cancel.
     function cancelAuction(uint256 tokenId) external;
 
-    /// @notice The current auction price in MUSD: the start value falling linearly to the floor over the
-    ///         duration, then flat at the floor.
-    /// @dev Reverts NoAuction when the loan is not in Auction.
+    /// @notice The current auction price in MUSD, exactly what a purchase would charge now: the auction's own
+    ///         curve (the start value falling linearly to the snapshotted floor over the duration, then flat),
+    ///         never below the floor recomputed on a fresh value (Resolution.salePrice, C29).
+    /// @dev Reads the oracle on every call, overdue auctions included. Reverts NoAuction when the loan is not
+    ///      in Auction, PriceUnavailable when the price is stale, or a LockReader error.
     /// @param tokenId Position in auction.
     /// @return price MUSD a purchase would pay now.
     function auctionPrice(uint256 tokenId) external view returns (uint256 price);
 
     /// @notice Buys an auctioned position at the current auction price. Anyone may buy, the borrower too.
-    /// @dev Needs the loan in Auction, the position in custody and now <= deadline. For an auction that started at
-    ///      or before maturity (an LTV auction) a fresh price must still show the loan unsafe, also past
-    ///      maturity; an auction started after maturity sells with no price. Pulls exactly the price P from the
-    ///      caller. With
-    ///      D the debt still owed, the market gets min(P, D), the treasury min(penalty x D, P - min(P, D)) and
-    ///      the borrower the rest as a MUSD claimable; the three sum to P. Deletes the loan, auction and
-    ///      position, then sends the NFT with transferFrom, so a buyer contract that rejects ERC-721 hooks
-    ///      still receives it. Never paused. Reverts DeadlinePassed, NoAuction, NotInCustody, StillSafe,
-    ///      PriceUnavailable, PriceAboveMax or TransferShortfall. Emits Purchased and LoanClosed.
+    /// @dev Needs the loan in Auction, the position in custody, now <= deadline and a fresh price, overdue
+    ///      auctions included. The price P is Resolution.salePrice: the auction's curve, never below the floor
+    ///      recomputed on the fresh value, so the market always receives at least min(D, value now) (C29). For an
+    ///      auction that started at or before maturity (an LTV auction) the fresh value must still show the loan
+    ///      unsafe, also past maturity. Pulls exactly P from the caller. With D the debt still owed, the market
+    ///      gets min(P, D), the treasury min(penalty x D, P - min(P, D)) and the borrower the rest; the
+    ///      borrower's and the treasury's shares are credited as MUSD claimables, collected through claim(), so
+    ///      no treasury address can block a sale. The three sum to P. Deletes the loan, auction and position,
+    ///      then sends the NFT with transferFrom, so a buyer contract that rejects ERC-721 hooks still receives
+    ///      it. Never paused. Reverts DeadlinePassed, NoAuction, NotInCustody, PriceUnavailable, a LockReader
+    ///      error, StillSafe, PriceAboveMax or TransferShortfall. Emits Purchased and LoanClosed.
     /// @param tokenId Position to buy.
     /// @param maxPay Most MUSD the caller agrees to pay.
     /// @param deadline Last timestamp at which the purchase may run.
@@ -478,8 +492,9 @@ interface ILoanManager {
     ///      end has passed, no standing vote and a fresh price. The BTC received is the measured change in
     ///      LoanManager's BTC balance around veBTC.withdraw. The market gets min(received, owed / price
     ///      rounded up), the treasury min(the rest, penalty x owed / price rounded down) and the borrower the
-    ///      rest as a BTC claimable; the three sum to the BTC received. Deletes the loan, auction and
-    ///      position. Never paused. Reverts NoAuction, FloorTimeNotReached, StillSafe, NotInCustody,
+    ///      rest; the treasury's and the borrower's shares are credited as BTC claimables, collected through
+    ///      claim(), so no treasury address can block a settle. The three sum to the BTC received. Deletes the
+    ///      loan, auction and position. Never paused. Reverts NoAuction, FloorTimeNotReached, StillSafe, NotInCustody,
     ///      LockIsPermanent, LockNotEnded, StillVoted or PriceUnavailable. Emits Settled and LoanClosed.
     /// @param tokenId Position to settle.
     function settle(uint256 tokenId) external;
@@ -563,12 +578,13 @@ interface ILoanManager {
     /// @return unsafe Whether the loan is above its liquidation line.
     function isUnsafe(uint256 tokenId) external view returns (bool unsafe);
 
-    /// @notice MUSD from auction surpluses waiting for `account` to claim.
+    /// @notice MUSD from auction surpluses, and for the treasury auction penalties, waiting for `account`.
     /// @param account Claimable holder.
     /// @return amount MUSD waiting.
     function claimableMusd(address account) external view returns (uint256 amount);
 
-    /// @notice BTC from settle leftovers and expired-lock fee claims waiting for `account` to claim.
+    /// @notice BTC from settle leftovers and expired-lock fee claims, and for the treasury settle penalties,
+    ///         waiting for `account` to claim.
     /// @param account Claimable holder.
     /// @return amount BTC waiting.
     function claimableBtc(address account) external view returns (uint256 amount);
@@ -643,16 +659,17 @@ interface ILoanManager {
     function minLoan() external view returns (uint128);
 
     /// @notice Penalty on the debt paid to the treasury from an auction or settle, in basis points.
-    ///         Snapshotted per auction.
+    ///         Snapshotted per loan when it opens or rolls.
     /// @return The penalty.
     function penaltyBps() external view returns (uint16);
 
     /// @notice Lowest the auction price falls to, as a share of the start value, in basis points. The
-    ///         floor is never below min(owed, start value). Snapshotted per auction.
+    ///         floor is never below min(owed, start value). Snapshotted per loan when it opens or rolls.
     /// @return The floor share.
     function auctionFloorBps() external view returns (uint16);
 
-    /// @notice Seconds the auction price takes to fall to its floor. Snapshotted per auction.
+    /// @notice Seconds the auction price takes to fall to its floor. Snapshotted per loan when it opens or
+    ///         rolls.
     /// @return The duration.
     function auctionDuration() external view returns (uint32);
 
@@ -671,13 +688,13 @@ interface ILoanManager {
     /// @param newLiqLtvBps Liquidation line for new loans.
     function setRiskParams(uint16 newMaxLtvBps, uint16 newLiqLtvBps) external;
 
-    /// @notice Owner only. Sets the penalty, floor and duration for future auctions; running auctions keep
-    ///         theirs.
+    /// @notice Owner only. Sets the penalty, floor and duration for loans opened or rolled from now on; open
+    ///         loans and running auctions keep theirs.
     /// @dev Reverts AuctionParamsOutOfBounds unless penaltyBps <= 1000, 5000 <= auctionFloorBps <= 9500 with
     ///      auctionFloorBps above liqLtvBps, and 1 hour <= auctionDuration <= 7 days. Emits AuctionParamsSet.
-    /// @param newPenaltyBps Penalty for new auctions.
-    /// @param newAuctionFloorBps Floor share for new auctions.
-    /// @param newAuctionDuration Duration for new auctions.
+    /// @param newPenaltyBps Penalty for loans opened or rolled from now on.
+    /// @param newAuctionFloorBps Floor share for loans opened or rolled from now on.
+    /// @param newAuctionDuration Duration for loans opened or rolled from now on.
     function setAuctionParams(uint16 newPenaltyBps, uint16 newAuctionFloorBps, uint32 newAuctionDuration) external;
 
     /// @notice Owner only. Sets the minimum loan. Reverts MinLoanOutOfBounds outside 1 to 100,000 MUSD.
@@ -690,9 +707,9 @@ interface ILoanManager {
     function setGuardian(address newGuardian) external;
 
     /// @notice Guardian or owner. Pauses or resumes new borrows and lock creation (borrow, lockAndDeposit,
-    ///         lockAndBorrow) only; roll, repay, withdrawCollateral, every auction and settle step, writeOff,
-    ///         claim and every pass-through are never paused. Reverts NotGuardianOrOwner. Emits
-    ///         BorrowsPausedSet.
+    ///         lockAndBorrow), and the cash-out part of a roll; refinancing and top-up rolls, repay,
+    ///         withdrawCollateral, every auction and settle step, writeOff, claim and every pass-through are
+    ///         never paused. Reverts NotGuardianOrOwner. Emits BorrowsPausedSet.
     /// @param paused True to pause.
     function setBorrowsPaused(bool paused) external;
 }

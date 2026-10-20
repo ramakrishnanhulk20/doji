@@ -96,15 +96,37 @@ run_step() {
 # a third, prints only the block of the first receipt for that function.
 read_broadcast() {
   # Windows python ends lines with a carriage return, which forge would read as part of a number.
-  "$PY" -I - "$BROADCAST_DIR/$1-latest.json" "${2:-}" "${3:-}" "$BORROWED_TOPIC" <<'PYEOF' | tr -d '\r'
+  "$PY" -I - "$BROADCAST_DIR/$1-latest.json" "${2:-}" "${3:-}" "$BORROWED_TOPIC" "$RPC_URL" <<'PYEOF' | tr -d '\r'
 import json
 import sys
+import time
+import urllib.request
 
-path, want, mode, borrowed_topic = sys.argv[1:5]
+path, want, mode, borrowed_topic, rpc_url = sys.argv[1:6]
 run = json.load(open(path))
 receipts = {r["transactionHash"]: r for r in run["receipts"]}
+
+
+def fetch_receipt(tx_hash):
+    # Some of the nodes behind Mezo's public RPC answer null for a receipt the others have (2 of 6 answered on
+    # 2026-10-20), and forge then leaves that receipt out of its run file, so a missing one is asked for again
+    # before the transaction counts as failed.
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "eth_getTransactionReceipt", "params": [tx_hash]})
+    headers = {"content-type": "application/json", "user-agent": "doji-prove-it"}
+    for _ in range(15):
+        try:
+            request = urllib.request.Request(rpc_url, data=body.encode(), headers=headers)
+            result = json.load(urllib.request.urlopen(request, timeout=20)).get("result")
+            if result:
+                return result
+        except (OSError, ValueError):
+            pass
+        time.sleep(2)
+    return None
+
+
 for tx in run["transactions"]:
-    receipt = receipts.get(tx["hash"])
+    receipt = receipts.get(tx["hash"]) or fetch_receipt(tx["hash"])
     ok = receipt is not None and int(receipt["status"], 16) == 1
     label = tx.get("function") or tx.get("transactionType") or "transaction"
     if not want:

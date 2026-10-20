@@ -33,6 +33,7 @@ contract PassThroughTest is LoanFixture {
     address internal gauge = makeAddr("gauge");
     address[] internal pools;
     uint256[] internal weights;
+    uint256 internal treasuryMusdOwed;
 
     function setUp() public override {
         super.setUp();
@@ -122,8 +123,8 @@ contract PassThroughTest is LoanFixture {
         vm.stopPrank();
     }
 
-    /// @dev Alice's TOKEN goes to auction and is bought, leaving her a MUSD claimable; bob's TOKEN_C, on a lock
-    ///      that has ended, collects an expired-lock fee claim, leaving him a BTC claimable.
+    /// @dev Alice's TOKEN goes to auction and is bought, leaving her and the treasury MUSD claimables; bob's
+    ///      TOKEN_C, on a lock that has ended, collects an expired-lock fee claim, leaving him a BTC claimable.
     function _makeClaimables() internal returns (uint256 musdOwed, uint256 btcOwed) {
         _openLoan();
         _makeUnsafe(TOKEN);
@@ -142,16 +143,19 @@ contract PassThroughTest is LoanFixture {
 
         musdOwed = lm.claimableMusd(alice);
         btcOwed = lm.claimableBtc(bob);
+        treasuryMusdOwed = lm.claimableMusd(treasury);
         assertGt(musdOwed, 0);
+        assertGt(treasuryMusdOwed, 0);
         assertEq(btcOwed, 0.05e18);
     }
 
     function _assertClaimablesUntouched(uint256 musdOwed, uint256 btcOwed) internal view {
         assertEq(lm.claimableMusd(alice), musdOwed, "C28: MUSD claimable moved");
+        assertEq(lm.claimableMusd(treasury), treasuryMusdOwed, "C28: treasury claimable moved");
         assertEq(lm.claimableBtc(bob), btcOwed, "C28: BTC claimable moved");
-        assertEq(lm.totalClaimableMusd(), musdOwed);
+        assertEq(lm.totalClaimableMusd(), musdOwed + treasuryMusdOwed);
         assertEq(lm.totalClaimableBtc(), btcOwed);
-        assertGe(musd.balanceOf(address(lm)), musdOwed, "C28: MUSD claimables unbacked");
+        assertGe(musd.balanceOf(address(lm)), musdOwed + treasuryMusdOwed, "C28: MUSD claimables unbacked");
         assertGe(btc.balanceOf(address(lm)), btcOwed, "C28: BTC claimables unbacked");
     }
 
@@ -631,9 +635,10 @@ contract PassThroughTest is LoanFixture {
 
     function test_C26_PrepareSettleWaitsOneEpochForAVoteCastThatEpoch() public {
         ve.setLock(TOKEN, LOCK_BTC, 0, true);
-        _openLoan();
+        // Before the loan opens: the loan snapshots its auction terms, so a later change would not reach it.
         vm.prank(owner);
         lm.setAuctionParams(PENALTY, FLOOR, 1 hours);
+        _openLoan();
         _makeUnsafe(TOKEN);
         lm.startAuction(TOKEN);
         // A ValidatorsVoter vote in the epoch the floor time falls in, standing in for one cast before deposit.
@@ -696,7 +701,7 @@ contract PassThroughTest is LoanFixture {
     }
 
     function test_C19_PassThroughsAndRollRunWhileBorrowsArePaused() public {
-        _openLoan();
+        uint256 face = _openLoan();
         vm.startPrank(guardian);
         lm.setBorrowsPaused(true);
         cm.setOffersPaused(true);
@@ -707,7 +712,8 @@ contract PassThroughTest is LoanFixture {
         _owe(bribes, TOKEN, tokenB, 1e18);
         _claimAB(alice, TOKEN);
         dist.setClaimable(TOKEN, 0.01e18);
-        (uint256[] memory ids, uint128[] memory amounts) = _one(offerM2, 31_000e18);
+        // An exact refinance: a roll that pays out new MUSD is new borrowing and is paused.
+        (uint256[] memory ids, uint128[] memory amounts) = _one(offerM2, uint128(face));
         vm.startPrank(alice);
         lm.claimRebase(TOKEN);
         lm.extendLock(TOKEN, 28 days);

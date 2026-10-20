@@ -32,8 +32,8 @@ import {PassThrough} from "./libraries/PassThrough.sol";
 ///      fork test), so native BTC never needs receiving (C18). A position can only become collateral through
 ///      deposit(), which pulls it from the caller, or lockAndDeposit(), which mints it here for the caller, so
 ///      a token pushed in any other way never gets a borrower; the owner can only send such a token on with
-///      rescuePosition. Borrower payouts from resolutions and expired-lock fee claims wait as claimables, which
-///      this contract's balances always cover.
+///      rescuePosition. Borrower payouts from resolutions, expired-lock fee claims and the treasury's penalties
+///      wait as claimables, which this contract's balances always cover.
 contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
@@ -307,9 +307,9 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         bool overdue = block.timestamp > maturity;
         if (!overdue && !Resolution.isUnsafe(owed, usdValue, loan.liqLtvBps)) revert NotLiquidatable(tokenId);
 
-        uint256 floorPrice = Resolution.floorPrice(usdValue, owed, auctionFloorBps);
-        uint32 duration = auctionDuration;
-        uint16 penalty = penaltyBps;
+        uint256 floorPrice = Resolution.floorPrice(usdValue, owed, loan.auctionFloorBps);
+        uint32 duration = loan.auctionDuration;
+        uint16 penalty = loan.penaltyBps;
         loan.state = LoanState.Auction;
         _auctions[tokenId] = Auction({
             startTime: block.timestamp.toUint64(),
@@ -357,10 +357,18 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         _requireCustody(tokenId);
         uint256 owed = uint256(loan.face) - loan.repaid;
         Auction memory auction = _auctions[tokenId];
-        // An LTV auction (started at or before maturity) sells only while a fresh price still shows the loan
-        // unsafe, past maturity too; an overdue auction sells on its own curve with no price needed.
-        if (auction.startTime <= loan.maturity && !_unsafeNow(tokenId, owed, loan.liqLtvBps)) revert StillSafe(tokenId);
-        paid = _priceOf(auction);
+        {
+            (,,, uint256 valueNow) = _collateral(tokenId);
+            // An LTV auction (started at or before maturity) sells only while the fresh value still shows the
+            // loan unsafe, past maturity too.
+            if (auction.startTime <= loan.maturity && !Resolution.isUnsafe(owed, valueNow, loan.liqLtvBps)) {
+                revert StillSafe(tokenId);
+            }
+            // C29 must hold when the sale happens, not only when the auction started: a curve fixed on a crashed
+            // start value would sell a rebounded position below the debt, so the floor is recomputed on today's
+            // value and the market always gets at least min(owed, value now).
+            paid = Resolution.salePrice(_priceOf(auction), valueNow, owed, loan.auctionFloorBps);
+        }
         // The price moves with time by design; maxPay and the deadline bound what a buyer can be charged.
         // forge-lint: disable-next-line(block-timestamp)
         if (paid > maxPay) revert PriceAboveMax(paid, maxPay);
@@ -412,7 +420,14 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
             claimableBtc[borrower] += toBorrower;
             totalClaimableBtc += toBorrower;
         }
-        // veBTC is fixed at deployment and the only call before these events; the payouts follow them.
+        // Like the borrower's share, the penalty waits as a claimable, so no treasury address can block a settle.
+        if (toTreasury != 0) {
+            address treasury = creditMarkets.treasury();
+            claimableBtc[treasury] += toTreasury;
+            totalClaimableBtc += toTreasury;
+        }
+        // veBTC and CreditMarkets are fixed at deployment and the only calls before these events; the market's
+        // credit follows them.
         // forge-lint: disable-next-line(reentrancy-events)
         emit Settled(tokenId, borrower, received, btcPrice, toMarket, toTreasury, toBorrower);
         // forge-lint: disable-next-line(reentrancy-events)
@@ -420,7 +435,6 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
 
         if (toMarket != 0) btc.forceApprove(address(creditMarkets), toMarket);
         creditMarkets.creditBtc(loan.maturity, toMarket, true);
-        if (toTreasury != 0) btc.safeTransfer(creditMarkets.treasury(), toTreasury);
     }
 
     /// @inheritdoc ILoanManager
@@ -460,8 +474,12 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
 
     /// @inheritdoc ILoanManager
     function auctionPrice(uint256 tokenId) external view returns (uint256) {
-        if (_loans[tokenId].state != LoanState.Auction) revert NoAuction(tokenId);
-        return _priceOf(_auctions[tokenId]);
+        Loan storage loan = _loans[tokenId];
+        if (loan.state != LoanState.Auction) revert NoAuction(tokenId);
+        (,,, uint256 valueNow) = _collateral(tokenId);
+        return Resolution.salePrice(
+            _priceOf(_auctions[tokenId]), valueNow, uint256(loan.face) - loan.repaid, loan.auctionFloorBps
+        );
     }
 
     /// @inheritdoc ILoanManager
@@ -568,13 +586,22 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         veBTC.transferFrom(address(this), to, tokenId);
     }
 
+    /// @notice Always reverts: ownership can never be given up, so stray tokens and positions can always be
+    ///         rescued and the settings always have an owner. Ownership still moves by the two-step transfer.
+    /// @dev Reverts RenounceDisabled for every caller.
+    function renounceOwnership() public pure override {
+        revert RenounceDisabled();
+    }
+
     /// @dev The one open-loan path (C8), used by borrow and by the borrow half of roll. The pause check lives
-    ///      here and is skipped for roll only (C19); roll has already checked the borrower and that its loan is
-    ///      Active and on time. The face is only known once CreditMarkets prices the fill, so the loan is
+    ///      here and is skipped for roll, whose cash-out is paused in _repayRolled instead (C19); roll has
+    ///      already checked the borrower and that its loan is Active and on time. The face is only known once
+    ///      CreditMarkets prices the fill, so the loan is
     ///      written after that call. CreditMarkets is fixed at deployment, its only outside call is the MUSD
     ///      transfer of the principal (to the borrower, or here for a roll), and both contracts hold their
     ///      reentrancy locks throughout. Borrowed records the loan write. Maturities are a week apart, so
-    ///      timestamp drift does not matter.
+    ///      timestamp drift does not matter. The loan snapshots the LTV limits and auction terms of the day it
+    ///      is written, and a roll comes through here too, so a rolled loan takes the terms of the day it rolled.
     // forge-lint: disable-next-item(reentrancy-no-eth,reentrancy-events)
     function _openLoan(
         uint256 tokenId,
@@ -602,6 +629,9 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
             repaid: 0,
             maxLtvBps: maxLtvBps,
             liqLtvBps: liqLtvBps,
+            penaltyBps: penaltyBps,
+            auctionFloorBps: auctionFloorBps,
+            auctionDuration: auctionDuration,
             state: LoanState.Active
         });
 
@@ -683,8 +713,9 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     }
 
     /// @dev Repays the old market in full (the full-repayment ending of C9) from the new principal held here,
-    ///      pulling any shortfall from the borrower only (C17) and returning any excess to them. `received` is
-    ///      the measured MUSD the new fill brought in. Rolled is emitted before the MUSD moves.
+    ///      pulling any shortfall from the borrower only (C17) and returning any excess to them, except while
+    ///      borrows are paused. `received` is the measured MUSD the new fill brought in. Rolled is emitted
+    ///      before the MUSD moves.
     function _repayRolled(
         uint256 tokenId,
         uint64 oldMaturity,
@@ -696,6 +727,8 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         uint256 excess = received > owed ? received - owed : 0;
         uint256 topUp = owed > received ? owed - received : 0;
         if (topUp > maxTopUp) revert TopUpTooHigh(topUp, maxTopUp);
+        // Paying out an excess is new borrowing against the collateral the pause is protecting (C19).
+        if (excess != 0 && borrowsPaused) revert BorrowsPaused();
         // The fill above is CreditMarkets, fixed at deployment and under its own lock.
         // forge-lint: disable-next-line(reentrancy-events)
         emit Rolled(tokenId, oldMaturity, newMaturity, owed, excess, topUp);
@@ -789,12 +822,18 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         delete _positions[tokenId];
     }
 
-    /// @dev Pulls the sale price from the buyer, books the market's share and pays the penalty. The
-    ///      borrower's share stays here as the claimable recorded before this runs (C11, C28).
+    /// @dev Credits the penalty to the treasury as a claimable, pulls the sale price from the buyer and books
+    ///      the market's share. The borrower's share stays here as the claimable recorded before this runs
+    ///      (C11, C28). The treasury collects through claim(), so an address that cannot receive MUSD only
+    ///      blocks its own claim, never a sale.
     function _payOutSale(uint64 maturity, uint256 paid, uint256 toMarket, uint256 toTreasury) private {
+        if (toTreasury != 0) {
+            address treasury = creditMarkets.treasury();
+            claimableMusd[treasury] += toTreasury;
+            totalClaimableMusd += toTreasury;
+        }
         _pullExact(musd, paid);
         creditMarkets.credit(maturity, toMarket, true);
-        if (toTreasury != 0) musd.safeTransfer(creditMarkets.treasury(), toTreasury);
     }
 
     /// @dev The one intake for MUSD and BTC (C17): only from the caller, measured, and exact or revert, so

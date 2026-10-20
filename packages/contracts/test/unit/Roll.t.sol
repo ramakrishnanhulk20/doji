@@ -118,14 +118,17 @@ contract RollTest is LoanFixture {
     }
 
     function test_C19_RollWorksWhileBorrowsPaused() public {
-        _openLoan();
+        uint256 oldFace = _openLoan();
         vm.startPrank(guardian);
         lm.setBorrowsPaused(true);
         cm.setOffersPaused(true);
         vm.stopPrank();
 
-        _roll(alice, m2, offerM2, 31_000e18, 0);
+        // An exact refinance pays nothing out, so it is not new borrowing and the pause lets it through.
+        uint256 aliceBefore = musd.balanceOf(alice);
+        _roll(alice, m2, offerM2, uint128(oldFace), 0);
         assertEq(lm.loanOf(TOKEN).maturity, m2, "rolled while paused");
+        assertEq(musd.balanceOf(alice), aliceBefore, "no MUSD left the protocol");
 
         ve.mint(bob, 8, LOCK_BTC, m3, false);
         _deposit(bob, 8);

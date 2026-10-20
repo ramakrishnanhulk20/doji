@@ -23,6 +23,14 @@ interface ICreditMarkets {
         uint128 btcAtFinal;
     }
 
+    /// @dev A lender's early-payout account at one maturity: the units moved into it with withdrawCollected and
+    ///      the MUSD and BTC already paid against them. It belongs to that address and cannot be transferred.
+    struct Claim {
+        uint128 units;
+        uint128 musdPaid;
+        uint128 btcPaid;
+    }
+
     /// @notice `maker` escrowed `amount` MUSD as an offer for `maturity` at `aprBps`.
     event OfferPosted(
         uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint16 aprBps, uint128 amount
@@ -41,6 +49,11 @@ interface ICreditMarkets {
     event MarketFinalized(uint64 indexed maturity, uint256 unitsAtFinal, uint256 musdAtFinal, uint256 btcAtFinal);
     /// @notice `account` burned `units` and received its share of the market's MUSD and BTC.
     event Redeemed(address indexed account, uint64 indexed maturity, uint256 units, uint256 musdOut, uint256 btcOut);
+    /// @notice `account` moved `unitsAdded` units into its Claim and was paid what was collected for its Claim
+    ///         since its last withdrawal.
+    event CollectedWithdrawn(
+        address indexed account, uint64 indexed maturity, uint256 unitsAdded, uint256 musdOut, uint256 btcOut
+    );
     /// @notice New fills will use this treasury share of interest.
     event FeeShareBpsSet(uint16 feeShareBps);
     /// @notice New offers need at least this amount.
@@ -104,7 +117,7 @@ interface ICreditMarkets {
     error LoansStillOpen(uint64 maturity, uint64 openLoans);
     /// @notice The market never had a loan.
     error EmptyMarket(uint64 maturity);
-    /// @notice The account has no units waiting for this maturity.
+    /// @notice The account has no units waiting, or no Claim to withdraw against, for this maturity.
     error NothingToClaim(address account, uint64 maturity);
     /// @notice The fee share is above 2000 basis points.
     error FeeShareOutOfBounds(uint16 feeShareBps);
@@ -114,6 +127,8 @@ interface ICreditMarkets {
     error MaxTermOutOfBounds(uint32 maxTermSeconds);
     /// @notice MUSD and BTC are recorded per market, so they are never rescued.
     error TokenNotRescuable(address token);
+    /// @notice Ownership can never be given up, so the treasury, pause and rescue settings always keep an owner.
+    error RenounceDisabled();
 
     /// @notice Escrows `amount` MUSD from the caller as a fixed-rate offer for `maturity`.
     /// @dev Pulls exactly `amount` with transferFrom, so the caller approves this contract first.
@@ -185,13 +200,34 @@ interface ICreditMarkets {
 
     /// @notice Burns the caller's units and pays their pro-rata share of the market's MUSD and BTC.
     /// @dev Burns first, then pays units * musdAtFinal / unitsAtFinal MUSD, capped at one MUSD per unit, and
-    ///      units * btcAtFinal / unitsAtFinal BTC, both rounded down. A zero part is not transferred.
-    ///      Reverts NotFinal, ZeroAmount, or if the caller holds fewer units. Emits Redeemed.
+    ///      units * btcAtFinal / unitsAtFinal BTC, both rounded down, and adds both to paidOutOf(maturity). A
+    ///      zero part is not transferred. Never paused. Reverts NotFinal, ZeroAmount, or if the caller holds
+    ///      fewer units. Emits Redeemed.
     /// @param maturity Market to redeem from.
     /// @param units Units to burn.
     /// @return musdOut MUSD paid.
     /// @return btcOut BTC paid.
     function redeem(uint64 maturity, uint256 units) external returns (uint256 musdOut, uint256 btcOut);
+
+    /// @notice After the maturity has passed, pays the caller its share of what the market has collected so far,
+    ///         and on later calls whatever has been collected since, without waiting for every loan to close.
+    /// @dev Never paused. Reverts NotMatured while now <= maturity: from then on no fill can add units, so a
+    ///      unit's share only grows. Reverts EmptyMarket if the market never had a loan. A nonzero `units` is
+    ///      burned from the caller first and added to the caller's Claim. A Claim cannot be transferred, so
+    ///      units moved into it can no longer be sold. Reverts NothingToClaim if the Claim then holds no units.
+    ///      The Claim is owed min(units, units x collectedMusd / faceTotal) MUSD and units x collectedBtc /
+    ///      faceTotal BTC, both rounded down, which is redeem's formula on the running totals (after finalize
+    ///      the totals equal the final snapshot, because markets refuse credits once final). It is paid what is
+    ///      owed minus what it was already paid, both are recorded, and paidOutOf(maturity) rises by the same
+    ///      amounts. Whichever path and timing a unit takes, early withdrawals, a late redeem or a mix, its
+    ///      total is the same within rounding of a few wei. A zero `units` just pays an existing Claim what
+    ///      arrived since its last withdrawal. Reverts if the caller holds fewer than `units`. Emits
+    ///      CollectedWithdrawn, then sends the MUSD and BTC, skipping a zero amount.
+    /// @param maturity Market to withdraw from.
+    /// @param units Units to move from the caller's balance into its Claim; may be zero.
+    /// @return musdOut MUSD paid by this call.
+    /// @return btcOut BTC paid by this call.
+    function withdrawCollected(uint64 maturity, uint256 units) external returns (uint256 musdOut, uint256 btcOut);
 
     /// @notice Prices a fill at the current time and fee share.
     /// @dev Reverts InvalidMaturity.
@@ -211,6 +247,16 @@ interface ICreditMarkets {
 
     /// @notice Units recorded to `account` for `maturity` and not yet minted.
     function pendingUnits(address account, uint64 maturity) external view returns (uint256);
+
+    /// @notice `account`'s Claim at `maturity`: units moved into it and the MUSD and BTC already paid. All zero
+    ///         when it never withdrew early.
+    function claimOf(address account, uint64 maturity) external view returns (Claim memory);
+
+    /// @notice MUSD and BTC paid out of `maturity`'s market so far, by redeem and withdrawCollected together.
+    ///         Never more than the market collected.
+    /// @return musd MUSD paid out.
+    /// @return btc BTC paid out.
+    function paidOutOf(uint64 maturity) external view returns (uint256 musd, uint256 btc);
 
     /// @notice True when `maturity` is a Thursday 00:00 UTC, is in the future, and is within the maximum term.
     function isValidMaturity(uint64 maturity) external view returns (bool);

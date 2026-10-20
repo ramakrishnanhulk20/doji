@@ -23,8 +23,8 @@ contract RescueTest is LoanFixture {
 
     address internal rescuer = makeAddr("rescuer");
 
-    /// @dev Alice gets a MUSD claimable from an auction surplus and bob a BTC claimable from an expired-lock fee
-    ///      claim, so LoanManager holds money that belongs to them.
+    /// @dev Alice gets a MUSD claimable from an auction surplus, the treasury one from its penalty, and bob a BTC
+    ///      claimable from an expired-lock fee claim, so LoanManager holds money that belongs to them.
     function _makeClaimables() internal returns (uint256 musdOwed, uint256 btcOwed) {
         _openLoan();
         _makeUnsafe(TOKEN);
@@ -44,7 +44,8 @@ contract RescueTest is LoanFixture {
         btcOwed = lm.claimableBtc(bob);
         assertGt(musdOwed, 0);
         assertGt(btcOwed, 0);
-        assertEq(musd.balanceOf(address(lm)), musdOwed);
+        assertGt(lm.claimableMusd(treasury), 0);
+        assertEq(musd.balanceOf(address(lm)), musdOwed + lm.claimableMusd(treasury));
         assertEq(btc.balanceOf(address(lm)), btcOwed);
     }
 
@@ -94,7 +95,7 @@ contract RescueTest is LoanFixture {
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.RescueExceedsSurplus.selector, address(btc), 1, 0));
         lm.rescueToken(address(btc), rescuer, 1);
         vm.stopPrank();
-        assertEq(lm.totalClaimableMusd(), musdOwed);
+        assertEq(lm.totalClaimableMusd(), musdOwed + lm.claimableMusd(treasury));
         assertEq(lm.totalClaimableBtc(), btcOwed);
     }
 

@@ -7,6 +7,7 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {CreditMarkets} from "../../src/CreditMarkets.sol";
 import {LoanManager} from "../../src/LoanManager.sol";
+import {ICreditMarkets} from "../../src/interfaces/ICreditMarkets.sol";
 import {ILoanManager} from "../../src/interfaces/ILoanManager.sol";
 import {MockMUSD} from "./MockMUSD.sol";
 import {MockVeBTC} from "./MockVeBTC.sol";
@@ -15,9 +16,9 @@ import {MockPoolsVoter} from "./MockPoolsVoter.sol";
 
 /// @notice Drives random sequences against CreditMarkets and LoanManager for CreditInvariants.t.sol: posts,
 /// cancels, borrows, repays, rolls, auction starts and cancels, purchases, settle and its preparation,
-/// write-offs after a simulated custody loss, time and price moves, finalisation, redemption and claims,
-/// across three maturities. Every protocol call is wrapped so a revert only skips the step, and the ghost
-/// totals the invariants compare against move only on success.
+/// write-offs after a simulated custody loss, time and price moves, finalisation, redemption, early withdrawals
+/// of collected money after a date passes, and claims, across three maturities. Every protocol call is wrapped
+/// so a revert only skips the step, and the ghost totals the invariants compare against move only on success.
 contract CreditHandler is CommonBase, StdCheats, StdUtils {
     struct Wiring {
         CreditMarkets cm;
@@ -55,6 +56,8 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
     mapping(uint64 maturity => uint256) public redeemedMusd;
     mapping(uint64 maturity => uint256) public redeemedBtc;
     mapping(uint64 maturity => uint256) public burnedUnits;
+    mapping(uint64 maturity => uint256) public withdrawnMusd;
+    mapping(uint64 maturity => uint256) public withdrawnBtc;
     bool public paidAboveParMusd;
 
     mapping(bytes32 action => uint256) public successes;
@@ -283,10 +286,41 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
         } catch {}
     }
 
-    function claim(uint256 accountSeed) external {
-        address account = borrowers[accountSeed % 3];
+    /// @dev From a seeded start, the first date that has passed and had loans; a seeded lender or the treasury
+    ///      moves none, some or all of its units into its Claim and is paid what arrived since its last withdrawal.
+    function withdrawCollected(uint256 holderSeed, uint256 maturitySeed, uint256 unitsSeed) external {
+        uint64 maturity;
         for (uint256 i; i < 3; ++i) {
-            address candidate = borrowers[(accountSeed % 3 + i) % 3];
+            uint64 candidate = maturities[(maturitySeed % 3 + i) % 3];
+            if (block.timestamp > candidate && cm.marketOf(candidate).faceTotal != 0) {
+                maturity = candidate;
+                break;
+            }
+        }
+        if (maturity == 0) return;
+        address holder = _unitHolder(holderSeed % 4);
+        if (cm.pendingUnits(holder, maturity) != 0) {
+            vm.prank(holder);
+            cm.claimUnits(maturity);
+        }
+        uint256 held = cm.balanceOf(holder, maturity);
+        uint256 kind = unitsSeed % 3;
+        uint256 units = held == 0 || kind == 0 ? 0 : (kind == 1 ? held : bound(unitsSeed, 1, held));
+        vm.prank(holder);
+        try cm.withdrawCollected(maturity, units) returns (uint256 musdOut, uint256 btcOut) {
+            ICreditMarkets.Claim memory claimed = cm.claimOf(holder, maturity);
+            if (claimed.musdPaid > claimed.units) paidAboveParMusd = true;
+            withdrawnMusd[maturity] += musdOut;
+            withdrawnBtc[maturity] += btcOut;
+            ++successes["withdrawCollected"];
+        } catch {}
+    }
+
+    /// @dev The treasury is a claimer too: sale and settle penalties wait for it as claimables.
+    function claim(uint256 accountSeed) external {
+        address account = _claimer(accountSeed % 4);
+        for (uint256 i; i < 4; ++i) {
+            address candidate = _claimer((accountSeed % 4 + i) % 4);
             if (lm.claimableMusd(candidate) != 0 || lm.claimableBtc(candidate) != 0) {
                 account = candidate;
                 break;
@@ -296,6 +330,14 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
         try lm.claim() {
             ++successes["claim"];
         } catch {}
+    }
+
+    function _claimer(uint256 i) internal view returns (address) {
+        return i == 3 ? treasury : borrowers[i];
+    }
+
+    function _unitHolder(uint256 i) internal view returns (address) {
+        return i == 3 ? treasury : lenders[i];
     }
 
     function _pickRedeemable(uint256 holderSeed, uint256 maturitySeed) internal view returns (address, uint64) {

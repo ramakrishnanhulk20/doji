@@ -3,10 +3,11 @@ pragma solidity 0.8.28;
 
 // Invariant tests: CreditHandler drives random sequences of posts, cancels, borrows, repays, rolls, auction
 // starts and cancels, purchases, settle preparation and settles, write-offs, time and price moves,
-// finalisation, redemption and claims across three maturities, and after every call the money rules of the
-// threat model must hold: units equal face (C14), CreditMarkets' MUSD and BTC cover escrow plus what every
-// market still owes (C14), no redemption pays above par or beyond what was collected (C15), LoanManager's
-// balances cover its claimables (C28), and each market's open-loan count matches its open loans (C9).
+// finalisation, redemption, early withdrawals and claims across three maturities, and after every call the
+// money rules of the threat model must hold: units in balances, Claims, pending and redeemed equal face (C14),
+// CreditMarkets' MUSD and BTC cover escrow plus what every market still owes (C14), no market pays out more
+// than it collected and no redemption or Claim pays above par (C15), LoanManager's balances cover its
+// claimables (C28), and each market's open-loan count matches its open loans (C9).
 // It does NOT cover: real Mezo contracts (test/fork), unit transfers between holders, fee-on-transfer tokens,
 // more than one fill per borrow, or donations of MUSD and BTC (CreditMarkets.t.sol and Resolution.t.sol).
 
@@ -36,7 +37,7 @@ contract CreditInvariantsTest is LoanFixture {
 
         // Duplicates weight the steps of a loan's life, so a 64-call run gets from borrow through an auction
         // to purchase or settle, finalisation, redemption and claims often enough to test them.
-        bytes4[24] memory actions = [
+        bytes4[26] memory actions = [
             CreditHandler.postOffer.selector,
             CreditHandler.cancelOffer.selector,
             CreditHandler.borrow.selector,
@@ -60,6 +61,8 @@ contract CreditInvariantsTest is LoanFixture {
             CreditHandler.finalize.selector,
             CreditHandler.redeem.selector,
             CreditHandler.redeem.selector,
+            CreditHandler.withdrawCollected.selector,
+            CreditHandler.withdrawCollected.selector,
             CreditHandler.claim.selector
         ];
         bytes4[] memory selectors = new bytes4[](actions.length);
@@ -74,37 +77,65 @@ contract CreditInvariantsTest is LoanFixture {
         return i == 3 ? treasury : handler.lenders(i);
     }
 
+    function _escrow() internal view returns (uint256 escrow) {
+        for (uint256 i; i < handler.offerCount(); ++i) {
+            escrow += cm.offerOf(handler.offerIds(i)).remaining;
+        }
+    }
+
+    /// @dev Units sit in four places: minted balances, Claims, pending, and burned by redeem (the handler's ghost).
     function invariant_C14_UnitsEqualFace() public view {
         for (uint256 i; i < 3; ++i) {
             uint64 maturity = handler.maturities(i);
             uint256 units = handler.burnedUnits(maturity);
             for (uint256 j; j < 4; ++j) {
-                units += cm.pendingUnits(_holder(j), maturity) + cm.balanceOf(_holder(j), maturity);
+                address holder = _holder(j);
+                units += cm.pendingUnits(holder, maturity) + cm.balanceOf(holder, maturity)
+                    + cm.claimOf(holder, maturity).units;
             }
             assertEq(units, cm.marketOf(maturity).faceTotal, "C14: maker plus treasury units equal face");
         }
     }
 
+    /// @dev Money leaves a market only through redeem and early withdrawals, both tracked by the handler's ghosts.
     function invariant_C14_MusdBacked() public view {
-        uint256 escrow;
-        for (uint256 i; i < handler.offerCount(); ++i) {
-            escrow += cm.offerOf(handler.offerIds(i)).remaining;
-        }
         uint256 stillOwed;
         for (uint256 i; i < 3; ++i) {
             uint64 maturity = handler.maturities(i);
-            stillOwed += cm.marketOf(maturity).collectedMusd - handler.redeemedMusd(maturity);
+            stillOwed += cm.marketOf(maturity).collectedMusd - handler.redeemedMusd(maturity)
+                - handler.withdrawnMusd(maturity);
         }
-        assertGe(musd.balanceOf(address(cm)), escrow + stillOwed, "C14: MUSD covers escrow and markets");
+        assertGe(musd.balanceOf(address(cm)), _escrow() + stillOwed, "C14: MUSD covers escrow and markets");
     }
 
     function invariant_C14_BtcBacked() public view {
         uint256 stillOwed;
         for (uint256 i; i < 3; ++i) {
             uint64 maturity = handler.maturities(i);
-            stillOwed += cm.marketOf(maturity).collectedBtc - handler.redeemedBtc(maturity);
+            stillOwed +=
+                cm.marketOf(maturity).collectedBtc - handler.redeemedBtc(maturity) - handler.withdrawnBtc(maturity);
         }
         assertGe(btc.balanceOf(address(cm)), stillOwed, "C14: BTC covers markets");
+    }
+
+    /// @dev The contract's own paid-out record: never above what a market collected, equal to everything the
+    ///      handler saw leave through redeem and early withdrawals, and backed by the balances with escrow.
+    function invariant_C15_PaidOutBoundedAndBacked() public view {
+        uint256 musdOwed;
+        uint256 btcOwed;
+        for (uint256 i; i < 3; ++i) {
+            uint64 maturity = handler.maturities(i);
+            ICreditMarkets.Market memory market = cm.marketOf(maturity);
+            (uint256 paidMusd, uint256 paidBtc) = cm.paidOutOf(maturity);
+            assertLe(paidMusd, market.collectedMusd, "C15: MUSD paid out above collected");
+            assertLe(paidBtc, market.collectedBtc, "C15: BTC paid out above collected");
+            assertEq(paidMusd, handler.redeemedMusd(maturity) + handler.withdrawnMusd(maturity), "MUSD record drifted");
+            assertEq(paidBtc, handler.redeemedBtc(maturity) + handler.withdrawnBtc(maturity), "BTC record drifted");
+            musdOwed += market.collectedMusd - paidMusd;
+            btcOwed += market.collectedBtc - paidBtc;
+        }
+        assertGe(musd.balanceOf(address(cm)), _escrow() + musdOwed, "C14: MUSD covers escrow and unpaid collections");
+        assertGe(btc.balanceOf(address(cm)), btcOwed, "C14: BTC covers unpaid collections");
     }
 
     function invariant_C15_RedemptionsBounded() public view {
@@ -124,8 +155,9 @@ contract CreditInvariantsTest is LoanFixture {
     }
 
     function invariant_C28_ClaimablesBacked() public view {
-        uint256 musdOwed;
-        uint256 btcOwed;
+        // Borrowers hold surpluses and leftovers; the treasury holds the penalties from sales and settles.
+        uint256 musdOwed = lm.claimableMusd(treasury);
+        uint256 btcOwed = lm.claimableBtc(treasury);
         for (uint256 i; i < 3; ++i) {
             musdOwed += lm.claimableMusd(handler.borrowers(i));
             btcOwed += lm.claimableBtc(handler.borrowers(i));
@@ -150,7 +182,7 @@ contract CreditInvariantsTest is LoanFixture {
 
     /// @dev Prints how far each run got, so a green result can be checked for real coverage (run with -vv).
     function afterInvariant() external view {
-        string[17] memory names = [
+        string[18] memory names = [
             "postOffer",
             "cancelOffer",
             "borrow",
@@ -166,12 +198,13 @@ contract CreditInvariantsTest is LoanFixture {
             "movePrice",
             "finalize",
             "redeem",
+            "withdrawCollected",
             "claim",
             "tokens"
         ];
-        for (uint256 i; i < 16; ++i) {
+        for (uint256 i; i < 17; ++i) {
             console.log(names[i], handler.successes(bytes32(bytes(names[i]))));
         }
-        console.log(names[16], handler.tokenCount());
+        console.log(names[17], handler.tokenCount());
     }
 }

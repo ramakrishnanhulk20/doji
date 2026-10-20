@@ -32,6 +32,23 @@ library Resolution {
         return Math.max(Math.mulDiv(startValue, floorBps, BPS), Math.min(owed, startValue));
     }
 
+    /// @notice What a purchase pays now (C29): the auction's own curve, never below the floor recomputed at the
+    ///         current value, so a rebound after the start raises the price and the market always receives at
+    ///         least min(owed, value now).
+    /// @dev A fall after the start leaves the curve in charge, so the borrower is never sold below the curve.
+    /// @param curvePrice The auction's price now on its snapshotted curve, in MUSD wei.
+    /// @param valueNow Collateral value at a fresh price, in MUSD wei.
+    /// @param owed MUSD still owed.
+    /// @param floorBps The loan's floor share in basis points.
+    /// @return The price a purchase pays now, in MUSD wei.
+    function salePrice(uint256 curvePrice, uint256 valueNow, uint256 owed, uint256 floorBps)
+        internal
+        pure
+        returns (uint256)
+    {
+        return Math.max(curvePrice, floorPrice(valueNow, owed, floorBps));
+    }
+
     /// @notice The auction price after `elapsed` seconds: linear from the start value to the floor over
     ///         `duration`, then flat at the floor.
     /// @dev The drop is rounded down, so the price is rounded up, in favour of the market and the borrower.

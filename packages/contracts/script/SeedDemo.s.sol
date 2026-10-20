@@ -18,10 +18,11 @@ import {MezoBtcStandIn} from "../test/utils/MezoBtcStandIn.sol";
 ///         are left unpaid on purpose: loan A (BORROWER) ends in a Bitcoin settlement, loan B (BORROWER2) is bought
 ///         at auction by BUYER. Loan C (BORROWER) stays healthy until 2026-10-29. KEEPER gets gas to start the
 ///         auctions and settle them. Every address, offer id, position id and amount goes to
-///         deployments/<chainId>-demo.json.
+///         deployments/<chainId>-demo.json. A dry run writes deployments/<chainId>-demo.dryrun.json instead.
 /// @dev Run once, after DeployCore is broadcast and its record is in deployments/<chainId>.json:
 ///        forge script script/SeedDemo.s.sol --rpc-url mezo_testnet --broadcast --skip-simulation --slow
-///      Running it again posts a second set of offers and loans. Rehearse on an anvil fork first, with the BTC and
+///      A dry run takes the same flags without --broadcast; without --skip-simulation forge's on-chain
+///      simulation stops at the BTC precompile. Running it again posts a second set of offers and loans. Rehearse on an anvil fork first, with the BTC and
 ///      Skip oracle stand-ins and the same flags. Reads DEPLOYER, BORROWER, BORROWER2, BUYER and KEEPER keys and
 ///      addresses from .env, and DEPLOYMENTS_DIR if set (the rehearsal only).
 ///      As in CoreSliceLive, the local pass etches a stand-in over the BTC ERC-20 precompile and mocks PriceFeed
@@ -346,9 +347,10 @@ contract SeedDemo is DeployCore {
     }
 
     function _writeDemoRecord(Demo memory d) internal {
+        bool broadcast = vm.isContext(VmSafe.ForgeContext.ScriptBroadcast);
         string memory obj = "demo";
         vm.serializeUint(obj, "chainId", block.chainid);
-        vm.serializeBool(obj, "broadcast", vm.isContext(VmSafe.ForgeContext.ScriptBroadcast));
+        vm.serializeBool(obj, "broadcast", broadcast);
         vm.serializeUint(obj, "block", block.number);
         vm.serializeUint(obj, "timestamp", block.timestamp);
         vm.serializeUint(obj, "btcPrice", d.price);
@@ -359,9 +361,12 @@ contract SeedDemo is DeployCore {
         vm.serializeString(obj, "offers", _offersJson(d));
         string memory json = vm.serializeString(obj, "loans", _loansJson(d.loans));
 
-        string memory path = string.concat(_deploymentsDir(), "/", vm.toString(block.chainid), "-demo.json");
+        // Only a broadcast may write <chainId>-demo.json, the record ProveIt reads as live state.
+        string memory path = string.concat(
+            _deploymentsDir(), "/", vm.toString(block.chainid), broadcast ? "-demo.json" : "-demo.dryrun.json"
+        );
         vm.writeJson(json, path);
-        console.log("wrote", path);
+        console.log("wrote", path, broadcast ? "(broadcast)" : "(dry run: nothing was sent)");
     }
 
     function _walletsJson(Wallets memory w) internal returns (string memory) {

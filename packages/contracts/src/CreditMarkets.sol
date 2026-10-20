@@ -16,7 +16,8 @@ import {Quote} from "./libraries/Quote.sol";
 /// @notice Lenders post fixed-rate MUSD offers for a Thursday maturity and LoanManager fills them for
 ///         borrowers. Every maturity is its own market: lenders receive ERC-1155 credit units (token id =
 ///         maturity, one unit = one MUSD due) and redeem them pro rata once every loan at that date is closed,
-///         for MUSD from repayments and auctions and for BTC from settled loans.
+///         for MUSD from repayments and auctions and for BTC from settled loans. Once the date has passed, a
+///         lender can also withdraw its share of what has been collected so far and more as each loan closes.
 /// @dev All MUSD and BTC sit in this one balance. Isolation between offers and maturities is bookkeeping, and
 ///      every inflow is booked from a measured balance change, so a direct donation never reaches any record.
 contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard {
@@ -48,9 +49,17 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     bool public offersPaused;
     uint256 public nextOfferId = 1;
 
+    /// @dev What one market has paid out through redeem and withdrawCollected together.
+    struct PaidOut {
+        uint128 musd;
+        uint128 btc;
+    }
+
     mapping(uint256 offerId => Offer) private _offers;
     mapping(uint64 maturity => Market) private _markets;
     mapping(address account => mapping(uint64 maturity => uint256 units)) private _pendingUnits;
+    mapping(address account => mapping(uint64 maturity => Claim)) private _claims;
+    mapping(uint64 maturity => PaidOut) private _paidOut;
 
     modifier onlyLoanManager() {
         if (msg.sender != loanManager) revert NotLoanManager();
@@ -227,9 +236,48 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         musdOut = Math.mulDiv(units, market.musdAtFinal, unitsAtFinal);
         if (musdOut > units) musdOut = units;
         btcOut = Math.mulDiv(units, market.btcAtFinal, unitsAtFinal);
+        _recordPaidOut(maturity, musdOut, btcOut);
         // The only calls above are the internal burn and Math library; the transfers come after this event.
         // forge-lint: disable-next-line(reentrancy-events)
         emit Redeemed(msg.sender, maturity, units, musdOut, btcOut);
+
+        if (musdOut != 0) IERC20(musd).safeTransfer(msg.sender, musdOut);
+        if (btcOut != 0) IERC20(btc).safeTransfer(msg.sender, btcOut);
+    }
+
+    /// @inheritdoc ICreditMarkets
+    function withdrawCollected(uint64 maturity, uint256 units)
+        external
+        nonReentrant
+        returns (uint256 musdOut, uint256 btcOut)
+    {
+        // Until the date passes a fill could still add units and dilute the share already paid out.
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp <= maturity) revert NotMatured(maturity);
+        Market storage market = _markets[maturity];
+        uint256 faceTotal = market.faceTotal;
+        if (faceTotal == 0) revert EmptyMarket(maturity);
+
+        Claim storage claim = _claims[msg.sender][maturity];
+        if (units != 0) {
+            _burn(msg.sender, maturity, units);
+            claim.units = (uint256(claim.units) + units).toUint128();
+        }
+        uint256 held = claim.units;
+        if (held == 0) revert NothingToClaim(msg.sender, maturity);
+
+        // Owed is recomputed on the Claim's whole history, so rounding never builds up across withdrawals and
+        // the total matches what redeem would pay the same units at the end.
+        uint256 musdDue = Math.min(held, Math.mulDiv(held, market.collectedMusd, faceTotal));
+        uint256 btcDue = Math.mulDiv(held, market.collectedBtc, faceTotal);
+        musdOut = musdDue - claim.musdPaid;
+        btcOut = btcDue - claim.btcPaid;
+        claim.musdPaid = musdDue.toUint128();
+        claim.btcPaid = btcDue.toUint128();
+        _recordPaidOut(maturity, musdOut, btcOut);
+        // The only calls above are the internal burn and Math library; the transfers come after this event.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit CollectedWithdrawn(msg.sender, maturity, units, musdOut, btcOut);
 
         if (musdOut != 0) IERC20(musd).safeTransfer(msg.sender, musdOut);
         if (btcOut != 0) IERC20(btc).safeTransfer(msg.sender, btcOut);
@@ -258,6 +306,17 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     /// @inheritdoc ICreditMarkets
     function pendingUnits(address account, uint64 maturity) external view returns (uint256) {
         return _pendingUnits[account][maturity];
+    }
+
+    /// @inheritdoc ICreditMarkets
+    function claimOf(address account, uint64 maturity) external view returns (Claim memory) {
+        return _claims[account][maturity];
+    }
+
+    /// @inheritdoc ICreditMarkets
+    function paidOutOf(uint64 maturity) external view returns (uint256, uint256) {
+        PaidOut storage paid = _paidOut[maturity];
+        return (paid.musd, paid.btc);
     }
 
     /// @inheritdoc ICreditMarkets
@@ -314,6 +373,13 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         IERC20(token).safeTransfer(to, amount);
     }
 
+    /// @notice Always reverts: ownership can never be given up, so the treasury, pause and rescue settings
+    ///         always have an owner. Ownership still moves by the two-step transfer.
+    /// @dev Reverts RenounceDisabled for every caller.
+    function renounceOwnership() public pure override {
+        revert RenounceDisabled();
+    }
+
     /// @dev Checks one listed offer against the borrow's terms, cuts its remainder before anything else, and
     ///      records the maker's and treasury's units in storage. Nothing is minted, so no maker code runs.
     ///      Each listed offer must pass on its own (C8), so its checks run per iteration of a loop capped at
@@ -354,6 +420,13 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         token.safeTransferFrom(from, address(this), amount);
         uint256 received = token.balanceOf(address(this)) - before;
         if (received != amount) revert TransferMismatch(amount, received);
+    }
+
+    /// @dev The one paid-out record, shared by redeem and withdrawCollected, so paidOutOf counts both paths.
+    function _recordPaidOut(uint64 maturity, uint256 musdOut, uint256 btcOut) private {
+        PaidOut storage paid = _paidOut[maturity];
+        paid.musd = (uint256(paid.musd) + musdOut).toUint128();
+        paid.btc = (uint256(paid.btc) + btcOut).toUint128();
     }
 
     function _setFeeShareBps(uint16 newFeeShareBps) private {

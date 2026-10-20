@@ -4,6 +4,7 @@
 #
 # Triggers are a schedule and a manual run only. It never runs on pull_request or pull_request_target, so code
 # from a fork or an unmerged branch never sees KEEPER_PRIVATE_KEY (threat model C20).
+# A manual run from any other branch is skipped, so only reviewed code on main ever sees KEEPER_PRIVATE_KEY.
 #
 # Every 30 minutes is 1,440 runs a month. Each run is billed as at least one minute, so a private repo stays
 # inside GitHub's free 2,000 minutes only while a run finishes in under a minute.
@@ -23,6 +24,7 @@ concurrency:
 
 jobs:
   keeper:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -47,3 +49,4 @@ jobs:
         env:
           KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
           MEZO_TESTNET_RPC: ${{ secrets.MEZO_TESTNET_RPC || 'https://rpc.test.mezo.org' }}
+          MEZO_TESTNET_EXPLORER_API: ${{ secrets.MEZO_TESTNET_EXPLORER_API || 'https://api.explorer.test.mezo.org/api' }}

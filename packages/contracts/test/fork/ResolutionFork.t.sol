@@ -114,7 +114,7 @@ contract ResolutionForkTest is Test {
         uint256 price = lm.auctionPrice(pos.tokenId);
         assertEq(price, a.startValue - (uint256(a.startValue) - a.floorPrice) / 2, "half way down the curve");
         deal(MUSD, buyer, price);
-        uint256 treasuryBefore = musd.balanceOf(treasury);
+        uint256 treasuryBefore = lm.claimableMusd(treasury);
         vm.startPrank(buyer);
         musd.approve(address(lm), price);
         uint256 paid = lm.purchase(pos.tokenId, price, block.timestamp);
@@ -122,7 +122,7 @@ contract ResolutionForkTest is Test {
         vm.stopPrank();
 
         uint256 toMarket = cm.marketOf(maturity).collectedMusd;
-        uint256 toTreasury = musd.balanceOf(treasury) - treasuryBefore;
+        uint256 toTreasury = lm.claimableMusd(treasury) - treasuryBefore;
         uint256 toBorrower = lm.claimableMusd(pos.holder);
         assertEq(paid, price);
         assertEq(toMarket + toTreasury + toBorrower, paid, "split sums to the price");
@@ -151,7 +151,7 @@ contract ResolutionForkTest is Test {
         console.log("gas settle (BTC moves through the stand-in)", vm.lastCallGas().gasTotalUsed);
 
         ICreditMarkets.Market memory market = cm.marketOf(maturity);
-        uint256 toTreasury = btc.balanceOf(treasury);
+        uint256 toTreasury = lm.claimableBtc(treasury);
         uint256 toBorrower = lm.claimableBtc(pos.holder);
         assertEq(market.collectedBtc + toTreasury + toBorrower, pos.amount, "split sums to the BTC the lock held");
         assertEq(market.collectedBtc, Math.mulDiv(face, 1e18, forkPrice, Math.Rounding.Ceil), "market: debt in BTC");

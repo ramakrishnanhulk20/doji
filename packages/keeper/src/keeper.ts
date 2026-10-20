@@ -3,12 +3,20 @@ import { loadDeployment, MEZO_TESTNET_CHAIN_ID, type Config, type DeploymentReco
 import {
   creditMarketsAbi,
   describeError,
-  fetchBorrowedLogs,
+  fetchExplorerHeight,
+  fetchLoanEventsFromExplorer,
+  fetchLoanLogs,
   loanManagerAbi,
+  LOG_PAGE_BLOCKS,
   makeClients,
+  MAX_MATURITIES_PER_RUN,
+  MAX_POSITIONS_PER_RUN,
+  MAX_RPC_FALLBACK_PAGES,
   plainText,
   veBtcAbi,
   type Clients,
+  type LoanLog,
+  type Reader,
 } from "./chain.js";
 
 const WEEK = 604_800n;
@@ -261,10 +269,191 @@ async function checkDeployment(clients: Clients, record: DeploymentRecord): Prom
   }
 }
 
+// C20 says the keeper key holds no role, and the deployer's key sits in the same .env, so this is checked on
+// chain rather than trusted. A live pass refuses to start; a dry run sends nothing, so it only warns.
+async function checkKeeperHasNoRole(reader: Reader, record: DeploymentRecord, keeper: Address, dry: boolean): Promise<void> {
+  const lm = record.loanManager;
+  const cm = record.creditMarkets;
+  const [lmOwner, lmPendingOwner, lmGuardian, cmOwner, cmPendingOwner, cmGuardian, cmTreasury] = await Promise.all([
+    reader.readContract({ address: lm, abi: loanManagerAbi, functionName: "owner" }),
+    reader.readContract({ address: lm, abi: loanManagerAbi, functionName: "pendingOwner" }),
+    reader.readContract({ address: lm, abi: loanManagerAbi, functionName: "guardian" }),
+    reader.readContract({ address: cm, abi: creditMarketsAbi, functionName: "owner" }),
+    reader.readContract({ address: cm, abi: creditMarketsAbi, functionName: "pendingOwner" }),
+    reader.readContract({ address: cm, abi: creditMarketsAbi, functionName: "guardian" }),
+    reader.readContract({ address: cm, abi: creditMarketsAbi, functionName: "treasury" }),
+  ]);
+  const roles: [role: string, contract: string, holder: Address][] = [
+    ["owner", "LoanManager", lmOwner],
+    ["pending owner", "LoanManager", lmPendingOwner],
+    ["guardian", "LoanManager", lmGuardian],
+    ["owner", "CreditMarkets", cmOwner],
+    ["pending owner", "CreditMarkets", cmPendingOwner],
+    ["guardian", "CreditMarkets", cmGuardian],
+    ["treasury", "CreditMarkets", cmTreasury],
+  ];
+  const held = roles.find(([, , holder]) => isAddressEqual(holder, keeper));
+  if (held === undefined) return;
+  const message = `the keeper key is the ${held[0]} of ${held[1]}; use a key with no role (threat model C20)`;
+  if (!dry) throw new Error(message);
+  console.log(`warning: ${message}`);
+}
+
+const byValue = (a: bigint, b: bigint): number => (a < b ? -1 : a > b ? 1 : 0);
+const later = (a: LoanLog, b: LoanLog): boolean =>
+  a.blockNumber > b.blockNumber || (a.blockNumber === b.blockNumber && a.logIndex > b.logIndex);
+const pagesFor = (from: bigint, to: bigint): bigint => (to >= from ? (to - from + LOG_PAGE_BLOCKS) / LOG_PAGE_BLOCKS : 0n);
+
+// The loans open now, from the Borrowed and LoanClosed events seen: a position is open when its latest Borrowed
+// comes after its latest LoanClosed, and that Borrowed carries its due date. Of those, the MAX_POSITIONS_PER_RUN
+// due first are read this pass.
+export function selectOpenLoans(logs: LoanLog[]): {
+  open: LoanLog[];
+  tokenIds: bigint[];
+  skipped: number;
+  positions: number;
+} {
+  const lastBorrowed = new Map<bigint, LoanLog>();
+  const lastClosed = new Map<bigint, LoanLog>();
+  for (const log of logs) {
+    const latest = log.event === "Borrowed" ? lastBorrowed : lastClosed;
+    const seen = latest.get(log.tokenId);
+    if (seen === undefined || later(log, seen)) latest.set(log.tokenId, log);
+  }
+  const open = [...lastBorrowed.values()].filter((borrowed) => {
+    const closed = lastClosed.get(borrowed.tokenId);
+    return closed === undefined || later(borrowed, closed);
+  });
+  const read = [...open]
+    .sort((a, b) => byValue(a.maturity, b.maturity) || byValue(a.tokenId, b.tokenId))
+    .slice(0, MAX_POSITIONS_PER_RUN);
+  return {
+    open,
+    tokenIds: read.map((l) => l.tokenId).sort(byValue),
+    skipped: open.length - read.length,
+    positions: lastBorrowed.size,
+  };
+}
+
+// Every loan event from deployment to head. The explorer's indexed height is read before its listings, so every
+// event at or below it is in them, and the RPC reads from the block after it (at least the newest page) to head.
+// If the explorer fails, or the RPC would need more than MAX_RPC_FALLBACK_PAGES pages to catch it up, the RPC
+// alone reads that many pages back from head.
+async function collectLoanLogs(pass: Pass, head: bigint): Promise<{ logs: LoanLog[]; text: string }> {
+  const { config, clients, record } = pass;
+  const lm = record.loanManager;
+  const newestPage = head >= LOG_PAGE_BLOCKS - 1n ? head - (LOG_PAGE_BLOCKS - 1n) : 0n;
+  const rpcFromAfter = (coveredTo: bigint): bigint => {
+    const from = coveredTo + 1n < newestPage ? coveredTo + 1n : newestPage;
+    return from > record.block ? from : record.block;
+  };
+  const fits = (from: bigint): boolean => pagesFor(from, head) <= MAX_RPC_FALLBACK_PAGES;
+
+  let explorer: { borrowed: LoanLog[]; closed: LoanLog[]; height: bigint; rpcFrom: bigint } | undefined;
+  const height = await fetchExplorerHeight(config.explorerApi);
+  if (height !== null && !fits(rpcFromAfter(height))) {
+    console.log(`explorer is indexed only to block ${height}, ${head - height} blocks behind head`);
+  } else if (height !== null) {
+    const borrowed = await fetchLoanEventsFromExplorer(config.explorerApi, lm, "Borrowed", record.block);
+    const closed = borrowed === null ? null : await fetchLoanEventsFromExplorer(config.explorerApi, lm, "LoanClosed", record.block);
+    if (borrowed !== null && closed !== null) {
+      let coveredTo = height;
+      for (const { cappedAt } of [borrowed, closed]) {
+        if (cappedAt !== undefined && cappedAt - 1n < coveredTo) coveredTo = cappedAt - 1n;
+      }
+      const rpcFrom = rpcFromAfter(coveredTo);
+      // Events past the scanned head are left out so the counts below compare like with like.
+      const upToHead = (l: LoanLog) => l.blockNumber <= head;
+      if (fits(rpcFrom)) {
+        explorer = { borrowed: borrowed.logs.filter(upToHead), closed: closed.logs.filter(upToHead), height, rpcFrom };
+      } else {
+        console.log(`explorer listings are complete only to block ${coveredTo}, too far behind head for the RPC`);
+      }
+    }
+  }
+
+  const span = MAX_RPC_FALLBACK_PAGES * LOG_PAGE_BLOCKS;
+  const fallbackFrom = head >= span - 1n ? head - (span - 1n) : 0n;
+  const rpcFrom = explorer?.rpcFrom ?? (fallbackFrom > record.block ? fallbackFrom : record.block);
+  const rpc = await fetchLoanLogs(clients.reader, lm, rpcFrom, head);
+  if (explorer === undefined) {
+    console.log(
+      `warning: explorer unavailable; scanned the last ${pagesFor(rpcFrom, head)} pages by RPC, ` +
+        "loans whose latest Borrowed event is older than that are not seen this run",
+    );
+  }
+  const source =
+    explorer === undefined
+      ? "unavailable"
+      : `${explorer.borrowed.length} Borrowed, ${explorer.closed.length} LoanClosed (indexed to block ${explorer.height})`;
+  return {
+    logs: [...(explorer?.borrowed ?? []), ...(explorer?.closed ?? []), ...rpc],
+    text: `explorer ${source}; rpc ${rpc.length} logs from block ${rpcFrom}`,
+  };
+}
+
+// Every weekly loan date a loan can be open at: week multiples (Thursdays 00:00 UTC, as 1970-01-01 was a Thursday)
+// from the first at or after deployment up to the furthest date a new loan can pick now, the most recent
+// MAX_MATURITIES_PER_RUN of them.
+async function loanDates(pass: Pass): Promise<bigint[]> {
+  const { reader } = pass.clients;
+  const deployed = await reader.getBlock({ blockNumber: pass.record.block });
+  const maxTerm = await reader.readContract({
+    address: pass.record.creditMarkets,
+    abi: creditMarketsAbi,
+    functionName: "maxTermSeconds",
+  });
+  const first = ((deployed.timestamp + WEEK - 1n) / WEEK) * WEEK;
+  const dates: bigint[] = [];
+  for (let m = ((pass.now + BigInt(maxTerm)) / WEEK) * WEEK; m >= first && dates.length < MAX_MATURITIES_PER_RUN; m -= WEEK) {
+    dates.push(m);
+  }
+  return dates.reverse();
+}
+
+// The chain's own count of open loans at each date is the check on the scan. Counts are read at the scanned head
+// block, so loans opened or closed while the pass runs, by this pass or anyone else, cannot hide a missed one. A
+// date with more open loans on chain than the scan found, or one that cannot be read, sets exit code 2; the pass
+// still acts on what it found.
+export async function checkCompleteness(
+  reader: Reader,
+  creditMarkets: Address,
+  open: LoanLog[],
+  dates: bigint[],
+  atBlock: bigint,
+): Promise<number> {
+  const found = new Map<bigint, number>();
+  for (const loan of open) found.set(loan.maturity, (found.get(loan.maturity) ?? 0) + 1);
+  let short = 0;
+  for (const m of dates) {
+    const date = utc(m).slice(0, 10);
+    const k = found.get(m) ?? 0;
+    try {
+      const market = await reader.readContract({
+        address: creditMarkets,
+        abi: creditMarketsAbi,
+        functionName: "marketOf",
+        args: [m],
+        blockNumber: atBlock,
+      });
+      if (market.openLoans <= BigInt(k)) continue;
+      console.log(`warning: ${date} has ${market.openLoans} open loans on chain but the scan found ${k}; loans are being missed`);
+    } catch (err) {
+      console.log(`warning: ${date} could not be checked: ${describeError(err)}`);
+    }
+    short += 1;
+  }
+  if (short === 0) console.log("completeness: no checked date has more open loans on chain than the scan found");
+  else process.exitCode = 2;
+  return short;
+}
+
 export async function runPass(config: Config): Promise<PassSummary> {
   const record = loadDeployment(config.deploymentFile);
   const clients = makeClients(config);
   await checkDeployment(clients, record);
+  if (clients.account === undefined) console.log("role check skipped: no keeper key loaded");
+  else await checkKeeperHasNoRole(clients.reader, record, clients.account.address, config.dry);
 
   const head = await clients.reader.getBlock({ blockTag: "latest" });
   const pass: Pass = {
@@ -283,12 +472,16 @@ export async function runPass(config: Config): Promise<PassSummary> {
     console.log(`keeper wallet ${clients.account.address} holds ${formatEther(gas)} BTC for gas`);
   }
 
-  const logs = await fetchBorrowedLogs(clients.reader, record.loanManager, record.block, head.number);
-  const tokenIds = [...new Set(logs.map((l) => l.tokenId))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  const maturities = [...new Set(logs.map((l) => l.maturity))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const scan = await collectLoanLogs(pass, head.number);
+  const { open, tokenIds, skipped, positions } = selectOpenLoans(scan.logs);
+  const maturities = await loanDates(pass);
   pass.summary.tokenIds = tokenIds.length;
   pass.summary.maturities = maturities.length;
-  console.log(`${logs.length} Borrowed events since block ${record.block}: ${tokenIds.length} positions, ${maturities.length} maturities`);
+  console.log(`scan: ${scan.text}; ${open.length} open loans of ${positions} positions; ${maturities.length} dates checked`);
+  if (skipped > 0) {
+    console.log(`warning: ${skipped} open loans wait for a later pass; this pass reads the ${MAX_POSITIONS_PER_RUN} due first`);
+  }
+  await checkCompleteness(clients.reader, record.creditMarkets, open, maturities, head.number);
 
   for (const tokenId of tokenIds) {
     if (limitReached(pass)) return pass.summary;

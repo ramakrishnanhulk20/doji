@@ -7,6 +7,7 @@ import { getAddress, isAddress, isHex, type Address, type Hex } from "viem";
 export const PACKAGE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const DEFAULT_RPC = "https://rpc.test.mezo.org";
+const DEFAULT_EXPLORER_API = "https://api.explorer.test.mezo.org/api";
 const DEFAULT_DEPLOYMENT_FILE = "../contracts/deployments/31611.json";
 const DEFAULT_MAX_ACTIONS = 10;
 // A pass sends its writes one at a time and waits for each receipt, so even this ceiling finishes in minutes.
@@ -14,12 +15,19 @@ const MAX_ACTIONS_CEILING = 50;
 export const MEZO_TESTNET_CHAIN_ID = 31_611;
 
 // The keys the keeper reads. Nothing else from any env file reaches the process.
-const KEEPER_KEYS = ["MEZO_TESTNET_RPC", "KEEPER_PRIVATE_KEY", "DEPLOYMENT_FILE", "MAX_ACTIONS"] as const;
+const KEEPER_KEYS = [
+  "MEZO_TESTNET_RPC",
+  "MEZO_TESTNET_EXPLORER_API",
+  "KEEPER_PRIVATE_KEY",
+  "DEPLOYMENT_FILE",
+  "MAX_ACTIONS",
+] as const;
 type KeeperKey = (typeof KEEPER_KEYS)[number];
 
 export interface Config {
   dry: boolean;
   rpcUrl: string;
+  explorerApi: string;
   privateKey: Hex | undefined;
   deploymentFile: string;
   maxActions: number;
@@ -48,16 +56,16 @@ function readEnv(): Record<KeeperKey, string | undefined> {
   return out;
 }
 
-function parseRpcUrl(raw: string | undefined): string {
-  const value = raw ?? DEFAULT_RPC;
+function parseHttpUrl(key: KeeperKey, raw: string | undefined, fallback: string): string {
+  const value = raw ?? fallback;
   let url: URL;
   try {
     url = new URL(value);
   } catch {
-    throw new ConfigError(`MEZO_TESTNET_RPC is not a URL: ${JSON.stringify(value)}`);
+    throw new ConfigError(`${key} is not a URL: ${JSON.stringify(value)}`);
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new ConfigError(`MEZO_TESTNET_RPC must be http or https, got ${url.protocol}`);
+    throw new ConfigError(`${key} must be http or https, got ${url.protocol}`);
   }
   return url.toString();
 }
@@ -90,7 +98,8 @@ export function loadConfig(dry: boolean): Config {
   const file = env.DEPLOYMENT_FILE ?? DEFAULT_DEPLOYMENT_FILE;
   return {
     dry,
-    rpcUrl: parseRpcUrl(env.MEZO_TESTNET_RPC),
+    rpcUrl: parseHttpUrl("MEZO_TESTNET_RPC", env.MEZO_TESTNET_RPC, DEFAULT_RPC),
+    explorerApi: parseHttpUrl("MEZO_TESTNET_EXPLORER_API", env.MEZO_TESTNET_EXPLORER_API, DEFAULT_EXPLORER_API),
     privateKey: parsePrivateKey(env.KEEPER_PRIVATE_KEY, dry),
     deploymentFile: isAbsolute(file) ? file : resolve(PACKAGE_DIR, file),
     maxActions: parseMaxActions(env.MAX_ACTIONS),

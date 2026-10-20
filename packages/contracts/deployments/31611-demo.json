@@ -1,290 +1,272 @@
 {
-  "block": 16241661,
+  "block": 16259366,
   "broadcast": true,
-  "btcPrice": "82715280000000000000000",
+  "btcPrice": "81436872730000000000000",
   "chainId": 31611,
   "confirmed": true,
-  "creditMarkets": "0x5cd2095E2A05e7Da63EA0a3AD03fb0452ab6c9E2",
+  "creditMarkets": "0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de",
   "funding": {
-    "borrowerTopUpBtc": 2000000388285248,
-    "buyerMusd": "103390000000000000000",
-    "deployerBtcSent": 14000000388285248,
+    "borrowerTopUpBtc": 1500000721421040,
+    "buyerMusd": "101790000000000000000",
+    "deployerBtcSent": 11500000721421040,
     "newWalletBtc": 2000000000000000,
-    "swapBtc": 6000000000000000,
-    "swapMusd": "472241044329680139423"
+    "swapBtc": 4000000000000000,
+    "swapMusd": "314817351697322909904"
   },
-  "loanManager": "0x29d98D76D7C7B526bAFf3CD3B39212e2bB35806b",
+  "loanManager": "0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa",
   "loans": {
     "A": {
       "borrower": "0x92DcCb70C33300848Da555eDe8597d3F7037AE2b",
-      "face": "28960380864488203958",
-      "hash": "0x4bc1ea303d85601b53450b1ec6f85852e28cee63e04e850ffe28ca8c6dde07a2",
+      "face": "28506382405821917809",
+      "hash": "0x2ebc890e4ca5f4a554336131a9aa79e08fb7a403b9ab9be690156d19197c30cb",
       "lockEnd": 1792627200,
-      "ltvBps": 3501,
+      "ltvBps": 3500,
       "maturity": 1792627200,
       "offerId": 1,
-      "principal": "28950000000000000000",
+      "principal": "28500000000000000000",
       "role": "settle",
-      "tokenId": 383,
-      "tokenIdPredicted": 383,
-      "valueAtSeed": "82715280000000000000"
+      "tokenId": 387,
+      "tokenIdPredicted": 387,
+      "valueAtSeed": "81436872730000000000"
     },
     "B": {
       "borrower": "0xb164F15b59DFd9eb7eac60A364ce3F0f6721A5Ef",
-      "face": "28960380175989345510",
-      "hash": "0x19387edf5b6fcf16ea13e99eef6d2b8b51aac129ed387557ad5b9a67259b7990",
+      "face": "28506381728025114156",
+      "hash": "0xb0601be2310dd40ebc4bb0923535bd5cc148788a8a93cfc38f0cb1166ba21120",
       "lockEnd": 1792627200,
-      "ltvBps": 3501,
+      "ltvBps": 3500,
       "maturity": 1792627200,
       "offerId": 1,
-      "principal": "28950000000000000000",
+      "principal": "28500000000000000000",
       "role": "purchase",
-      "tokenId": 384,
-      "tokenIdPredicted": 384,
-      "valueAtSeed": "82715280000000000000"
+      "tokenId": 388,
+      "tokenIdPredicted": 388,
+      "valueAtSeed": "81436872730000000000"
     },
     "C": {
       "borrower": "0x92DcCb70C33300848Da555eDe8597d3F7037AE2b",
-      "face": "24842685577958523593",
-      "hash": "0xf29cb6784c0edda24c462bb7bd4ea82ad827e27ae68cd2fbd53ce3ea427fdce0",
+      "face": "24458895818873668189",
+      "hash": "0x872b620c3500c54195c0ee6415a9cc4b9d7d8680476e974a5b23d31c5691fdb2",
       "lockEnd": 1793232000,
       "ltvBps": 3003,
       "maturity": 1793232000,
       "offerId": 2,
-      "principal": "24810000000000000000",
+      "principal": "24430000000000000000",
       "role": "healthy",
-      "tokenId": 385,
-      "tokenIdPredicted": 385,
-      "valueAtSeed": "82715280000000000000"
+      "tokenId": 389,
+      "tokenIdPredicted": 389,
+      "valueAtSeed": "81436872730000000000"
     }
   },
   "offers": {
     "1": {
       "amount": "60000000000000000000",
       "aprBps": 500,
-      "hash": "0x67faff9ffdb8508dfe8c1b0e440573d334c74ee326486fc0a5b23a6107992d22",
+      "hash": "0x2de0206d15a4a0debd3fbfadaaa00920929ededee152ba70e12c343d4117204b",
       "maturity": 1792627200,
       "offerId": 1
     },
     "2": {
       "amount": "40000000000000000000",
       "aprBps": 500,
-      "hash": "0x57d73c39d959b32d97747fa3c37513337feeee27c33eac9571441b0b499b54eb",
+      "hash": "0xb32c753f60e24328f0f804c73f5b3f029b6bc3177b08009c6f84730d0508ae1b",
       "maturity": 1793232000,
       "offerId": 2
     },
     "3": {
       "amount": "40000000000000000000",
       "aprBps": 650,
-      "hash": "0x2b94eaf02027e12b0456164885f450e245bcf67145b98dee7dcb6a8cc514438a",
+      "hash": "0x4f0347d84f815a4c6f688f2e794e0d396e9e7587dad771d03a5939dd7c5b3492",
       "maturity": 1793232000,
       "offerId": 3
     },
     "4": {
       "amount": "40000000000000000000",
       "aprBps": 600,
-      "hash": "0x8f0299fe93233c9f44d9cbe45f6ce8e8b5de5376f2ab4cceb80a516b5e069809",
+      "hash": "0x85f7c04fbb2b9c8b6b9670e55ecf91a8ab5c746025566c895c2881f9dee52bd9",
       "maturity": 1793836800,
       "offerId": 4
     },
     "5": {
       "amount": "40000000000000000000",
       "aprBps": 700,
-      "hash": "0xd9b3f630711139d34ef0dc26198af18dc83598b2a8f31f77a1d19e327502aa9e",
+      "hash": "0x5df68ae3639135cd254b356fbcb76fd0ab2c1672240dc1db4a8af697ca689820",
       "maturity": 1794441600,
       "offerId": 5
     }
   },
-  "timestamp": 1792400884,
+  "timestamp": 1792485679,
   "transactions": [
     {
-      "block": 16241676,
+      "block": 16259382,
       "call": "approve(address,uint256)",
       "from": "deployer",
       "gasUsed": 25540,
-      "hash": "0xbd3a4e1baf7281ad9afc7f4a5ad97356e78bbc57f1f88771439c282f25f57a8a",
+      "hash": "0x717d03e83453b9e948ee7b9029cf038e39e6c35d55fee674f75a0c9c74f275eb",
       "n": 1,
       "to": "0x7b7c000000000000000000000000000000000000"
     },
     {
-      "block": 16241677,
+      "block": 16259383,
       "call": "swapExactTokensForTokens(uint256,uint256,(address,address,bool,address)[],address,uint256)",
       "from": "deployer",
       "gasUsed": 232831,
-      "hash": "0x848e05553aee670a39b88a8bca6ec415acd7f8bbf22437107c5e52a695b68647",
+      "hash": "0xf834c9106af7d0e35911156708ac2d530e6217c6407ff2dbca907ab68df5c0f2",
       "n": 2,
       "to": "0x9a1ff7fe3a0f69959a3fba1f1e5ee18e1a9cd7e9"
     },
     {
-      "block": 16241679,
-      "call": "approve(address,uint256)",
-      "from": "deployer",
-      "gasUsed": 25540,
-      "hash": "0xde10bdf1e94e09448dd7a732f45c2ee6463d3018207734a277b627c6bec788c8",
-      "n": 3,
-      "to": "0x7b7c000000000000000000000000000000000000"
-    },
-    {
-      "block": 16241680,
-      "call": "swapExactTokensForTokens(uint256,uint256,(address,address,bool,address)[],address,uint256)",
-      "from": "deployer",
-      "gasUsed": 163152,
-      "hash": "0x5c8f85b2d93a4a43b750f0a025c667c7f8556829b55d9f755a3892d9423b15fe",
-      "n": 4,
-      "to": "0x9a1ff7fe3a0f69959a3fba1f1e5ee18e1a9cd7e9"
-    },
-    {
-      "block": 16241681,
+      "block": 16259384,
       "call": "approve(address,uint256)",
       "from": "deployer",
       "gasUsed": 46406,
-      "hash": "0xaa881449233b529ca78b883ec0cf16ba29fbb72f7b1169a338913b927fd25325",
-      "n": 5,
+      "hash": "0x27e9833f2c888c84357782bdd754ca5a9f8d21a66ff42fe02a1b540729665917",
+      "n": 3,
       "to": "0x118917a40faf1cd7a13db0ef56c86de7973ac503"
     },
     {
-      "block": 16241682,
+      "block": 16259385,
       "call": "postOffer(uint64,uint16,uint128)",
       "from": "deployer",
-      "gasUsed": 121317,
-      "hash": "0x67faff9ffdb8508dfe8c1b0e440573d334c74ee326486fc0a5b23a6107992d22",
+      "gasUsed": 121361,
+      "hash": "0x2de0206d15a4a0debd3fbfadaaa00920929ededee152ba70e12c343d4117204b",
+      "n": 4,
+      "to": "0x62cba75f2faa834ddca4bf012258368d17bbb2de"
+    },
+    {
+      "block": 16259386,
+      "call": "postOffer(uint64,uint16,uint128)",
+      "from": "deployer",
+      "gasUsed": 104273,
+      "hash": "0xb32c753f60e24328f0f804c73f5b3f029b6bc3177b08009c6f84730d0508ae1b",
+      "n": 5,
+      "to": "0x62cba75f2faa834ddca4bf012258368d17bbb2de"
+    },
+    {
+      "block": 16259387,
+      "call": "postOffer(uint64,uint16,uint128)",
+      "from": "deployer",
+      "gasUsed": 104273,
+      "hash": "0x4f0347d84f815a4c6f688f2e794e0d396e9e7587dad771d03a5939dd7c5b3492",
       "n": 6,
-      "to": "0x5cd2095e2a05e7da63ea0a3ad03fb0452ab6c9e2"
+      "to": "0x62cba75f2faa834ddca4bf012258368d17bbb2de"
     },
     {
-      "block": 16241683,
+      "block": 16259388,
       "call": "postOffer(uint64,uint16,uint128)",
       "from": "deployer",
-      "gasUsed": 104229,
-      "hash": "0x57d73c39d959b32d97747fa3c37513337feeee27c33eac9571441b0b499b54eb",
+      "gasUsed": 104261,
+      "hash": "0x85f7c04fbb2b9c8b6b9670e55ecf91a8ab5c746025566c895c2881f9dee52bd9",
       "n": 7,
-      "to": "0x5cd2095e2a05e7da63ea0a3ad03fb0452ab6c9e2"
+      "to": "0x62cba75f2faa834ddca4bf012258368d17bbb2de"
     },
     {
-      "block": 16241684,
+      "block": 16259389,
       "call": "postOffer(uint64,uint16,uint128)",
       "from": "deployer",
-      "gasUsed": 104229,
-      "hash": "0x2b94eaf02027e12b0456164885f450e245bcf67145b98dee7dcb6a8cc514438a",
+      "gasUsed": 99473,
+      "hash": "0x5df68ae3639135cd254b356fbcb76fd0ab2c1672240dc1db4a8af697ca689820",
       "n": 8,
-      "to": "0x5cd2095e2a05e7da63ea0a3ad03fb0452ab6c9e2"
+      "to": "0x62cba75f2faa834ddca4bf012258368d17bbb2de"
     },
     {
-      "block": 16241685,
-      "call": "postOffer(uint64,uint16,uint128)",
-      "from": "deployer",
-      "gasUsed": 104217,
-      "hash": "0x8f0299fe93233c9f44d9cbe45f6ce8e8b5de5376f2ab4cceb80a516b5e069809",
-      "n": 9,
-      "to": "0x5cd2095e2a05e7da63ea0a3ad03fb0452ab6c9e2"
-    },
-    {
-      "block": 16241686,
-      "call": "postOffer(uint64,uint16,uint128)",
-      "from": "deployer",
-      "gasUsed": 99429,
-      "hash": "0xd9b3f630711139d34ef0dc26198af18dc83598b2a8f31f77a1d19e327502aa9e",
-      "n": 10,
-      "to": "0x5cd2095e2a05e7da63ea0a3ad03fb0452ab6c9e2"
-    },
-    {
-      "block": 16241687,
+      "block": 16259391,
       "call": "send 2000000000000000 wei BTC",
       "from": "deployer",
       "gasUsed": 21000,
-      "hash": "0x1e207b007a3c9bc3f5791e9afe36c126150cd2cf9747dc04c6c4d66a260992fd",
-      "n": 11,
+      "hash": "0x1143eff5022481739af11be5b0868396aed2281fbd486a436516785c145a4aab",
+      "n": 9,
       "to": "0xb164f15b59dfd9eb7eac60a364ce3f0f6721a5ef"
     },
     {
-      "block": 16241688,
+      "block": 16259393,
       "call": "send 2000000000000000 wei BTC",
       "from": "deployer",
       "gasUsed": 21000,
-      "hash": "0xb94089a019f36702c2653bfb41f26ba69b17d7f20cc2de2e6afd68badd129c7c",
-      "n": 12,
+      "hash": "0x6b95a56ad4ff0bacbc63b08adf7893a0000f79f91b456c9669587dadc7379923",
+      "n": 10,
       "to": "0x56b9c9418baefdedef6da0ab2af450842b776b79"
     },
     {
-      "block": 16241689,
+      "block": 16259394,
       "call": "send 2000000000000000 wei BTC",
       "from": "deployer",
       "gasUsed": 21000,
-      "hash": "0x7449abb02d2ed3b0ffd596d51634be6984932fe835e9b022445707ea30e68076",
-      "n": 13,
+      "hash": "0xd11ac24b0a10292a88449658de1641bf7dadacd0731efb8d0b7a90ff509cec4d",
+      "n": 11,
       "to": "0x6ef23dbf6cda3738f44913595b87a0559746895f"
     },
     {
-      "block": 16241690,
-      "call": "send 2000000388285248 wei BTC",
+      "block": 16259421,
+      "call": "send 1500000721421040 wei BTC",
       "from": "deployer",
       "gasUsed": 21000,
-      "hash": "0x9ca0ed7c9d2a47f5f80b36995eb27c8e1ed0cfb1ce60c2227005aaf9ca87fe15",
-      "n": 14,
+      "hash": "0x08d6017cf195d075969ce0551bb1a07566a793804bce2e46cc5d7f089ae0e0d1",
+      "n": 12,
       "to": "0x92dccb70c33300848da555ede8597d3f7037ae2b"
     },
     {
-      "block": 16241691,
+      "block": 16259422,
       "call": "transfer(address,uint256)",
       "from": "deployer",
-      "gasUsed": 51697,
-      "hash": "0xdb7f3803eb83b0624a299a53f7b2fcca555edf7622d6f920e5cb808ad9871bb3",
-      "n": 15,
+      "gasUsed": 34597,
+      "hash": "0xa87379fa9f4f3f5aff4cc11da6cd0a8dae9fe3dd40a6035583055608c7be1afd",
+      "n": 13,
       "to": "0x118917a40faf1cd7a13db0ef56c86de7973ac503"
     },
     {
-      "block": 16241692,
+      "block": 16259423,
       "call": "approve(address,uint256)",
       "from": "borrower",
       "gasUsed": 25552,
-      "hash": "0xbb8b5b0f1218a8559fbc02b8c55ec15ff7eded3056e42b9b74d331699bf44125",
+      "hash": "0x3025b1bd3d8eb86f1ee6fe52076edb4f944c16c06a62f192610aceb64617cfcf",
+      "n": 14,
+      "to": "0x7b7c000000000000000000000000000000000000"
+    },
+    {
+      "block": 16259424,
+      "call": "lockAndBorrow(uint256,uint256,uint64,uint256[],uint128[],uint16)",
+      "from": "borrower",
+      "gasUsed": 705618,
+      "hash": "0x2ebc890e4ca5f4a554336131a9aa79e08fb7a403b9ab9be690156d19197c30cb",
+      "n": 15,
+      "to": "0x983f2cd6e30492962104fc4dde8dbb5bd9d05cfa"
+    },
+    {
+      "block": 16259426,
+      "call": "approve(address,uint256)",
+      "from": "borrower2",
+      "gasUsed": 25552,
+      "hash": "0x39df7ac085b07f91d42dac10361f6427a39f5c7b528ab34631891e69c24a4013",
       "n": 16,
       "to": "0x7b7c000000000000000000000000000000000000"
     },
     {
-      "block": 16241693,
+      "block": 16259427,
       "call": "lockAndBorrow(uint256,uint256,uint64,uint256[],uint128[],uint16)",
-      "from": "borrower",
-      "gasUsed": 705170,
-      "hash": "0x4bc1ea303d85601b53450b1ec6f85852e28cee63e04e850ffe28ca8c6dde07a2",
+      "from": "borrower2",
+      "gasUsed": 657118,
+      "hash": "0xb0601be2310dd40ebc4bb0923535bd5cc148788a8a93cfc38f0cb1166ba21120",
       "n": 17,
-      "to": "0x29d98d76d7c7b526baff3cd3b39212e2bb35806b"
+      "to": "0x983f2cd6e30492962104fc4dde8dbb5bd9d05cfa"
     },
     {
-      "block": 16241694,
+      "block": 16259428,
       "call": "approve(address,uint256)",
-      "from": "borrower2",
+      "from": "borrower",
       "gasUsed": 25552,
-      "hash": "0x2484b0c2a392fac753b0829816bd770efb7ffbc50f4a16ea0ae7da0e5711ac48",
+      "hash": "0x7bbefe7bbde761a8b82eec3c93687387ced0a91e7bd4a1126fc856e14a218cd6",
       "n": 18,
       "to": "0x7b7c000000000000000000000000000000000000"
     },
     {
-      "block": 16241696,
+      "block": 16259430,
       "call": "lockAndBorrow(uint256,uint256,uint64,uint256[],uint128[],uint16)",
-      "from": "borrower2",
-      "gasUsed": 673770,
-      "hash": "0x19387edf5b6fcf16ea13e99eef6d2b8b51aac129ed387557ad5b9a67259b7990",
+      "from": "borrower",
+      "gasUsed": 708430,
+      "hash": "0x872b620c3500c54195c0ee6415a9cc4b9d7d8680476e974a5b23d31c5691fdb2",
       "n": 19,
-      "to": "0x29d98d76d7c7b526baff3cd3b39212e2bb35806b"
-    },
-    {
-      "block": 16241697,
-      "call": "approve(address,uint256)",
-      "from": "borrower",
-      "gasUsed": 25552,
-      "hash": "0x0f2c2287251c3ecfe00706e792add157cdbc91443447061ac04e9a5319aa5691",
-      "n": 20,
-      "to": "0x7b7c000000000000000000000000000000000000"
-    },
-    {
-      "block": 16241699,
-      "call": "lockAndBorrow(uint256,uint256,uint64,uint256[],uint128[],uint16)",
-      "from": "borrower",
-      "gasUsed": 707982,
-      "hash": "0xf29cb6784c0edda24c462bb7bd4ea82ad827e27ae68cd2fbd53ce3ea427fdce0",
-      "n": 21,
-      "to": "0x29d98d76d7c7b526baff3cd3b39212e2bb35806b"
+      "to": "0x983f2cd6e30492962104fc4dde8dbb5bd9d05cfa"
     }
   ],
   "wallets": {

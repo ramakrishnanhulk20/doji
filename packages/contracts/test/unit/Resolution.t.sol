@@ -18,6 +18,7 @@ import {LoanManager} from "../../src/LoanManager.sol";
 import {ICreditMarkets} from "../../src/interfaces/ICreditMarkets.sol";
 import {ILoanManager} from "../../src/interfaces/ILoanManager.sol";
 import {IPoolsVoter} from "../../src/interfaces/IPoolsVoter.sol";
+import {Resolution} from "../../src/libraries/Resolution.sol";
 import {LoanFixture} from "../utils/LoanFixture.sol";
 import {MockBTC} from "../utils/MockBTC.sol";
 import {MockPoolsVoter} from "../utils/MockPoolsVoter.sol";
@@ -40,8 +41,9 @@ contract ResolutionTest is LoanFixture {
         ICreditMarkets.Market memory market = cm.marketOf(maturity);
         b.collectedMusd = market.collectedMusd;
         b.collectedBtc = market.collectedBtc;
-        b.treasuryMusd = musd.balanceOf(treasury);
-        b.treasuryBtc = btc.balanceOf(treasury);
+        // The penalty is credited to the treasury as a claimable, never sent during the sale or settle.
+        b.treasuryMusd = lm.claimableMusd(treasury);
+        b.treasuryBtc = lm.claimableBtc(treasury);
         b.claimMusd = lm.claimableMusd(borrower);
         b.claimBtc = lm.claimableBtc(borrower);
     }
@@ -368,7 +370,8 @@ contract ResolutionTest is LoanFixture {
         assertGt(rest, 0);
         assertEq(lm.claimableMusd(alice), rest, "the borrower keeps everything above debt and penalty");
         assertEq(lm.claimableMusd(buyer), 0);
-        assertEq(lm.totalClaimableMusd(), rest);
+        assertEq(lm.claimableMusd(treasury), face * PENALTY / BPS, "the penalty waits for the treasury");
+        assertEq(lm.totalClaimableMusd(), rest + face * PENALTY / BPS);
     }
 
     function test_C11_PurchaseAtFloorPaysPenaltyOnlyFromSurplus() public {
@@ -376,9 +379,9 @@ contract ResolutionTest is LoanFixture {
         vm.warp(_floorTime(TOKEN));
         uint256 price = lm.auctionPrice(TOKEN);
         assertEq(price, lm.auctionOf(TOKEN).floorPrice);
-        uint256 treasuryBefore = musd.balanceOf(treasury);
+        uint256 treasuryBefore = lm.claimableMusd(treasury);
         _buy(buyer);
-        uint256 toTreasury = musd.balanceOf(treasury) - treasuryBefore;
+        uint256 toTreasury = lm.claimableMusd(treasury) - treasuryBefore;
         assertEq(cm.marketOf(m1).collectedMusd, face);
         assertEq(toTreasury, Math.min(face * PENALTY / BPS, price - face));
         assertEq(lm.claimableMusd(alice), price - face - toTreasury);
@@ -439,9 +442,12 @@ contract ResolutionTest is LoanFixture {
         assertEq(ve.ownerOf(TOKEN), address(hostile), "transferFrom runs no receiver hook");
     }
 
-    function test_Purchase_OverdueSellsWithoutAPrice() public {
+    function test_Purchase_OverdueWaitsForAFreshPriceThenSells() public {
         uint256 face = _auctionOverdue();
         feed.setStale(true);
+        vm.expectRevert(ILoanManager.PriceUnavailable.selector);
+        _buy(buyer);
+        feed.setStale(false);
         uint256 paid = _buy(buyer);
         assertEq(cm.marketOf(m1).collectedMusd, face);
         assertGt(paid, face);
@@ -506,9 +512,10 @@ contract ResolutionTest is LoanFixture {
 
     function test_PrepareSettle_SurfacesTheVoterEpochRules() public {
         voter.vote(TOKEN);
-        _openLoan();
+        // Before the loan opens: the loan snapshots its auction terms, so a later change would not reach it.
         vm.prank(owner);
         lm.setAuctionParams(PENALTY, FLOOR, 1 hours);
+        _openLoan();
         _makeUnsafe(TOKEN);
         lm.startAuction(TOKEN);
         vm.warp(_floorTime(TOKEN));
@@ -582,7 +589,7 @@ contract ResolutionTest is LoanFixture {
 
         lm.settle(TOKEN);
         uint256 toMarket = Math.mulDiv(face, 1e18, PRICE, Math.Rounding.Ceil);
-        uint256 toTreasury = btc.balanceOf(treasury);
+        uint256 toTreasury = lm.claimableBtc(treasury);
         assertEq(cm.marketOf(m1).collectedBtc, toMarket);
         assertEq(toMarket + toTreasury + lm.claimableBtc(alice), 0.9e18, "split the 0.9 BTC that arrived");
         assertEq(btc.balanceOf(address(lm)), lm.totalClaimableBtc() + 5e18, "the stray 5 BTC belongs to nobody");
@@ -639,7 +646,7 @@ contract ResolutionTest is LoanFixture {
         feed.setPrice(lowPrice);
         lm.settle(TOKEN);
         assertEq(cm.marketOf(m1).collectedBtc, uint256(int256(LOCK_BTC)));
-        assertEq(btc.balanceOf(treasury), 0);
+        assertEq(lm.claimableBtc(treasury), 0);
         assertEq(lm.claimableBtc(alice), 0);
     }
 
@@ -791,14 +798,27 @@ contract ResolutionTest is LoanFixture {
         vm.warp(snapshot.startTime + DURATION / 2);
         uint256 expected = snapshot.startValue - (uint256(snapshot.startValue) - snapshot.floorPrice) / 2;
         assertEq(lm.auctionPrice(TOKEN), expected, "still on the old 72-hour curve");
-        uint256 treasuryBefore = musd.balanceOf(treasury);
+        uint256 treasuryBefore = lm.claimableMusd(treasury);
         _buy(buyer);
-        assertEq(musd.balanceOf(treasury) - treasuryBefore, face * PENALTY / BPS, "old 5% penalty");
+        assertEq(lm.claimableMusd(treasury) - treasuryBefore, face * PENALTY / BPS, "old 5% penalty");
 
         assertEq(lm.loanOf(TOKEN_B).liqLtvBps, LIQ_LTV, "live loan keeps its line");
         feed.setPrice(_priceAtLtv(TOKEN_B, 5_000));
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.NotLiquidatable.selector, TOKEN_B));
         lm.startAuction(TOKEN_B);
+
+        // The live loan's own auction, once it is overdue, runs on the terms it opened with, not the new ones.
+        vm.warp(m1 + 1);
+        lm.startAuction(TOKEN_B);
+        ILoanManager.Auction memory later = lm.auctionOf(TOKEN_B);
+        uint256 owedB = lm.owedOf(TOKEN_B);
+        assertEq(later.duration, DURATION, "live loan's auction keeps its 72 hours");
+        assertEq(later.penaltyBps, PENALTY, "live loan's auction keeps its 5% penalty");
+        assertEq(
+            later.floorPrice,
+            Math.max(uint256(later.startValue) * FLOOR / BPS, Math.min(owedB, later.startValue)),
+            "live loan's auction keeps its 70% floor"
+        );
     }
 
     function test_C19_ResolutionStepsAreNeverPaused() public {
@@ -837,12 +857,16 @@ contract ResolutionTest is LoanFixture {
 
         uint256 musdOwed = lm.claimableMusd(alice);
         uint256 btcOwed = lm.claimableBtc(alice);
+        uint256 treasuryMusd = lm.claimableMusd(treasury);
+        uint256 treasuryBtc = lm.claimableBtc(treasury);
         assertGt(musdOwed, 0);
         assertGt(btcOwed, 0);
-        assertEq(lm.totalClaimableMusd(), musdOwed);
-        assertEq(lm.totalClaimableBtc(), btcOwed);
-        assertEq(musd.balanceOf(address(lm)), musdOwed);
-        assertEq(btc.balanceOf(address(lm)), btcOwed);
+        assertGt(treasuryMusd, 0, "the sale's penalty waits for the treasury");
+        assertGt(treasuryBtc, 0, "the settle's penalty waits for the treasury");
+        assertEq(lm.totalClaimableMusd(), musdOwed + treasuryMusd);
+        assertEq(lm.totalClaimableBtc(), btcOwed + treasuryBtc);
+        assertEq(musd.balanceOf(address(lm)), musdOwed + treasuryMusd);
+        assertEq(btc.balanceOf(address(lm)), btcOwed + treasuryBtc);
 
         uint256 musdBefore = musd.balanceOf(alice);
         vm.expectEmit(true, false, false, true, address(lm));
@@ -853,8 +877,8 @@ contract ResolutionTest is LoanFixture {
         assertEq(btcOut, btcOwed);
         assertEq(musd.balanceOf(alice) - musdBefore, musdOwed);
         assertEq(btc.balanceOf(alice), btcOwed);
-        assertEq(lm.totalClaimableMusd(), 0);
-        assertEq(lm.totalClaimableBtc(), 0);
+        assertEq(lm.totalClaimableMusd(), treasuryMusd, "only the treasury's share is left");
+        assertEq(lm.totalClaimableBtc(), treasuryBtc);
 
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.NothingToClaim.selector, alice));
         vm.prank(alice);
@@ -1009,7 +1033,9 @@ contract ResolutionTest is LoanFixture {
         ILoanManager.Auction memory stale = lm.auctionOf(TOKEN);
         feed.setPrice(PRICE);
         vm.warp(m1 + 1);
-        uint256 stalePrice = lm.auctionPrice(TOKEN);
+        // The snapshotted curve alone; auctionPrice now lifts it to the floor on the fresh value.
+        uint256 stalePrice =
+            Resolution.priceAt(stale.startValue, stale.floorPrice, block.timestamp - stale.startTime, stale.duration);
         assertLt(stalePrice, PRICE / 2, "the old curve would sell an 80,000 position for well under half");
 
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.StillSafe.selector, TOKEN));
