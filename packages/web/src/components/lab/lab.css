@@ -11,8 +11,50 @@
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
-.lab-toggle {
+/* The panel starts folded into a 40 by 40 button labelled Lab, so it never covers the sections under review. */
+.lab-panel[data-open="false"] {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+}
+
+.lab-panel[data-open="false"] .lab-body {
   display: none;
+}
+
+.lab-panel[data-open="true"] .lab-title {
+  display: none;
+}
+
+.lab-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+  cursor: pointer;
+  transition:
+    color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+.lab-toggle:hover {
+  color: var(--paper);
+  background: rgba(241, 230, 210, 0.06);
+}
+
+.lab-panel[data-open="true"] .lab-toggle {
+  height: 28px;
+  margin-bottom: 8px;
+  justify-content: flex-start;
+  padding: 0 4px;
 }
 
 .lab-title,
@@ -106,7 +148,7 @@
   background: rgba(241, 230, 210, 0.06);
 }
 
-/* Phone: the panel folds into a 40 by 40 button labelled Lab, under the network tag. It opens downward. */
+/* Phone: the button sits under the network tag and the open panel drops down from it. */
 @media (max-width: 767px) {
   .lab-panel {
     top: 68px;
@@ -114,53 +156,8 @@
     bottom: auto;
   }
 
-  .lab-panel[data-open="false"] {
-    width: 40px;
-    height: 40px;
-    padding: 0;
-  }
-
-  .lab-panel[data-open="false"] .lab-body {
-    display: none;
-  }
-
   .lab-panel[data-open="true"] {
     width: min(280px, calc(100vw - 24px));
-  }
-
-  .lab-panel[data-open="true"] .lab-title {
-    display: none;
-  }
-
-  .lab-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 38px;
-    border: 0;
-    border-radius: 8px;
-    background: transparent;
-    font-family: var(--font-plex-mono), ui-monospace, monospace;
-    font-size: 11px;
-    text-transform: uppercase;
-    color: var(--paper-dim);
-    cursor: pointer;
-    transition:
-      color 160ms ease-out,
-      background-color 160ms ease-out;
-  }
-
-  .lab-toggle:hover {
-    color: var(--paper);
-    background: rgba(241, 230, 210, 0.06);
-  }
-
-  .lab-panel[data-open="true"] .lab-toggle {
-    height: 28px;
-    margin-bottom: 8px;
-    justify-content: flex-start;
-    padding: 0 4px;
   }
 }
 

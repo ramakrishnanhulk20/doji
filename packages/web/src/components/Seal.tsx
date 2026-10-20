@@ -5,12 +5,14 @@ type SealProps = {
   /** Accessible name. Pass an empty string when a visible "Doji" sits next to the seal. */
   title?: string;
   className?: string;
-  /** Loading mark: the wick breathes between 40 and 100 percent of its height. */
+  /** Loading mark: the doji's wick breathes between 40 and 100 percent of its height. */
   busy?: boolean;
 };
 
 // The inner border and the rough stamped edge only read at larger sizes.
 const DETAIL_FROM_SIZE = 48;
+
+const paper = { fill: "var(--paper)" } as const;
 
 export function Seal({ size, title = "Doji", className, busy = false }: SealProps) {
   const filterId = useId();
@@ -47,16 +49,31 @@ export function Seal({ size, title = "Doji", className, busy = false }: SealProp
             style={{ stroke: "var(--paper)" }}
           />
         )}
+        <rect x="17" y="18" width="2" height="28" rx="1" style={paper} />
+        <rect x="14" y="24" width="8" height="14" rx="1" style={paper} />
         <rect
           className={busy ? "seal-wick seal-wick-busy" : "seal-wick"}
-          x="30.5"
-          y="14"
-          width="3"
-          height="36"
-          rx="1.5"
-          style={{ fill: "var(--paper)" }}
+          x="31"
+          y="15"
+          width="2"
+          height="34"
+          rx="1"
+          style={paper}
         />
-        <rect x="19" y="29.5" width="26" height="5" rx="1" style={{ fill: "var(--paper)" }} />
+        <rect x="25" y="30.75" width="14" height="2.5" rx="1" style={paper} />
+        {/* A hollow candle's wick stops at its body, as on a real chart. */}
+        <rect x="45" y="19" width="2" height="8" rx="1" style={paper} />
+        <rect x="45" y="39" width="2" height="8" rx="1" style={paper} />
+        <rect
+          x="42"
+          y="27"
+          width="8"
+          height="12"
+          rx="1"
+          fill="none"
+          strokeWidth="1.6"
+          style={{ stroke: "var(--paper)" }}
+        />
       </g>
     </svg>
   );

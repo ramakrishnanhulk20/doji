@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { labStateToSearch, type LabState } from "../../lib/lab-state";
 import { setMotionOverride } from "../../lib/motion-mode";
 import { Hero } from "../hero/Hero";
+import { FoldingScreen } from "../osaka/FoldingScreen";
+import { StampMoment } from "../stamp/StampMoment";
 import { LabPanel } from "./LabPanel";
 import { PaletteSection } from "./PaletteSection";
 
@@ -31,6 +33,8 @@ export function LabShell({ initial }: { initial: LabState }) {
   return (
     <main data-type={state.type}>
       <Hero type={state.type} headline={state.headline} motion={state.motion} replayKey={replayKey} />
+      <StampMoment motion={state.motion} />
+      <FoldingScreen motion={state.motion} />
       <PaletteSection headline={state.headline} />
       <LabPanel state={state} onChange={change} onReplay={replay} />
     </main>

@@ -12,8 +12,10 @@ const shippori = Shippori_Mincho_B1({
   variable: "--font-shippori",
 });
 
+// The italic carries "At the same time." in the stamp moment.
 const fraunces = Fraunces({
   subsets: ["latin"],
+  style: ["normal", "italic"],
   axes: ["opsz", "SOFT", "WONK"],
   display: "swap",
   variable: "--font-fraunces",

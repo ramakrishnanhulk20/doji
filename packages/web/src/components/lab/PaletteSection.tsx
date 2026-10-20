@@ -10,7 +10,7 @@ import { HEADLINES, IMAGE_CREDIT, IMAGE_CREDIT_URL, type HeadlineChoice } from "
 import { Seal } from "../Seal";
 import "./lab.css";
 
-const SEAL_SIZES = [16, 24, 48, 120] as const;
+const SEAL_SIZES = [16, 24, 28, 48, 120] as const;
 
 function Block({ title, children }: { title: string; children: ReactNode }) {
   return (

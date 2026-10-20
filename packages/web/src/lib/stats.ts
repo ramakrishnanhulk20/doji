@@ -1,5 +1,5 @@
-import { createPublicClient, formatUnits, http, parseAbi } from "viem";
-import { addressBook } from "./addresses";
+import { createPublicClient, decodeEventLog, formatUnits, http, parseAbi, parseEventLogs } from "viem";
+import { addressBook, demoLoan } from "./addresses";
 import { mezoMainnetChain, mezoTestnetChain } from "./chains";
 
 const mainnetClient = createPublicClient({ chain: mezoMainnetChain, transport: http() });
@@ -11,6 +11,14 @@ const creditMarketsAbi = parseAbi([
   "function nextOfferId() view returns (uint256)",
   "function offerOf(uint256 offerId) view returns ((address maker, uint64 maturity, uint16 aprBps, uint128 remaining))",
 ]);
+
+const loanManagerAbi = parseAbi([
+  "function loanOf(uint256 tokenId) view returns ((uint64 maturity, uint128 face, uint128 repaid, uint16 maxLtvBps, uint16 liqLtvBps, uint16 penaltyBps, uint16 auctionFloorBps, uint32 auctionDuration, uint8 state))",
+  "function lockOf(uint256 tokenId) view returns (uint256 amount, uint256 end, bool isPermanent)",
+  "event Borrowed(uint256 indexed tokenId, address indexed borrower, uint64 indexed maturity, uint256 principal, uint256 face)",
+]);
+const veBtcVotedAbi = parseAbi(["function voted(uint256 tokenId) view returns (bool)"]);
+const feeDistributorAbi = parseAbi(["function claimable(uint256 tokenId) view returns (uint256 amount)"]);
 
 // Only the newest offers are scanned: older ids are long settled and would cost a read each.
 const OFFER_WINDOW = 200n;
@@ -112,4 +120,114 @@ export function formatDate(seconds: number): string {
   const parts: Record<string, string> = {};
   for (const part of dateFormat.formatToParts(new Date(seconds * 1000))) parts[part.type] = part.value;
   return `${parts.weekday} ${parts.day} ${parts.month}`;
+}
+
+// LoanState.Active in LoanManager.
+const LOAN_STATE_ACTIVE = 1;
+
+// Some nodes behind the public RPC answer null for a receipt that others already have.
+const RECEIPT_ATTEMPTS = 8;
+const RECEIPT_RETRY_MS = 1_500;
+const EXPLORER_LOGS_URL = "https://api.explorer.test.mezo.org/api/v2/transactions";
+
+export type DemoLoanState = {
+  /** False once the loan has been repaid, sold or otherwise closed. */
+  active: boolean;
+  lockEnd: number;
+  isPermanent: boolean;
+  voted: boolean;
+  claimableBtc: number;
+  face: number;
+  maturity: number;
+};
+
+export type DemoLoan = DemoLoanState & { principal: number };
+
+export async function readDemoLoanState(): Promise<DemoLoanState> {
+  const { loanManager, veBTC, feeDistributor } = addressBook[31611];
+  const tokenId = demoLoan.tokenId;
+  const [loan, lock, voted, claimable] = await Promise.all([
+    testnetClient.readContract({ address: loanManager, abi: loanManagerAbi, functionName: "loanOf", args: [tokenId] }),
+    testnetClient.readContract({ address: loanManager, abi: loanManagerAbi, functionName: "lockOf", args: [tokenId] }),
+    testnetClient.readContract({ address: veBTC, abi: veBtcVotedAbi, functionName: "voted", args: [tokenId] }),
+    testnetClient.readContract({
+      address: feeDistributor,
+      abi: feeDistributorAbi,
+      functionName: "claimable",
+      args: [tokenId],
+    }),
+  ]);
+
+  return {
+    active: loan.state === LOAN_STATE_ACTIVE,
+    lockEnd: Number(lock[1]),
+    isPermanent: lock[2],
+    voted,
+    claimableBtc: Number(formatUnits(claimable, 18)),
+    face: Number(formatUnits(loan.face, 18)),
+    maturity: Number(loan.maturity),
+  };
+}
+
+async function readPrincipalFromReceipt(): Promise<bigint | null> {
+  for (let attempt = 0; attempt < RECEIPT_ATTEMPTS; attempt++) {
+    try {
+      const receipt = await testnetClient.getTransactionReceipt({ hash: demoLoan.hash });
+      const [borrowed] = parseEventLogs({
+        abi: loanManagerAbi,
+        eventName: "Borrowed",
+        logs: receipt.logs,
+      }).filter((log) => log.args.tokenId === demoLoan.tokenId);
+      return borrowed ? borrowed.args.principal : null;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, RECEIPT_RETRY_MS));
+    }
+  }
+  return null;
+}
+
+type ExplorerLog = { address: { hash: string }; data: string; topics: (string | null)[] };
+
+export async function readPrincipalFromExplorer(): Promise<bigint> {
+  const response = await fetch(`${EXPLORER_LOGS_URL}/${demoLoan.hash}/logs`);
+  if (!response.ok) throw new Error(`explorer answered ${response.status}`);
+  const body = (await response.json()) as { items: ExplorerLog[] };
+
+  for (const item of body.items) {
+    const topics = item.topics.filter((topic): topic is string => topic !== null);
+    if (topics.length === 0) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: loanManagerAbi,
+        data: item.data as `0x${string}`,
+        topics: topics as [`0x${string}`, ...`0x${string}`[]],
+      });
+      if (decoded.eventName === "Borrowed" && decoded.args.tokenId === demoLoan.tokenId) return decoded.args.principal;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("the borrow transaction has no Borrowed log for this loan");
+}
+
+// The principal never changes after the borrow, so it is read once per page load.
+let principalOnce: Promise<number> | null = null;
+
+export function readDemoLoanPrincipal(): Promise<number> {
+  if (principalOnce === null) {
+    principalOnce = (async () => {
+      const fromReceipt = await readPrincipalFromReceipt();
+      const principal = fromReceipt ?? (await readPrincipalFromExplorer());
+      return Number(formatUnits(principal, 18));
+    })();
+    principalOnce.catch(() => {
+      principalOnce = null;
+    });
+  }
+  return principalOnce;
+}
+
+export async function readDemoLoan(): Promise<DemoLoan> {
+  const [state, principal] = await Promise.all([readDemoLoanState(), readDemoLoanPrincipal()]);
+  return { ...state, principal };
 }

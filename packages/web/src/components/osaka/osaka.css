@@ -1,0 +1,400 @@
+/* Base: the flat, unpinned version. Phone, reduced motion and a missing script all show this. */
+.fold {
+  position: relative;
+  --screen-w: min(1200px, 84vw);
+  --screen-h: calc(var(--screen-w) * 1004 / 2400);
+  background: var(--ink);
+}
+
+.fold-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  padding: 96px 20px;
+}
+
+.fold-label {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.fold-title {
+  margin: 12px 0 0;
+  font-size: clamp(3rem, 7vw, 6.5rem);
+  font-weight: var(--display-wordmark-weight);
+  line-height: 1;
+  color: var(--paper);
+}
+
+.fold-kanji {
+  font-family: var(--font-doji-kanji), var(--font-shippori), serif;
+  font-size: 0.5em;
+  font-weight: 800;
+  color: var(--paper-dim);
+}
+
+.fold-stage {
+  display: none;
+}
+
+.fold-flat {
+  position: relative;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.fold-flat-picture {
+  position: relative;
+  aspect-ratio: 2400 / 1004;
+}
+
+.fold-flat-picture picture,
+.fold-flat-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fold-flat-image {
+  object-fit: cover;
+  filter: saturate(0.92) contrast(1.05) brightness(0.9);
+}
+
+.fold-flag-caption {
+  margin-top: 12px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.fold-cols {
+  display: grid;
+  gap: 32px;
+}
+
+.fold-col-heading {
+  margin: 0;
+  font-size: 1.625rem;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.2;
+  color: var(--paper);
+}
+
+.fold-col-body {
+  margin: 12px 0 0;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--paper-dim);
+}
+
+.fold-close {
+  margin: 0;
+  font-size: clamp(1.75rem, 3.4vw, 3rem);
+  font-weight: var(--display-headline-weight);
+  line-height: 1.15;
+  color: var(--paper);
+}
+
+/* The ring marks the rooftop flag man. The leader and label sit beside it on wide screens only. */
+.flag-ring {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.flag-ring-circle {
+  position: absolute;
+  left: -28px;
+  top: -28px;
+  width: 56px;
+  height: 56px;
+  border: 1.5px solid var(--beni-text);
+  border-radius: 50%;
+}
+
+.flag-ring-leader {
+  display: none;
+  position: absolute;
+  left: 28px;
+  top: 0;
+  width: 24px;
+  height: 1px;
+  background: var(--beni-text);
+}
+
+.flag-ring-label {
+  display: none;
+  position: absolute;
+  left: 60px;
+  top: -11px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(14, 12, 11, 0.72);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--paper);
+}
+
+@keyframes ring-throb {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.4;
+  }
+}
+
+/* From 1100px up the flat version gets two columns and the ring's label beside it. Below that it stays stacked. */
+@media (min-width: 1100px) {
+  .fold-frame {
+    padding: 96px 64px;
+  }
+
+  .fold-flat {
+    max-width: var(--screen-w);
+  }
+
+  .fold-cols {
+    grid-template-columns: repeat(2, minmax(0, clamp(260px, 24vw, 340px)));
+    justify-content: space-between;
+    width: 100%;
+    max-width: var(--screen-w);
+    margin: 0 auto;
+  }
+
+  .fold-close {
+    text-align: center;
+  }
+
+  .fold-flag-caption {
+    display: none;
+  }
+
+  .flag-ring-leader,
+  .flag-ring-label {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fold[data-motion="auto"] .flag-ring-circle {
+    animation: ring-throb 1.6s ease-in-out infinite;
+  }
+}
+
+/* Stacked layout with motion: each block fades up as it enters the viewport. */
+@media (max-width: 1099px) and (prefers-reduced-motion: no-preference) {
+  .fold[data-motion="auto"] .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition:
+      opacity 600ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .fold[data-motion="auto"] .reveal.is-in {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Wide screens with motion: pinned for 340svh. The folding screen is built from six nested panels. */
+@media (min-width: 1100px) and (prefers-reduced-motion: no-preference) {
+  .fold[data-motion="auto"] {
+    height: 340svh;
+    --theta: 0;
+    --fade: 0;
+    --s: 0.94;
+    --ring: 0;
+    --cols: 0;
+    --close: 0;
+  }
+
+  .fold[data-motion="auto"] .fold-frame {
+    position: sticky;
+    top: 0;
+    display: block;
+    height: 100svh;
+    padding: 0;
+    overflow: clip;
+  }
+
+  .fold[data-motion="auto"] .fold-heading {
+    position: absolute;
+    left: 64px;
+    top: 88px;
+    z-index: 5;
+  }
+
+  .fold[data-motion="auto"] .fold-flat {
+    display: none;
+  }
+
+  .fold[data-motion="auto"] .fold-stage {
+    display: block;
+    position: absolute;
+    inset: 0;
+    perspective: 1600px;
+    perspective-origin: 50% 45%;
+    opacity: var(--fade);
+    transform: scale(var(--s));
+    transform-origin: 50% 56%;
+  }
+
+  .fold[data-motion="auto"] .fold-screen {
+    --panel-w: calc(var(--screen-w) / 6);
+    position: absolute;
+    left: calc(50% - var(--screen-w) / 2);
+    top: calc(56% - var(--screen-h) / 2);
+    width: var(--screen-w);
+    height: var(--screen-h);
+    transform-style: preserve-3d;
+    transform: translateX(calc(var(--screen-w) * (1 - cos(var(--theta) * 1deg)) / 2));
+  }
+
+  .fold[data-motion="auto"] .fold-floor {
+    position: absolute;
+    left: 50%;
+    top: calc(56% + var(--screen-h) / 2 + 16px);
+    width: calc(var(--screen-w) * cos(var(--theta) * 1deg));
+    height: 40px;
+    transform: translateX(-50%);
+    background: radial-gradient(closest-side, rgba(0, 0, 0, 0.5), transparent);
+  }
+
+  .fold-panel {
+    position: absolute;
+    top: 0;
+    left: 100%;
+    width: var(--panel-w);
+    height: 100%;
+    transform-style: preserve-3d;
+    transform-origin: left center;
+  }
+
+  .fold-panel-first {
+    position: relative;
+    left: 0;
+    transform: rotateY(calc(var(--theta) * -1deg));
+  }
+
+  .fold-panel-odd {
+    transform: rotateY(calc(var(--theta) * 2deg));
+  }
+
+  .fold-panel-even:not(.fold-panel-first) {
+    transform: rotateY(calc(var(--theta) * -2deg));
+  }
+
+  /* The face is a flat layer, so the art, the shading and the lacquer edges stay together inside each panel. */
+  .fold-face {
+    position: absolute;
+    inset: 0;
+  }
+
+  .fold-face::before,
+  .fold-face::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    height: 8px;
+    background: #1b1512;
+  }
+
+  .fold-face::before {
+    top: 0;
+  }
+
+  .fold-face::after {
+    bottom: 0;
+  }
+
+  .fold-art {
+    position: absolute;
+    inset: 8px 0;
+    background-image: url("/art/dojima-2400.jpg");
+    background-image: image-set("/art/dojima-2400.avif" type("image/avif"), "/art/dojima-2400.webp" type("image/webp"));
+    background-repeat: no-repeat;
+    background-size: 600% 100%;
+    background-position-y: 0;
+    filter: saturate(0.92) contrast(1.05) brightness(0.9);
+  }
+
+  .fold-shade {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .fold-panel-even > .fold-face > .fold-shade {
+    background: linear-gradient(
+      to right,
+      rgba(14, 12, 11, calc(0.45 * sin(var(--theta) * 1deg))),
+      rgba(14, 12, 11, calc(0.15 * sin(var(--theta) * 1deg)))
+    );
+  }
+
+  .fold-panel-odd > .fold-face > .fold-shade {
+    background: linear-gradient(
+      to left,
+      rgba(14, 12, 11, calc(0.2 * sin(var(--theta) * 1deg))),
+      rgba(241, 230, 210, calc(0.04 * sin(var(--theta) * 1deg)))
+    );
+  }
+
+  .fold-panel:not(.fold-panel-first) > .fold-face > .fold-shade {
+    box-shadow: inset 1px 0 0 rgba(14, 12, 11, 0.65);
+  }
+
+  .fold[data-motion="auto"] .fold-screen .flag-ring {
+    z-index: 3;
+    opacity: var(--ring);
+  }
+
+  .fold[data-motion="auto"] .fold-cols {
+    display: contents;
+  }
+
+  .fold[data-motion="auto"] .fold-col {
+    position: absolute;
+    z-index: 4;
+    top: 56%;
+    width: clamp(260px, 24vw, 340px);
+    opacity: var(--cols);
+    transform: translateY(calc(-50% + (1 - var(--cols)) * 24px));
+  }
+
+  .fold[data-motion="auto"] .fold-col-left {
+    left: 64px;
+  }
+
+  .fold[data-motion="auto"] .fold-col-right {
+    right: 64px;
+  }
+
+  /* Centred in the space between the screen's floor and the bottom of the frame. */
+  .fold[data-motion="auto"] .fold-close {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(78% + var(--screen-h) / 4);
+    opacity: var(--close);
+    transform: translateY(calc(-50% + (1 - var(--close)) * 24px));
+  }
+}

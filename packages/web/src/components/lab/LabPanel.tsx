@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MotionConfig, motion } from "motion/react";
 import type { LabState } from "../../lib/lab-state";
 import "./lab.css";
@@ -53,6 +53,15 @@ type LabPanelProps = {
 
 export function LabPanel({ state, onChange, onReplay }: LabPanelProps) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
 
   return (
     <MotionConfig reducedMotion="user">
