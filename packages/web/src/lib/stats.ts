@@ -62,7 +62,7 @@ export async function readMezoLocked(): Promise<MezoLocked> {
   };
 }
 
-export type OpenOffer = { maturity: number; aprBps: number; remaining: bigint };
+export type OpenOffer = { id: bigint; maturity: number; aprBps: number; remaining: bigint };
 
 // The hero and the Thursday board both read the offers every 15 seconds, so one scan serves both inside two seconds.
 let recentScan: { at: number; scan: Promise<OpenOffer[]> } | null = null;
@@ -106,8 +106,9 @@ async function readOpenOffers(): Promise<OpenOffer[]> {
 
   const now = BigInt(Math.floor(Date.now() / 1000));
   return offers
-    .filter((offer) => offer.remaining > 0n && offer.maturity > now)
-    .map((offer) => ({ maturity: Number(offer.maturity), aprBps: offer.aprBps, remaining: offer.remaining }));
+    .map((offer, index) => ({ id: ids[index] as bigint, offer }))
+    .filter(({ offer }) => offer.remaining > 0n && offer.maturity > now)
+    .map(({ id, offer }) => ({ id, maturity: Number(offer.maturity), aprBps: offer.aprBps, remaining: offer.remaining }));
 }
 
 export async function readOffers(): Promise<OfferStats> {

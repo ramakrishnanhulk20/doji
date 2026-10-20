@@ -11,7 +11,9 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "stats": "tsx scripts/print-live-stats.ts"
+    "stats": "tsx scripts/print-live-stats.ts",
+    "abi": "node scripts/sync-abi.mjs",
+    "check:borrow": "tsx scripts/check-borrow.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "5.104.5",
@@ -21,7 +23,8 @@
     "next": "16.4.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "viem": "2.57.7"
+    "viem": "2.57.7",
+    "wagmi": "3.7.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",

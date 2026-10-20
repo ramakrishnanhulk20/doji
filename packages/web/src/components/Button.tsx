@@ -17,6 +17,8 @@ type ButtonProps = {
   href?: string;
   className?: string;
   style?: CSSProperties;
+  /** For a button that is not a link. */
+  onClick?: () => void;
   children: ReactNode;
 };
 
@@ -43,6 +45,7 @@ export function Button({
   href,
   className,
   style,
+  onClick,
   children,
 }: ButtonProps) {
   const classes = [
@@ -105,6 +108,7 @@ export function Button({
       className={classes}
       style={style}
       disabled={disabled}
+      onClick={onClick}
       aria-busy={loading || undefined}
       data-loading={loading || undefined}
     >
