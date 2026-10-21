@@ -21,4 +21,5 @@ fail_on_revert = false
 
 [rpc_endpoints]
 mezo_testnet = "https://rpc.test.mezo.org"
-mezo_mainnet = "https://jsonrpc-mezo.boar.network"
+# On 2026-10-21 both boar.network nodes and validationcloud timed out under the fork suites; dRPC ran all 13 clean.
+mezo_mainnet = "https://mezo.drpc.org"

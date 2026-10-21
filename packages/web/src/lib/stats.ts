@@ -1,6 +1,7 @@
 import {
   createPublicClient,
   decodeEventLog,
+  fallback,
   formatUnits,
   getAbiItem,
   hexToBigInt,
@@ -14,9 +15,12 @@ import {
 } from "viem";
 import { deployment } from "../generated/deployment";
 import { addressBook, demoLoan } from "./addresses";
-import { mezoMainnetChain, mezoTestnetChain } from "./chains";
+import { mezoMainnetChain, mezoMainnetRpcs, mezoTestnetChain } from "./chains";
 
-const mainnetClient = createPublicClient({ chain: mezoMainnetChain, transport: http() });
+const mainnetClient = createPublicClient({
+  chain: mezoMainnetChain,
+  transport: fallback(mezoMainnetRpcs.map((url) => http(url))),
+});
 const testnetClient = createPublicClient({ chain: mezoTestnetChain, transport: http() });
 
 const veBtcAbi = parseAbi(["function supply() view returns (uint256)"]);
