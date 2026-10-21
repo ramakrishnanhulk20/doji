@@ -1,0 +1,58 @@
+---
+title: Quick start
+description: Get test BTC, connect a wallet on Mezo testnet and open your first loan in five steps.
+---
+
+You need a browser wallet, such as MetaMask or Rabby, and a little test BTC. Nothing here costs real money: Doji runs on Mezo testnet, where test BTC and test MUSD have no value.
+
+## 1. Get test BTC
+
+Open the [Mezo faucet](https://faucet.test.mezo.org), solve its CAPTCHA and claim test BTC to your wallet address. Test BTC pays for gas on Mezo, and it is also what you lock.
+
+In the [20 October 2026 proof run](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-20.md), 0.0005 test BTC backed the 10 MUSD minimum loan with room to spare. How much you need depends on the BTC price on the day.
+
+When a connected wallet holds less than 0.0005 test BTC, the app shows a strip under the top bar: "You need a little test BTC for gas and to lock. Get some from the Mezo faucet."
+
+## 2. Connect a wallet
+
+Press "Connect wallet" in the top bar and pick your wallet from the list. Doji asks it to connect on Mezo testnet, and the wallet adds the network for you. If the wallet is on another network, the button reads "Switch to Mezo testnet".
+
+To add the network by hand instead:
+
+| Setting | Value |
+| --- | --- |
+| Network name | Mezo testnet |
+| Chain ID | 31611 |
+| RPC URL | `https://rpc.test.mezo.org` |
+| Currency | BTC, 18 decimals |
+| Explorer | `https://explorer.test.mezo.org` |
+
+Once connected, the top bar shows your address and your test BTC balance. Its menu has "Copy address", "View on explorer" and "Disconnect".
+
+## 3. Choose your collateral
+
+Open [Borrow](/borrow). Under "01 Your collateral", keep "Lock BTC now" and type how much test BTC to lock. "Max" keeps 0.0002 BTC back for gas. The lock ends on the due date you pick in the next step.
+
+If you already hold a veBTC position, choose "Use a veBTC position" and pick it from the list instead.
+
+## 4. Pick a Thursday and an amount
+
+Under "02 Due date", each card is a Thursday with its best rate and the MUSD on offer for it. Doji starts on the earliest Thursday whose offers can cover the minimum loan.
+
+Under "03 Amount", type the MUSD you want or drag the slider. The note under it says the most you can borrow against this collateral on that date. The minimum loan is 10 MUSD.
+
+## 5. Confirm
+
+The "Your loan" card shows what you receive now, what you owe on the date, the fixed rate, how much of your borrow limit you use, and the BTC price at which the loan would reach its auction line.
+
+Press the button at the bottom of the card. It names the whole action, for example "Lock 0.0005 BTC and borrow 10.00 MUSD". The steps above the button read "Approve 0.0005 BTC", then "Lock and borrow", and your wallet asks you to sign each one in turn. When the second one lands, the page says "10.00 MUSD is in your wallet." and offers "See your loan" and "View transaction".
+
+<Callout type="info">
+Every write is simulated before your wallet sees it. After you sign, the app confirms the transaction from Mezo's RPC and Mezo's explorer together for up to ten minutes, and only a revert counts as a failure. If a step fails, the button reads "Try again from step 2" (or whichever step it was), so nothing is sent twice.
+</Callout>
+
+## Next
+
+- [Borrow MUSD](/docs/getting-started/borrow): every field and button on the Borrow screen.
+- [Lend MUSD](/docs/getting-started/lend): post an offer for a Thursday at your rate.
+- [Manage a loan](/docs/getting-started/manage-a-loan): repay, roll, withdraw and claim.

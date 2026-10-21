@@ -1,0 +1,37 @@
+---
+title: Early payouts
+description: How lenders take their share of a date's collections from the Thursday on, without waiting for its last loan to end.
+---
+
+A date can only be closed when every loan at it has ended. One unpaid loan can take up to about 5 weeks to end (see [the time limit](/docs/concepts/if-a-loan-goes-wrong#the-time-limit)). Early payouts mean that loan delays only its own share: everything already collected for the date can be withdrawn from the Thursday on.
+
+## How it works
+
+Once the Thursday has passed, a unit holder calls `withdrawCollected(maturity, units)`:
+
+1. The units are burned from the caller and added to the caller's Claim for that date. A Claim belongs to that address and cannot be transferred, so units moved into it can no longer be sold or sent.
+2. The Claim is owed its share of everything collected so far, worked out on its whole history:
+
+```text
+MUSD owed = the smaller of: units, or units x collected MUSD / every unit ever issued at the date
+BTC owed  = units x collected BTC / every unit ever issued at the date
+```
+
+3. The Claim is paid what it is owed minus what it was already paid. Calling again later, with zero new units, pays only what arrived since.
+
+On Lend this is "Withdraw what's collected", then "Withdraw the new part". See [Credit units and payouts](/docs/getting-started/credit-units).
+
+## Why it is fair
+
+- No new units can be added to a date once its Thursday has passed, so the total of units is fixed and each unit's share only grows.
+- The share is recomputed on the Claim's whole history every time, so rounding never builds up across withdrawals.
+- A unit receives the same total whichever path it takes, early withdrawals, a late redemption or a mix, within a few wei of rounding. Nobody gains by withdrawing first.
+- The MUSD part never exceeds 1 MUSD per unit, and the date never pays out more than it collected.
+
+For example, take a date with 1,000 units in total and 600 MUSD collected so far. A holder of 100 units can withdraw 60 MUSD now. When the last 400 MUSD arrives, the same holder withdraws 40 more.
+
+## Redemption after the date closes
+
+When every loan at the date has ended, anyone can close it with `finalize`, which freezes the totals. Units still in a wallet are then redeemed with `redeem`: the units are burned first, and the holder is paid units x MUSD at close / units at close (capped at 1 MUSD per unit) plus the same share of any BTC, both rounded down. A holder with a Claim takes the rest of it with one more `withdrawCollected`.
+
+The protocol's own units follow the same rules, so the fee shares losses with lenders at the same rate.

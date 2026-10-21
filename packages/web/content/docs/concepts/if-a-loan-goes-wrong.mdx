@@ -1,0 +1,98 @@
+---
+title: If a loan goes wrong
+description: The protected auction, repricing at the time of sale, settling in BTC, the penalty, the time limit and the steps anyone can call.
+---
+
+A loan goes wrong in one of two ways: its Thursday passes unpaid, or Bitcoin falls until the debt is above 65% of the collateral's value. Either way the position is sold in a falling-price auction that starts at its full value. Lenders are paid what they are owed first, the protocol takes a stated penalty, and the borrower keeps everything else. If nobody buys, the lenders receive the Bitcoin itself.
+
+## What starts an auction
+
+Anyone can call `startAuction` on an active loan that is either:
+
+- overdue: the current time is past its Thursday, or
+- unsafe: at a fresh oracle price, what is still owed is above the collateral's value times the loan's own line (65%).
+
+There are two kinds of auction, and the difference matters if Bitcoin recovers:
+
+| Kind | Started | If a fresh price shows the loan safe again |
+| --- | --- | --- |
+| LTV auction | On or before the Thursday, because the loan was unsafe | It cannot sell. Anyone can cancel it with `cancelAuction`, even after the Thursday, and the loan is active again. A loan cancelled after its Thursday is overdue at once, so anyone can restart it as an overdue auction from a fresh value. |
+| Overdue auction | After the Thursday | It runs to the end. It can never be cancelled, so a loan restarts at most once. |
+
+The borrower can end any auction by repaying the debt in full. The auction is deleted and the position stays theirs.
+
+## The curve
+
+When the auction starts, the contract writes down its start value: the locked BTC times the oracle price at that moment. The price then falls in a straight line to a floor over 72 hours and stays there.
+
+```text
+floor = the larger of: 70% of the start value, or the smaller of (debt, start value)
+```
+
+So the floor never drops below the debt while the Bitcoin still covers it. Nobody, the borrower included, can buy a position back below what it owes while its Bitcoin covers the debt.
+
+## Repricing at the time of sale
+
+Every purchase also reads a fresh price, overdue auctions included, and recomputes the floor at today's value. The buyer pays the larger of the two:
+
+```text
+price = the larger of: the curve now, or the floor recomputed at the value now
+```
+
+So the lenders' market always receives at least the smaller of the debt and the collateral's value at the moment of the sale, and a rebound after the start raises the price for the borrower's benefit. A fall after the start leaves the curve in charge. This rule came out of the [audit](/docs/security/audit) (finding M-01).
+
+Anyone can buy, the borrower too. A purchase names the most the buyer will pay and a deadline, because the price can rise a little within a block. The NFT goes to the buyer with `transferFrom`, so a buyer contract that rejects ERC-721 hooks still receives it.
+
+## How a sale splits
+
+With P the price paid and D the debt still owed:
+
+| Who | Gets |
+| --- | --- |
+| That Thursday's lenders | The smaller of P and D. |
+| The protocol | The penalty, 5% of D, but only out of what is left above the debt. |
+| The borrower | The rest, as MUSD they collect with `claim()`. |
+
+The three always add up to P. For example, a loan owes 65 MUSD against Bitcoin worth 100 MUSD and its Thursday passes unpaid. Its auction starts at 100 and its floor is 70. A sale at the floor pays the lenders 65, the protocol 3.25 and the borrower 1.75. A sale at the start pays the lenders 65, the protocol 3.25 and the borrower 31.75.
+
+The penalty waits as a claimable for the treasury, so a treasury address that refuses tokens can never block a sale.
+
+## Settle in BTC when nobody buys
+
+If the auction reaches its floor time unsold, nothing is dumped on a thin market. Doji never swaps on a DEX. Instead, once the lock has ended, anyone can settle:
+
+1. `prepareSettle` clears every live vote the position has (on PoolsVoter, and on ValidatorsVoter where veBTC counts one) and turns a permanent lock into a normal one. Mezo allows a reset only after the epoch of the last vote has turned and outside an epoch's first hour, so this can take up to one epoch.
+2. `settle` withdraws the lock. The BTC split is the BTC that actually arrived, measured around the withdrawal.
+3. The lenders' market receives BTC worth the debt at the oracle price (rounded up in their favour), the protocol its 5% penalty in BTC from what is left, and the borrower the rest of the BTC, collected with `claim()`. The three always add up to the BTC received.
+
+Settle and its preparation run only while the loan still deserves it: overdue, or unsafe at a fresh price. One deliberate exception is written into the rules: `prepareSettle` may run on an unsafe LTV auction before the Thursday once its floor time has passed, because the borrower has had the whole auction to repay, and that step is not undone if the loan later recovers.
+
+## The time limit
+
+Every loan reaches its end within a published time after its Thursday: the 72-hour auction, plus one epoch for a vote reset, plus the longest lock the position can then carry. That is about 5 weeks on a permanent lock, and about 4.4 weeks on a normal lock extended to the maximum just before its Thursday. Only an oracle outage can stretch it.
+
+Lenders do not have to wait for it. From the Thursday they can withdraw their share of what has been collected so far, and the rest as it arrives. See [Early payouts](/docs/concepts/early-payouts).
+
+## If the position leaves custody
+
+If a flaw in a Mezo contract ever moved a position out of LoanManager, nothing that touches that position would run for its loan. Anyone can then close it with `writeOff`, with zero recovery, so its date can still be closed. Repaying stays open, because paying a debt only adds to what that date's lenders collect.
+
+## Steps anyone can call
+
+None of these needs a role. The contracts check every condition again, so a caller who is wrong or early only wastes their own gas.
+
+| Call | When it works | Run by the keeper |
+| --- | --- | --- |
+| `startAuction` | An active loan that is overdue or unsafe at a fresh price. | Yes |
+| `cancelAuction` | An LTV auction whose loan is safe again at a fresh price. | Yes |
+| `purchase` | Any running auction, at the current price, while an LTV auction's loan is still unsafe. | No |
+| `prepareSettle` | Past the floor time, unsold, overdue or unsafe, with a live vote or a permanent lock. | Yes |
+| `settle` | Past the floor time, unsold, overdue or unsafe, the lock ended, no vote left. | Yes |
+| `writeOff` | The position has left LoanManager's custody. | No |
+| `finalize` | The Thursday has passed, the date had loans, and none is still open. | Yes |
+
+The [keeper](/docs/developers/keeper) is a script on GitHub that makes these calls every 30 minutes. Anyone can run the same script, or make the same calls from the loan's own page.
+
+<Callout type="warn">
+Purchase, auction starts and settle all need a fresh price from Mezo's price feed, which refuses a Skip oracle answer older than 60 seconds. While the oracle is down, those steps wait. That is a stated non-goal, listed in [Security](/docs/security).
+</Callout>

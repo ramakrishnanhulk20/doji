@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "fumadocs-ui/css/preset.css";
 
 :root {
   --ink: #0e0c0b;
@@ -232,4 +233,34 @@ svg[data-drawn="true"] .seal-part {
 
 [data-motion="reduced"] .shimmer::after {
   display: none;
+}
+
+/* Fumadocs reads its colours from these names. Pointing them at the Doji tokens makes the docs part of the product. */
+@theme static {
+  --color-fd-background: var(--ink);
+  --color-fd-foreground: var(--paper);
+  --color-fd-muted: var(--ink-3);
+  --color-fd-muted-foreground: var(--paper-dim);
+  --color-fd-popover: var(--ink-2);
+  --color-fd-popover-foreground: var(--paper);
+  --color-fd-card: var(--ink-2);
+  --color-fd-card-foreground: var(--paper);
+  --color-fd-border: var(--line);
+  --color-fd-primary: var(--beni-text);
+  --color-fd-primary-foreground: var(--ink);
+  --color-fd-secondary: var(--ink-3);
+  --color-fd-secondary-foreground: var(--paper);
+  --color-fd-accent: var(--ink-3);
+  --color-fd-accent-foreground: var(--paper);
+  --color-fd-ring: var(--beni-text);
+  --color-fd-overlay: rgba(14, 12, 11, 0.7);
+  --color-fd-info: var(--safe);
+  --color-fd-warning: var(--watch);
+  --color-fd-error: var(--beni-text);
+  --color-fd-success: var(--safe);
+  --color-fd-idea: var(--auction);
+  --color-fd-diff-remove: rgba(227, 93, 104, 0.14);
+  --color-fd-diff-remove-symbol: var(--beni-text);
+  --color-fd-diff-add: rgba(127, 179, 181, 0.14);
+  --color-fd-diff-add-symbol: var(--safe);
 }

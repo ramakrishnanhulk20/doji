@@ -1,0 +1,64 @@
+---
+title: FAQ
+description: Short answers to the questions borrowers, lenders and judges ask most.
+---
+
+## Is my veBTC safe with Doji?
+
+Only you, the address that owned it before it entered Doji, can borrow against it or take it back, and every borrower action checks that first. Doji gives no approvals on veBTC, has no generic call and accepts no meta-transactions, the path behind Mezo's 5 October incident. A flaw in veBTC itself would reach every position at once, and Doji names that as a non-goal. See [Security](/docs/security).
+
+## Do I keep my votes and rewards?
+
+Yes. The lock keeps running, and while Doji holds the position you can still vote, claim pool fees and incentives, claim veBTC chain fees and extend the lock through LoanManager, with everything paid to you. Votes and rewards never count as collateral. See [At the same time](/docs/concepts/at-the-same-time).
+
+## What if Bitcoin crashes?
+
+If the debt rises above 65% of the collateral's value, anyone can start an auction. The price starts at the full value and falls to 70% of it over 72 hours, never below the debt while the Bitcoin still covers it, and it rises again if Bitcoin recovers. You keep everything above the debt and a 5% penalty, and you can stop the auction by repaying in full. See [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).
+
+## Can I repay early?
+
+Yes, at any time, in part or in full, and anyone can pay towards your loan. Repaying early still costs the full amount owed on the date, because that is what makes the lender's return fixed. After full repayment the position stays in Doji with no loan until you withdraw it. See [Manage a loan](/docs/getting-started/manage-a-loan).
+
+## What is a credit unit?
+
+A lender's claim on a date: 1 unit is 1 MUSD due on that Thursday. Units are ERC-1155 tokens whose token id is the Thursday, so every unit for a date is interchangeable. After the date they pay out a share of everything collected for it. See [Credit units and payouts](/docs/getting-started/credit-units).
+
+## Can I sell my units?
+
+You can send them to any address, and whoever holds them is paid. The Lend page has a "Send units" button until the date, and units stay transferable after it unless you move them into an early payout. Doji has no market for units yet, so finding a buyer and agreeing a price is up to you. A market for units before their date is planned for Wave 2. See [Business model](/docs/business/business-model).
+
+## What if nobody buys an auction?
+
+The lenders receive the Bitcoin itself. Once the auction reaches its floor time unsold and the lock has ended, anyone can settle: Doji withdraws the lock and gives that date's lenders BTC worth the debt at the oracle price, the protocol its penalty in BTC, and the borrower the rest. Doji never sells on a DEX. See [Settle in BTC](/docs/concepts/if-a-loan-goes-wrong#settle-in-btc-when-nobody-buys).
+
+## Who runs the keeper?
+
+A script on GitHub Actions runs every 30 minutes and starts auctions, cancels recovered ones, settles unsold ones and closes dates. It has no special power: every call it makes is open to any wallet, and the contracts check every condition. Anyone can run it, or make the same calls from a loan's page. See [Keeper](/docs/developers/keeper).
+
+## Can the team change the rules?
+
+Not on your loan. The contracts cannot be upgraded, every setting the owner can change sits inside bounds written into the code, and each loan keeps the settings it opened with. The guardian can pause new offers and new loans, never repaying, cancelling, rolling, withdrawing, auctions, settling or redeeming. See [Risk settings](/docs/concepts/risk-settings).
+
+## Why Thursdays?
+
+Mezo's weekly epochs turn on Thursday 00:00 UTC, and veBTC locks end on the same weekly boundaries. A loan due on a Thursday lines up with the lock behind it, and one market per Thursday keeps a bad week from touching any other. See [How a loan works](/docs/concepts/how-a-loan-works).
+
+## What does it cost?
+
+Borrowers pay the lender's fixed rate; the protocol takes 10% of that interest as its own units. A loan that goes to auction or settles also pays a 5% penalty from what is left above the debt. Everything else costs only Mezo gas in BTC: in the testnet seed run a lock and borrow used about 660,000 to 710,000 gas and posting an offer about 99,000 to 121,000. See [Business model](/docs/business/business-model).
+
+## Is it audited?
+
+It had an independent review pass on 20 October 2026, separate from the build, not a third-party audit firm. It found no Critical or High issue, one Medium and three Low, and each was fixed with tests that failed before the fix. See [Audit](/docs/security/audit).
+
+## Does it work on mainnet?
+
+Not yet: Doji is deployed on Mezo testnet only, and its deploy script refuses mainnet. Its fork tests run the contracts against real Mezo mainnet positions, voters, MUSD and the fee distributor, and the code reads both veBTC versions. See [Run the proof yourself](/docs/developers/run-the-proof).
+
+## Can I use a permanent lock?
+
+Yes. A permanent lock never counts as expired, so it can back a loan on any Thursday within the 4-week term. If it is ever settled, Doji first turns it into a normal lock, which can add up to 28 days before the BTC comes out. See [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).
+
+## What happens if Mezo's price feed stops?
+
+Borrowing, rolling, starting auctions, buying and settling all wait for a fresh price, because Doji never acts on a cached one. Repaying, cancelling offers, withdrawing a position with no loan and claiming still work. A long oracle outage is a stated non-goal. See [Security](/docs/security).

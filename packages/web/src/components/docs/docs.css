@@ -1,0 +1,602 @@
+/* The /docs frame. Fumadocs draws the layout; this file dresses it in the Doji tokens from globals.css. */
+
+/* The app's top bar is 64px tall plus its 1px border, and it stays pinned. The sidebar and the
+   contents list pin just under it. */
+#nd-docs-layout {
+  --fd-banner-height: 65px;
+  min-height: calc(100dvh - 65px);
+  background: var(--ink);
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* The site-wide reset gives every link the surrounding colour. Inside the docs the Fumadocs
+   classes decide link colour and underline again, and the rules below then refine them. */
+#nd-docs-layout a {
+  color: revert-layer;
+  text-decoration: revert-layer;
+}
+
+/* Sidebar header */
+.docs-brand-name.display-face {
+  /* The optical size follows the font size here, so the small title stays open and readable. */
+  font-variation-settings: "SOFT" 0, "WONK" 1;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--paper);
+}
+
+.docs-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--paper-dim);
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition:
+    color 200ms ease-out,
+    background-size 200ms ease-out;
+}
+
+#nd-docs-layout .docs-back-link {
+  color: var(--paper-dim);
+}
+
+#nd-docs-layout .docs-back-link:hover,
+#nd-docs-layout .docs-back-link:focus-visible {
+  color: var(--paper);
+  background-size: 100% 1px;
+}
+
+/* The back link sits right under the title and the search box comes after it. */
+.docs-search-full {
+  order: 2;
+}
+
+/* Sidebar */
+#nd-sidebar {
+  background: var(--ink-2);
+  border-inline-end: 1px solid var(--line);
+  font-size: 14px;
+}
+
+#nd-docs-layout [data-search-full],
+#nd-docs-layout [data-search] {
+  border-color: var(--line);
+  background: var(--ink);
+  color: var(--paper-dim);
+  border-radius: 8px;
+  transition:
+    border-color 160ms ease-out,
+    color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+#nd-docs-layout [data-search-full] {
+  padding: 8px 8px 8px 10px;
+}
+
+#nd-docs-layout [data-search-full]:hover,
+#nd-docs-layout [data-search]:hover {
+  border-color: var(--line-strong);
+  color: var(--paper);
+  background: var(--ink);
+}
+
+#nd-docs-layout [data-search-full] kbd {
+  border-color: var(--line-strong);
+  background: var(--ink-3);
+  color: var(--paper-dim);
+  border-radius: 4px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Page tree rows: dim at rest, a soft paper tint on hover, a beni bar when current. */
+#nd-sidebar a,
+#nd-sidebar button,
+#nd-sidebar-mobile a,
+#nd-sidebar-mobile button {
+  border-radius: 8px;
+}
+
+#nd-sidebar a,
+#nd-sidebar-mobile a {
+  color: var(--paper-dim);
+}
+
+#nd-sidebar a:hover,
+#nd-sidebar button:hover,
+#nd-sidebar-mobile a:hover,
+#nd-sidebar-mobile button:hover {
+  background: rgba(241, 230, 210, 0.06);
+  color: var(--paper);
+}
+
+#nd-sidebar a[data-active="true"],
+#nd-sidebar-mobile a[data-active="true"] {
+  background: rgba(241, 230, 210, 0.06);
+  color: var(--paper);
+  font-weight: 500;
+}
+
+#nd-sidebar a[data-active="true"]::before,
+#nd-sidebar-mobile a[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: 0;
+  width: 2px;
+  height: auto;
+  border-radius: 2px;
+  background: var(--beni);
+}
+
+/* The group lines that Fumadocs draws beside nested pages use the page border colour. */
+#nd-sidebar button[data-state],
+#nd-sidebar-mobile button[data-state] {
+  color: var(--paper);
+  font-weight: 500;
+}
+
+/* Phone header and drawer */
+#nd-subnav {
+  background: rgba(14, 12, 11, 0.92);
+  border-bottom-color: var(--line);
+}
+
+#nd-sidebar-mobile {
+  background: var(--ink-2);
+  border-inline-start: 1px solid var(--line);
+}
+
+/* Page */
+#nd-page {
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+#nd-page > h1 {
+  font-family: var(--display-family);
+  font-variation-settings: var(--display-variation);
+  font-size: clamp(2rem, 3.5vw, 2.75rem);
+  font-weight: var(--display-headline-weight, 500);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  color: var(--paper);
+  margin-top: 4px;
+}
+
+#nd-page > p {
+  max-width: 72ch;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--paper-dim);
+}
+
+#nd-page .prose {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--paper);
+}
+
+#nd-page .prose > :where(p, ul, ol, dl, blockquote, hr, h2, h3, h4, h5, h6, .docs-callout) {
+  max-width: 72ch;
+}
+
+#nd-page .prose :where(h2, h3, h4, h5, h6) {
+  font-family: var(--display-family);
+  font-variation-settings: "SOFT" 0, "WONK" 1;
+  font-weight: var(--display-headline-weight, 500);
+  letter-spacing: 0;
+  line-height: 1.2;
+  color: var(--paper);
+  scroll-margin-top: 170px;
+}
+
+#nd-page .prose h2 {
+  font-size: 1.75rem;
+  margin-top: 3rem;
+  margin-bottom: 1rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--line);
+}
+
+#nd-page .prose > h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+#nd-page .prose h3 {
+  font-size: 1.375rem;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+#nd-page .prose h4 {
+  font-size: 1.125rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  #nd-page .prose :where(h2, h3, h4, h5, h6) {
+    scroll-margin-top: 100px;
+  }
+}
+
+@media (min-width: 1280px) {
+  #nd-page .prose :where(h2, h3, h4, h5, h6) {
+    scroll-margin-top: 100px;
+  }
+}
+
+#nd-page .prose :where(h2, h3, h4) > a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#nd-page .prose strong {
+  color: var(--paper);
+  font-weight: 600;
+}
+
+#nd-page .prose :where(ul, ol) > li::marker {
+  color: var(--paper-dim);
+}
+
+/* Links in the text: beni, with an underline that draws in on hover like the rest of the app. */
+#nd-page .prose a:not([data-card]) {
+  color: var(--beni-text);
+  font-weight: 500;
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition:
+    color 200ms ease-out,
+    background-size 200ms ease-out;
+}
+
+#nd-page .prose a:not([data-card]):hover,
+#nd-page .prose a:not([data-card]):focus-visible {
+  color: var(--paper);
+  opacity: 1;
+  background-size: 100% 1px;
+}
+
+#nd-page .prose hr {
+  border-color: var(--line);
+}
+
+#nd-page .prose blockquote {
+  border-inline-start: 2px solid var(--line-strong);
+  font-style: normal;
+  font-weight: 400;
+  color: var(--paper-dim);
+}
+
+#nd-page .prose blockquote p::before,
+#nd-page .prose blockquote p::after {
+  content: none;
+}
+
+/* Inline code */
+#nd-page .prose :not(pre) > code {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.875em;
+  padding: 0.12em 0.4em;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ink-3);
+  color: var(--paper);
+  overflow-wrap: anywhere;
+}
+
+/* Code blocks */
+#nd-page figure.shiki {
+  margin: 1.5rem 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-3);
+}
+
+#nd-page figure.shiki > div[role="region"] {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+#nd-page figure.shiki pre,
+#nd-page figure.shiki code {
+  font-family: inherit;
+  font-size: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+#nd-page figure.shiki figcaption {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--paper-dim);
+}
+
+#nd-page figure.shiki button {
+  border-radius: 8px;
+  color: var(--paper-dim);
+  transition:
+    color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+#nd-page figure.shiki button:hover,
+#nd-page figure.shiki button[data-checked] {
+  background: rgba(241, 230, 210, 0.08);
+  color: var(--paper);
+}
+
+/* Tables scroll inside their own frame, never the page. */
+#nd-page .prose div:has(> table) {
+  margin: 1.5rem 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+#nd-page .prose table {
+  width: 100%;
+  min-width: 34rem;
+  margin: 0;
+  border: 0;
+  border-collapse: collapse;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+#nd-page .prose th {
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--ink-3);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: start;
+  color: var(--paper-dim);
+}
+
+#nd-page .prose td {
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  color: var(--paper);
+}
+
+#nd-page .prose tr:last-child td {
+  border-bottom: 0;
+}
+
+#nd-page .prose td code {
+  font-size: 0.8125rem;
+}
+
+/* Callouts: info keeps the --safe bar, warn keeps the --watch bar (set through --color-fd-info and --color-fd-warning). */
+.docs-callout {
+  gap: 10px;
+  margin: 1.5rem 0;
+  padding: 14px 16px 14px 12px;
+  border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--callout-color);
+  border-radius: 8px;
+  background: var(--ink-2);
+  color: var(--paper);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.docs-callout > [role="none"] {
+  display: none;
+}
+
+.docs-callout > svg {
+  margin-top: 2px;
+  flex: none;
+}
+
+.docs-callout > div > p:first-child:not(:only-child) {
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.docs-callout > div > div {
+  color: var(--paper);
+}
+
+/* Mermaid diagrams */
+.docs-mermaid {
+  display: block;
+  margin: 1.5rem 0;
+  padding: 24px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+  overflow-x: auto;
+  text-align: center;
+}
+
+.docs-mermaid svg {
+  display: inline-block;
+  width: 100%;
+  height: auto;
+  /* Text never drops below three quarters of its drawn size, so a big diagram scrolls the card sideways. */
+  min-width: calc(var(--mermaid-width, 720px) * 0.75);
+  max-width: var(--mermaid-width, 100%);
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.docs-mermaid-drawing {
+  min-height: 160px;
+}
+
+.docs-mermaid-failed {
+  text-align: start;
+  color: var(--paper-dim);
+}
+
+.docs-mermaid-failed pre {
+  margin-top: 12px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  color: var(--paper);
+}
+
+.docs-mermaid:focus-visible {
+  outline-offset: 2px;
+}
+
+/* Right-hand contents list */
+#nd-toc #toc-title {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+#nd-toc a {
+  color: var(--paper-dim);
+  transition: color 160ms ease-out;
+}
+
+#nd-toc a:hover {
+  color: var(--paper);
+}
+
+#nd-toc a[data-active="true"] {
+  color: var(--beni-text);
+}
+
+[data-toc-popover] > header {
+  border-bottom-color: var(--line);
+  background: rgba(14, 12, 11, 0.92);
+}
+
+[data-toc-popover] a {
+  color: var(--paper-dim);
+}
+
+[data-toc-popover] a[data-active="true"] {
+  color: var(--beni-text);
+}
+
+/* The breadcrumb is a small mono label above the title. The previous and next cards sit under the page. */
+#nd-page > div:first-child:not(.prose) {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#nd-page > div[class~="@container"] > a {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+  color: var(--paper);
+  transition:
+    border-color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+#nd-page > div[class~="@container"] > a:hover {
+  border-color: var(--line-strong);
+  background: var(--ink-3);
+  color: var(--paper);
+}
+
+#nd-page > div[class~="@container"] > a > p,
+#nd-page > div[class~="@container"] > a p:last-child {
+  color: var(--paper-dim);
+}
+
+#nd-page > div[class~="@container"] > a > div p {
+  color: var(--paper);
+}
+
+/* Search dialog */
+[role="dialog"]:has(#fd-search-list) {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+[role="dialog"]:has(#fd-search-list) input {
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 1rem;
+  color: var(--paper);
+  outline: none;
+}
+
+[role="dialog"]:has(#fd-search-list) div:has(> input[role="combobox"]) {
+  border-bottom: 1px solid var(--line);
+  transition: box-shadow 160ms ease-out;
+}
+
+[role="dialog"]:has(#fd-search-list) div:has(> input[role="combobox"]:focus) {
+  box-shadow: inset 0 -2px 0 var(--beni-text);
+}
+
+[role="dialog"]:has(#fd-search-list) button {
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  color: var(--paper-dim);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  transition:
+    color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+[role="dialog"]:has(#fd-search-list) button:hover {
+  background: rgba(241, 230, 210, 0.06);
+  color: var(--paper);
+}
+
+[role="dialog"]:has(#fd-search-list) [role="option"] {
+  border-radius: 8px;
+}
+
+[role="dialog"]:has(#fd-search-list) [role="option"][aria-selected="true"] {
+  background: var(--ink-3);
+  color: var(--paper);
+}
+
+/* Motion off: Fumadocs animates its drawer, dialog and folders with CSS classes. */
+@media (prefers-reduced-motion: reduce) {
+  #nd-docs-layout *,
+  [role="dialog"],
+  [role="dialog"] *,
+  .docs-back-link {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

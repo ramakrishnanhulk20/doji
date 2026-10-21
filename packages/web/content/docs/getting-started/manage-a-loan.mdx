@@ -1,0 +1,66 @@
+---
+title: Manage a loan
+description: Repay, roll, withdraw and claim on My loans, and read any loan's public page.
+---
+
+[My loans](/loans) shows everything Doji holds for the connected wallet: what you owe, by when, how safe each loan is, and the votes and rewards that stay yours.
+
+## A position card
+
+Each card is one veBTC position, titled with its number and a status:
+
+| Status | Meaning |
+| --- | --- |
+| Safe | On time, well inside the auction line. |
+| Close to the limit | The debt is above 80% of the 65% auction line, or already past the line. |
+| Overdue | The Thursday has passed and the loan is not repaid. Anyone can start its auction. |
+| In auction | The position is for sale. See [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong). |
+| No loan | Doji holds the position with nothing owed. |
+| Price unavailable | Mezo's price feed is not answering, so safety cannot be checked right now. |
+
+The rows show "You owe" (the amount and the date), the collateral in BTC and what it is worth now, a bar for how close the debt is to the auction line with the BTC price at which it would be reached, the lock end, the votes ("still counting" or "yours to cast") and the rewards from Mezo's veBTC fee distributor ("BTC waiting" or "none due yet").
+
+## Repay
+
+"Repay" opens a sheet that starts on the full amount owed. You can lower it to pay part of the loan; the sheet then says what is still owed on the date. Anything at or above the debt pays exactly the debt. The steps are "Approve" for the exact amount (skipped if an earlier approval covers it) and "Repay", each signed in your wallet. A full repayment says "Repaid in full. veBTC #392 has no loan and is ready to withdraw."
+
+Repaying early still costs the full amount owed, because the lender's return is fixed. Repaying is never paused, and it still works after the date, until the position is sold or settled.
+
+If the loan is overdue or in auction, the card shows "Repay in full" instead. Only the whole debt helps then: it keeps the position before an auction starts, or ends a running auction with the position still yours.
+
+## Roll to a later date
+
+"Roll to a later date" moves the loan to a later Thursday in one transaction: Doji takes new offers for that date and repays the old loan from them in full.
+
+- Pick a later Thursday. The sheet shows only Thursdays within the 4-week term and, for a normal lock, on or before the lock's end, each with its best rate and the MUSD available.
+- "New principal in MUSD" starts at what you owe, rounded down to the cent. The sheet shows what you will owe on the new date and the fixed rate.
+- If the new principal is less than what you owe, you top up the difference ("You top up"). If it is more, the extra is paid to you ("Paid out to you").
+- The button reads "Roll to Thu 5 Nov" (or the date you picked). A top-up needs an "Approve" first.
+
+A roll works only while the loan is active and on time, at or before its Thursday. It takes that day's settings, like any new loan. Rolling is never paused; while new loans are paused, a roll can refinance or take a top-up but cannot pay out extra MUSD.
+
+<Callout type="info">
+A lock made on the Borrow screen ends on the loan's due date, so no later Thursday fits inside it. To roll such a loan, push the lock's end out first with LoanManager's `extendLock`. The site has no button for that yet; see [Contracts](/docs/developers/contracts).
+</Callout>
+
+## Withdraw veBTC
+
+After full repayment the position stays in Doji with no loan, ready for the next one. "Withdraw veBTC" sends it back to your wallet: "veBTC #392 is back in your wallet." "Borrow against it" takes you to Borrow with that position picked.
+
+Withdrawing hands back the veBTC position, not loose BTC. The BTC stays locked in veBTC until the lock ends, as veBTC locks always do.
+
+## Claim
+
+If an auction or a settlement left something for you, a strip appears at the top: "Waiting for you: ... MUSD and ... BTC from auctions or settlements." "Claim" pays all of it to your wallet in one transaction.
+
+## The loan page
+
+Every loan has a public page at `/loans/` followed by the veBTC number, for example [/loans/389](/loans/389), the demo loan. Anyone can read it without a wallet. It shows the borrower, the transaction that opened it, what is owed, the collateral, the limit bar, the lock end, the votes, the rewards and the loan's own terms (limit, auction line, floor, auction length, penalty) as they were fixed when it opened or last rolled.
+
+When the loan is in auction, the page shows "Buy this position" with the price now, the floor, the time to the floor, the curve, and how the price would split: "Lenders get ... · protocol ... · borrower keeps ...". The button reads "Buy veBTC #389 for up to" the price plus 1%, with a 10-minute deadline, because the price can rise a little within a block.
+
+The page also offers the steps anyone may run when the contracts allow them: "Start the auction", "Cancel the auction", "Prepare to settle" and "Settle". Each is simulated first, and the contract checks every condition again.
+
+## Votes and rewards
+
+While Doji holds the position you keep its votes and its rewards. The cards show both, and the contract calls that act on them are `vote`, `resetVotes`, `claimRewards`, `claimRebase` and `extendLock` on LoanManager. The site does not have buttons for these yet. How they work is in [At the same time](/docs/concepts/at-the-same-time).

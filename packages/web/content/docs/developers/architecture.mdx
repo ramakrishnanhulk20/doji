@@ -1,0 +1,114 @@
+---
+title: Architecture
+description: How the pieces connect, a loan's life and where the money goes, in three diagrams.
+---
+
+Doji lends MUSD against veBTC on Mezo at a fixed rate until a fixed Thursday. Two immutable contracts hold everything: `CreditMarkets` (lender offers and one market per Thursday, with ERC-1155 credit units) and `LoanManager` (custody of veBTC positions, loans, auctions and settlement). A keeper script on GitHub Actions calls the same public functions anyone can call. The website reads the chain directly; there is no backend and no database.
+
+## 1. How the pieces connect
+
+```mermaid
+flowchart LR
+  subgraph People
+    B[Borrower wallet]
+    L[Lender wallet]
+    X[Anyone: buyer or keeper]
+  end
+
+  subgraph Doji["Doji on Mezo"]
+    LM[LoanManager<br/>custody, loans,<br/>auctions, settle]
+    CM[CreditMarkets<br/>offers, Thursday markets,<br/>credit units]
+    PT[PassThrough library<br/>votes, rewards,<br/>clear before settle]
+  end
+
+  subgraph Mezo["Mezo contracts"]
+    VE[veBTC]
+    PV[PoolsVoter]
+    VV[ValidatorsVoter]
+    FD[veBTC fee distributor]
+    PF[MUSD PriceFeed<br/>Skip BTC/USD oracle]
+    MUSD[MUSD]
+    BTC[BTC ERC-20]
+  end
+
+  B -- "deposit, lockAndBorrow, borrow,<br/>repay, roll, withdraw, vote, claim" --> LM
+  L -- "postOffer, cancelOffer, claimUnits,<br/>withdrawCollected, redeem" --> CM
+  X -- "startAuction, purchase,<br/>prepareSettle, settle" --> LM
+  X -- finalize --> CM
+  LM -- "fill, credit, creditBtc" --> CM
+  LM -. delegatecall .-> PT
+  LM -- "transferFrom, createLockFor,<br/>withdraw, locked" --> VE
+  PT -- "vote, reset" --> PV
+  PT -- reset --> VV
+  PT -- "claimFees, claimBribes" --> PV
+  LM -- claim --> FD
+  LM -- fetchPrice --> PF
+  CM -- "escrow and pay out" --> MUSD
+  LM -- "pull and pay out" --> MUSD
+  LM -- "lock and settle" --> BTC
+```
+
+## 2. A loan's life
+
+```mermaid
+stateDiagram-v2
+  [*] --> InCustody: deposit or lockAndDeposit
+  InCustody --> Active: borrow
+  [*] --> Active: lockAndBorrow
+  Active --> Active: roll to a later Thursday
+  Active --> Repaid: repay in full
+  Active --> Auction: startAuction (overdue or unsafe)
+  Auction --> Active: cancelAuction (an LTV auction, safe again)
+  Auction --> Repaid: repay in full
+  Auction --> Sold: purchase at the auction price
+  Auction --> Settled: settle, after the floor time and the lock end
+  Active --> WrittenOff: writeOff, only if custody is lost
+  Auction --> WrittenOff: writeOff, only if custody is lost
+  Repaid --> InCustody: position stays with Doji, no loan
+  InCustody --> [*]: withdrawCollateral to the borrower
+  Sold --> [*]: veBTC goes to the buyer
+  Settled --> [*]: BTC is split, the lock is withdrawn
+  WrittenOff --> [*]
+```
+
+Every ending reduces its Thursday market's open-loan count by exactly one. When the Thursday has passed and that count is zero, anyone can call `finalize` and the market's lenders can redeem.
+
+## 3. Where the money goes
+
+```mermaid
+flowchart TB
+  O[Lender posts an offer:<br/>MUSD held in CreditMarkets] -->|a borrower takes it| P[Principal to the borrower]
+  P --> U[Lender gets credit units<br/>1 unit = 1 MUSD due on the Thursday<br/>protocol fee = units too, 10% of the interest]
+  P --> R{How does the loan end?}
+  R -->|repay or roll| C1[MUSD to the Thursday market]
+  R -->|auction sale| S[Buyer pays the price P]
+  S --> S1[Market: min of P and the debt]
+  S --> S2[Protocol: the penalty, from what is left]
+  S --> S3[Borrower: the rest, as a claimable]
+  R -->|nobody buys, the lock ends| T[settle withdraws the BTC]
+  T --> T1[Market: BTC worth the debt at the oracle price]
+  T --> T2[Protocol: the penalty in BTC]
+  T --> T3[Borrower: the rest of the BTC]
+  C1 --> M[Thursday market:<br/>collected MUSD and BTC]
+  S1 --> M
+  T1 --> M
+  M -->|after the Thursday| W[Lenders withdraw their share of<br/>what is collected so far]
+  M -->|after the last loan ends| F[finalize, then redeem the rest]
+```
+
+Each Thursday is its own market, so a loss on one date never touches another. Inside a date, every unit (lenders' and the protocol's) shares collections pro rata.
+
+## What the website reads and writes
+
+The app talks to the chain through wagmi and viem, reads addresses from a book keyed by chain id (generated from the deployment record) and simulates every write before the wallet sees it. Every sent transaction is confirmed from the RPC and Mezo's explorer together.
+
+| Screen | Reads | Writes |
+| --- | --- | --- |
+| Landing | veBTC `supply` and PriceFeed `fetchPrice` on Mezo mainnet; open offers (`nextOfferId`, `offerOf`), `marketOf` per Thursday, risk settings, open auctions, explorer verification | none |
+| Borrow | offers, `quoteFill`, `fetchPrice`, risk settings, the wallet's veBTC (`balanceOf`, `ownerToNFTokenIdList`, `escrowType`, `grantManager`, `lockOf`) and positions Doji holds for it | BTC `approve`, `lockAndBorrow`; or veBTC `approve`, `deposit`, `borrow` |
+| Lend | offers, `quoteFill`, the wallet's offers (OfferPosted logs), units per Thursday (`balanceOf`, `pendingUnits`, `claimOf`, `marketOf`) | MUSD `approve`, `postOffer`, `cancelOffer`, `claimUnits`, `safeTransferFrom`, `withdrawCollected`, `finalize`, `redeem` |
+| My loans | positions from Deposited logs with `positionOf`, `loanOf`, `owedOf`, `collateralValue`, `lockOf`, `isUnsafe`, `isOverdue`, veBTC `voted`, fee distributor `claimable`, `claimableMusd`, `claimableBtc` | MUSD `approve`, `repay`, `roll`, `withdrawCollateral`, `claim` |
+| Loan page | the same for any id, plus `auctionOf` and `auctionPrice` | `purchase`, `startAuction`, `cancelAuction`, `prepareSettle`, `settle` |
+| Try to break it | live targets | none: twelve simulated calls that the contracts refuse |
+
+The source of these diagrams is [ARCHITECTURE.md](https://github.com/ramakrishnanhulk20/doji/blob/main/ARCHITECTURE.md).

@@ -1,0 +1,90 @@
+---
+title: Keeper
+description: The script that moves loans along every 30 minutes, what one pass does, and how to run it yourself.
+---
+
+The keeper moves Doji loans along when their time comes. Every 30 minutes it looks at every open loan and every loan date on Mezo testnet and makes the one call each is ready for: it starts an auction on a loan that is overdue or unsafe, cancels an auction on a loan that is safe again, prepares and settles a position nobody bought, and closes a loan date once all of its loans have ended, so lenders can redeem.
+
+Anyone can run it. Every call it makes is open to any wallet, and the contracts re-check every condition themselves, so a keeper that is wrong, late or hostile can waste its own gas but cannot move anyone's money. The keeper wallet has no role in the contracts, gives no approvals and never holds MUSD. It only needs a little test BTC for gas.
+
+The code is in [packages/keeper](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/keeper/README.md).
+
+## What one pass does
+
+1. Reads the deployment record and refuses to run unless the RPC is Mezo testnet (chain 31611) and LoanManager, CreditMarkets and veBTC on chain match the record and each other. If the keeper's key is the owner, pending owner or guardian of either contract, or the treasury, a live pass stops before it simulates or sends anything.
+2. Finds the open loans from LoanManager's `Borrowed` and `LoanClosed` events since the deployment block: a position is open when its latest `Borrowed` comes after its latest `LoanClosed`. The events come from Mezo's block explorer API, topped up from the RPC for the newest blocks. If the explorer fails or is far behind, the RPC alone reads the last 64 pages of 10,000 blocks (about 35 days) and the pass warns that older loans are not seen this run. The events are only hints: each loan is read from the contracts before anything is decided.
+3. For each open loan it reads the loan, its auction, `isOverdue` and `isUnsafe`, and picks at most one action:
+
+| Action | When |
+| --- | --- |
+| `startAuction` | The loan is active and overdue or unsafe. |
+| `cancelAuction` | The loan is in an auction that began on or before its due date, and it is safe again. |
+| `prepareSettle` | Unsold past floor time, overdue or unsafe, the position has a standing vote or a permanent lock, and the epoch's first hour has passed (Mezo refuses vote resets in that hour). |
+| `settle` | Unsold past floor time, overdue or unsafe, the lock has ended and there is no vote. |
+
+4. Checks the 32 most recent weekly loan dates. For each one it compares the chain's own count of open loans (`marketOf(date).openLoans`) with what the scan found. If the chain has more, it prints a warning, acts on what it found, and exits with code 2 so the run shows red. It calls `finalize` on a date once the date has passed, it had loans, none is still open and it is not closed yet.
+5. Simulates every call first and sends it only if the simulation passes. A refused simulation is logged with its reason and skipped.
+
+## Bounds on one run
+
+| Bound | Limit |
+| --- | --- |
+| Open loans read per pass | 150, the ones due first |
+| Loan dates checked | 32 |
+| Explorer calls per event type | 20, at 1,000 events each |
+| RPC log pages when the explorer is down | 64, of 10,000 blocks each |
+| Transactions sent per pass | `MAX_ACTIONS`, 10 by default, at most 50 |
+
+An RPC request that is rate limited or times out is retried once. If it fails again the pass stops, because acting on a partial list would quietly skip loans.
+
+## Run it on your machine
+
+Needs Node 20.12 or newer.
+
+```bash
+cd packages/keeper
+npm ci
+npm run keeper:dry   # one pass that only simulates; needs no key and sends nothing
+npm run keeper       # one pass that sends; needs KEEPER_PRIVATE_KEY
+```
+
+It prints one line per decision, for example:
+
+```text
+loan 385               none           active, due 2026-10-29 00:00 UTC, safe at the live price | -
+market 2026-10-22      finalize       matured and every loan closed | simulated
+```
+
+| Setting | Default | What it is |
+| --- | --- | --- |
+| `KEEPER_PRIVATE_KEY` | none, required unless dry | A wallet that holds a little test BTC for gas. Give it nothing else. |
+| `MEZO_TESTNET_RPC` | `https://rpc.test.mezo.org` | Mezo testnet RPC. |
+| `MEZO_TESTNET_EXPLORER_API` | `https://api.explorer.test.mezo.org/api` | Mezo testnet explorer API. |
+| `DEPLOYMENT_FILE` | `../contracts/deployments/31611.json` | The deployment record to act on. |
+| `MAX_ACTIONS` | `10` | Most transactions one pass sends, 1 to 50. |
+
+Exit code 0 means the pass finished, even if some simulations were refused. 1 means a setting is missing, the record or chain does not check out, the key holds a role, or a sent transaction failed. 2 means a checked date has more open loans on chain than the scan found.
+
+## Run it on GitHub
+
+[.github/workflows/keeper.yml](https://github.com/ramakrishnanhulk20/doji/blob/main/.github/workflows/keeper.yml) runs one pass every 30 minutes and whenever it is started by hand.
+
+- It runs only on a schedule or by hand, never for a pull request, so code from someone else's branch never sees the key. A manual run from any branch other than `main` is skipped.
+- The job has a read-only token, actions pinned to exact commits, `npm ci --ignore-scripts` so no install script runs, a 10-minute timeout, and one run at a time.
+- The key is a repository secret named `KEEPER_PRIVATE_KEY`. A `MEZO_TESTNET_RPC` secret can replace the public RPC.
+
+## Gas
+
+Measured on a fork of Mezo testnet; at the 172 wei per gas testnet charged on 2026-10-19, each costs about 0.0000000001 test BTC or less:
+
+| Action | Gas |
+| --- | --- |
+| `startAuction` | about 119,000 |
+| `cancelAuction` | about 71,000 |
+| `prepareSettle` | about 301,000 |
+| `settle` | 410,000 to 614,000 |
+| `finalize` | about 76,000 |
+
+## What it does not do
+
+It does not buy auctioned positions, write off loans whose position left custody, mint or redeem credit units, or claim anything: those belong to the people they concern. It has no power the contracts do not give every wallet, and its uptime is best effort. If it is down, anyone can make the same calls, from this script or from a loan's own page.

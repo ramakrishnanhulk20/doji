@@ -1,0 +1,96 @@
+---
+title: Security overview
+description: Custody first, the October 5 incident, the 29 rules the contracts keep, and what Doji does not defend against.
+---
+
+Doji holds other people's veBTC positions. Custody comes first, because a contract that holds many positions concentrates one kind of risk: a single flaw can reach every one of them at once.
+
+<Callout type="warn">
+On 5 October 2026 an attacker moved 37 veBTC positions on Mezo mainnet through a trusted-forwarder (meta-transaction) sender-check flaw ([Mezo's incident report](https://mezo.org/blog/incident-report-october-5-2026)). Meta-transactions on veBTC are now disabled. Doji has no meta-transaction or forwarder path at all, and it names a flaw in veBTC itself as a non-goal: the guardian can stop new borrows, but cannot reverse a theft.
+</Callout>
+
+The full standard is [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md). It was written before any contract code, from a plain description of the system, and section C is the definition of done: a contract is finished only when every rule is upheld and a test shows it. The contracts cannot be upgraded, so a bug or a Mezo change cannot be fixed in place; the only answer is to pause new risk and launch a new deployment that users move to themselves.
+
+## The rules, as the threat model groups them
+
+### Custody and identity
+
+- C1. Only the address that owned a veBTC just before it entered LoanManager can become its borrower. A position pushed in any other way never becomes a position.
+- C2. Only ordinary positions that no third party can lower or remove are accepted. If a position ever leaves custody, only a zero-recovery write-off runs for its loan, and repaying stays open.
+- C3. LoanManager acts as owner only through the calls in the design: no veBTC approvals, no generic call, no merge, split or permanent lock, no meta-transactions. The treasury only ever receives fee units and penalties, and the penalties wait as claimables it collects itself. Ownership cannot be renounced.
+- C4. Every borrower action passes one shared check that the caller is the recorded borrower. Pass-throughs never run during an auction, and `vote` and `extendLock` need an on-time, safe loan.
+- C5. No vote in a normal lock's last week, so the reset settle needs is always available. `prepareSettle` clears votes on every voter that holds one.
+
+### Valuation and terms
+
+- C6. One function values collateral: locked BTC, never voting power, decoded for this chain's veBTC. A permanent lock is never expired.
+- C7. One price: `fetchPrice()`, above zero. If it fails, borrow, roll, auction starts, purchase and settle all revert.
+- C8. One quote turns principal, rate, time and fee share into the face and the units, and lender units plus protocol units equal the face exactly. Every borrow goes through the same checks.
+
+### Resolution
+
+- C9. A loan is Active, in Auction or Closed, and exactly one ending completes. Its date's open-loan count falls exactly once.
+- C10. Reward forwarding pays the borrower exactly the measured increase of whitelisted tokens from gauges PoolsVoter registered, under a reentrancy lock.
+- C11. A sale pays the market the smaller of the price and the debt, the treasury its penalty from what is left, and the borrower the rest. The price follows the snapshotted curve and reprices at a fresh value. Only an overdue or unsafe loan can be sold, prepared for settle or settled.
+- C12. Settle runs only after an unsold auction past its floor time and the lock's end, never swaps, and splits the BTC actually received.
+- C13. Anyone can start a resolution and no single party can stop one. Payouts are claimables, arrays are capped, and no on-chain loop runs over loans, offers, markets or holders.
+
+### Credit markets
+
+- C14. For each date, units issued equal the sum of its loans' faces, and collections grow only by measured arrivals. A donation changes nothing.
+- C15. A date becomes final only after its Thursday with no open loans. Redemption and early payouts pay each unit the same total, never more than was collected.
+- C16. An offer's maker, date and rate never change. Only the maker cancels, at any time. Only LoanManager fills.
+
+### Funds in and out
+
+- C17. Funds are pulled only from the caller. Repay pulls at most the debt. Locking leaves no BTC allowance behind.
+- C18. No function is payable, and stray tokens never become anyone's claimable, collection or escrow.
+
+### Governance and off-chain
+
+- C19. The guardian can pause only new offers, new loans, lock creation and a roll's cash-out. Exits and resolutions are never paused. Settings stay inside hard bounds and are copied into each loan. Ownership moves in two steps.
+- C20. The contracts re-check everything the keeper acts on. The keeper key holds gas only and refuses to run with a role, its workflow runs only on `main`, its loops are bounded, and a missed loan fails loudly.
+- C21. The website takes every value from the contract views, simulates every write, checks the chain, asks only for single-position or exact-amount approvals, and shows each loan's own auction terms.
+- C22. A deploy fails unless every Mezo address has code, the lock layout and price check out, the two contracts point at each other, and the library's code hash matches.
+
+### Credit-market specifics
+
+- C23. No outside code runs inside a post, cancel, fill, borrow, roll, repay, auction start, purchase, settle or finalize, apart from Mezo's fixed contracts and the C10 reward contracts. Lenders mint their units later.
+- C24. One clock: a date is a whole number of weeks, Thursday 00:00 UTC. Open before it, repay or roll without default up to it, overdue after it.
+- C25. The fee is units at the same date, so the protocol shares any shortfall with lenders pro rata. CreditMarkets never rescues MUSD or BTC.
+- C26. Every loan closes within a published time after its Thursday: the auction, one epoch for a reset, and the longest lock the position can carry.
+- C27. CreditMarkets accepts fills and credits only from the LoanManager fixed in its constructor, and LoanManager talks only to its own CreditMarkets. There is no setter.
+- C28. LoanManager's MUSD and BTC always cover the recorded claimables. Each is credited once and paid once, to its owner.
+- C29. No purchase pays the market less than the smaller of the debt and the collateral's value at the time of sale.
+
+### General standards
+
+1. Primitives over lists: one predicate for a valid date, one positive test for collateral, one shared check for authorisation and for pause.
+2. Normalize before compare: one lock decoder, one value, one price, one quote, one clock, one BTC reader.
+3. Validate outputs like inputs: units are minted only as debt backs them, credits only for funds measured arriving.
+4. Fail closed: revert on an unknown lock layout, a zero or stale price, a bad date, a short fill or a custody mismatch. Exits and resolutions are the deliberate exception and are never paused.
+5. Name the non-goals, below.
+
+## What Doji does not defend against
+
+- A malicious or broken Mezo contract or upgrade: veBTC, PoolsVoter, BoostVoter, the fee distributor, MUSD or PriceFeed. A veBTC flaw reaches all collateral at once.
+- Wrong prices inside the oracle's 60-second window, MUSD trading away from 1 USD, or an oracle outage longer than the time limit.
+- Bitcoin price moves after a settle. Lenders paid in BTC carry that risk until they sell.
+- Losses shared across a date. Every unit at that date shares a shortfall, including units of lenders who never chose that loan.
+- An exit before the date. Units can be sent, but Doji provides no buyer and no price.
+- Interest after the date. The face is fixed while a late loan resolves.
+- Mempool griefing that only makes a borrow revert, such as a cancel or another fill landing first.
+- Keeper uptime. The hosted keeper is best effort, and anyone can run it.
+- The value of votes, incentives and boosts, none of which counts as collateral. Rewards a third party pays straight to LoanManager are credited to nobody.
+- Mezo's PoolsVoter trusts an ERC-2771 forwarder. A flaw there could act as LoanManager on PoolsVoter; the worst outcome is a delayed settle.
+- A secondary voter Mezo adds to veBTC after deployment, whose votes would block settle until reset by other means.
+- BTC that a stranger's fee-distributor claim delivers for an expired lock is credited to nobody. The owner can move it with `rescueToken` and is trusted to return it to that position's borrower.
+- A whitelisted reward token whose own code calls out during a claim. At most it can move value that is credited to nobody.
+- A compromised wallet or RPC, or an npm or Vercel supply-chain attack beyond lockfile pinning.
+- An owner key compromise beyond the hard bounds, or a settings change inside them that lands just before your borrow or roll. The setters have no timelock; the site shows the terms a loan will get.
+- A delay, not a loss, on the share of a date still owed by an unpaid loan, up to about 5 weeks. Everything already collected can be withdrawn from the date.
+
+## More
+
+- [Audit](/docs/security/audit): the findings of the independent review and how each was fixed.
+- [Try to break it](/docs/security/try-to-break-it): twelve attacks you can run against the live contracts.

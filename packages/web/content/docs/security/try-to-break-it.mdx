@@ -1,0 +1,44 @@
+---
+title: Try to break it
+description: Twelve attacks you can run against the live contracts from the site, and what each one should hit.
+---
+
+[Try to break it](/break) runs twelve attacks against the live contracts on Mezo testnet and shows exactly how the contracts refuse each one. Nothing is sent: every attack is a simulated call, so nothing is signed and no gas is spent.
+
+## How the page works
+
+- A switch at the top picks who attacks. "Run as a stranger" simulates from a fixed address that holds no role in Doji. "Run from my wallet" simulates from your connected wallet, which is never asked to sign.
+- The targets are read live, never hard-coded: the demo loan from the deployment record, an open auction if there is one, the first open offer, the next Thursday and the earliest Thursday with an open offer.
+- Each card shows the attack, one line on what it tries, the exact call, the rule it tests (linked to the threat model) and a "Run it" button. "Run all" runs every card in turn.
+- The result reads "Refused:" with the contract's error and a plain explanation, and the block the simulation ran on. If a call would succeed, the card says "This would go through" and why. For example, if your wallet is the demo position's own borrower and it has no loan, attack 1 goes through: that is the rule working for its owner, not a hole.
+
+## The twelve attacks
+
+| # | Attack | Call | Expected refusal | Rules |
+| --- | --- | --- | --- | --- |
+| 1 | Take someone else's Bitcoin | `LoanManager.withdrawCollateral(demo loan)` | `NotBorrower` | C4 |
+| 2 | Borrow against someone else's position | `LoanManager.borrow(demo loan, earliest Thursday, [first offer], [10 MUSD], 5000)` | `NotBorrower` | C4 |
+| 3 | Vote with someone else's position | `LoanManager.vote(demo loan, [first PoolsVoter pool], [10000])` | `NotBorrower` | C4, C5 |
+| 4 | Start an auction on a healthy loan | `LoanManager.startAuction(demo loan)` | `NotLiquidatable` while it is safe and on time | C11 |
+| 5 | Settle a loan that isn't in auction | `LoanManager.settle(demo loan)` | `NoAuction` | C12 |
+| 6 | Buy a position for almost nothing | `LoanManager.purchase(open auction, 1 MUSD, now + 600)` | `PriceAboveMax`, or `NoAuction` on the demo loan when no auction is open | C11, C29 |
+| 7 | Fill an offer without a loan | `CreditMarkets.fill(earliest Thursday, [first offer], [10 MUSD], 5000, caller)` | `NotLoanManager` | C27 |
+| 8 | Credit a market with nothing | `CreditMarkets.credit(earliest Thursday, 1 MUSD, true)` | `NotLoanManager` | C14, C27 |
+| 9 | Cancel someone else's offer | `CreditMarkets.cancelOffer(first offer)` | `NotMaker` | C16 |
+| 10 | Cash out before the date | `CreditMarkets.withdrawCollected(next Thursday, 0)` | `NotMatured` | C15 |
+| 11 | Take users' tokens as the owner | `LoanManager.rescueToken(MUSD, caller, 1)` | `OwnableUnauthorizedAccount` | C19, C28 |
+| 12 | Give up ownership | `LoanManager.renounceOwnership()` | `RenounceDisabled` | C19 |
+
+The demo loan is veBTC [#389](/loans/389). If the demo loan is ever overdue or unsafe, attack 4 would go through, and the page says so: starting the auction of a loan that deserves one is a call anyone is meant to make.
+
+## From the command line
+
+The same twelve attacks run read-only, with no key, from `packages/web`:
+
+```bash
+npx tsx scripts/check-attacks.ts
+```
+
+It prints each attack with the contract's refusal and the block, then how many were refused with the expected error.
+
+If you find a way through, [open an issue on GitHub](https://github.com/ramakrishnanhulk20/doji/issues).

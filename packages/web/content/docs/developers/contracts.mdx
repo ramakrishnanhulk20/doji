@@ -1,0 +1,190 @@
+---
+title: Contracts
+description: Doji's deployed addresses, the library's code hash, and every external function and event of LoanManager and CreditMarkets.
+---
+
+## Addresses on Mezo testnet
+
+All three are verified on Mezo's testnet explorer. None of them can be upgraded: there is no proxy and no admin that can replace code.
+
+| Contract | Address |
+| --- | --- |
+| LoanManager | [0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa](https://explorer.test.mezo.org/address/0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa) |
+| CreditMarkets | [0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de](https://explorer.test.mezo.org/address/0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de) |
+| PassThrough (library) | [0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061](https://explorer.test.mezo.org/address/0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061) |
+
+- Chain 31611, deployed at block 16,259,280. The full record is [deployments/31611.json](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/deployments/31611.json).
+- PassThrough runtime code hash: `0x37e8ef36bdb592b8cbb39af72ce99b46ce3098ff8b706bda489ab7e3737b72b6`. The deploy script refuses a library whose code differs from the compiled one, and records the hash.
+- Deployer: `0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e`. At deployment it is the owner, the guardian and the treasury of both contracts.
+- Solidity 0.8.28, EVM version cancun, OpenZeppelin Contracts 5.7.0. Each contract fixes the other's address in its constructor, so there is no setter a first caller could front-run.
+
+The full NatSpec, including every custom error, is in [ILoanManager.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ILoanManager.sol) and [ICreditMarkets.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ICreditMarkets.sol).
+
+## LoanManager
+
+Custody of veBTC positions, loans, auctions and settlement. Every state-changing function runs under one reentrancy lock.
+
+### Borrower functions
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `deposit(uint256 tokenId)` | the position's owner | Pulls a veBTC position after a single-token approval and records the caller as its borrower. |
+| `lockAndDeposit(uint256 amount, uint256 lockDuration)` | anyone | Locks the caller's BTC as a new veBTC position minted straight to LoanManager. Pausable. |
+| `lockAndBorrow(uint256 amount, uint256 lockDuration, uint64 maturity, uint256[] offerIds, uint128[] amounts, uint16 maxAprBps)` | anyone | Locks and borrows in one transaction, with every borrow check. Pausable. |
+| `borrow(uint256 tokenId, uint64 maturity, uint256[] offerIds, uint128[] amounts, uint16 maxAprBps)` | the borrower | Borrows MUSD from the listed offers against a held position with no open loan. Pausable. |
+| `repay(uint256 tokenId, uint256 amount)` | anyone | Pays down a loan, at most what is owed. The last payment closes the loan and any auction. Never paused. |
+| `roll(uint256 tokenId, uint64 newMaturity, uint256[] offerIds, uint128[] amounts, uint16 maxAprBps, uint256 maxTopUp)` | the borrower | Moves an active, on-time loan to a later Thursday and repays the old date in full. Never paused, but pays nothing out while borrows are paused. |
+| `withdrawCollateral(uint256 tokenId)` | the borrower | Sends a position with no open loan back to its borrower. |
+| `vote(uint256 tokenId, address[] pools, uint256[] weights)` | the borrower | Casts the position's PoolsVoter vote. The loan must be on time and safe, and a normal lock cannot vote in its last week. |
+| `resetVotes(uint256 tokenId)` | the borrower | Clears the position's PoolsVoter vote. |
+| `claimRewards(uint256 tokenId, address[] gauges, address[][] feeTokens, address[][] bribeTokens)` | the borrower | Claims pool fees and incentives from registered gauges and pays the measured increase of each whitelisted token to the borrower. |
+| `claimRebase(uint256 tokenId)` | the borrower | Claims from the veBTC fee distributor. BTC from an expired lock is credited to the borrower's claimable. |
+| `extendLock(uint256 tokenId, uint256 lockDuration)` | the borrower | Pushes the lock's end out with veBTC's `increaseUnlockTime`. The loan must be on time and safe. |
+
+None of the pass-throughs (`vote` to `extendLock`) runs while the loan is in auction.
+
+### Functions anyone can call
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `startAuction(uint256 tokenId)` | anyone | Starts the auction of an overdue or unsafe loan and snapshots its start value, floor, duration and penalty. |
+| `cancelAuction(uint256 tokenId)` | anyone | Returns an LTV auction's loan to Active once a fresh price shows it safe. |
+| `purchase(uint256 tokenId, uint256 maxPay, uint256 deadline)` | anyone | Buys an auctioned position at the current price and splits the payment between the market, the treasury and the borrower. |
+| `prepareSettle(uint256 tokenId)` | anyone | Resets live votes and turns a permanent lock into a normal one on an unsold position past its floor time. |
+| `settle(uint256 tokenId)` | anyone | Withdraws an unsold position's ended lock and splits the BTC between the market, the treasury and the borrower. |
+| `writeOff(uint256 tokenId)` | anyone | Closes a loan whose position has left LoanManager's custody, with zero recovery. |
+| `claim()` | anyone with a claimable | Pays the caller every MUSD and BTC claimable recorded for it. |
+
+### Owner and guardian functions
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `setRiskParams(uint16 newMaxLtvBps, uint16 newLiqLtvBps)` | owner | Sets the borrow limit and the line for new loans, inside hard-coded bounds. |
+| `setAuctionParams(uint16 newPenaltyBps, uint16 newAuctionFloorBps, uint32 newAuctionDuration)` | owner | Sets the penalty, floor and duration for loans opened or rolled from now on, inside bounds. |
+| `setMinLoan(uint128 newMinLoan)` | owner | Sets the minimum loan, 1 to 100,000 MUSD. |
+| `setGuardian(address newGuardian)` | owner | Sets the guardian. |
+| `setBorrowsPaused(bool paused)` | guardian or owner | Pauses or resumes new borrows, lock creation and the cash-out part of a roll. Nothing else can be paused. |
+| `rescueToken(address token, address to, uint256 amount)` | owner | Moves stray ERC-20 tokens. For MUSD and BTC only the balance above what claimants are owed. Never veBTC. |
+| `rescuePosition(uint256 tokenId, address to)` | owner | Moves a veBTC position that arrived without becoming a position. Refuses any recorded position. |
+| `transferOwnership(address newOwner)`, `acceptOwnership()` | owner, then the new owner | Two-step ownership transfer (OpenZeppelin Ownable2Step). |
+| `renounceOwnership()` | nobody | Always reverts `RenounceDisabled`. |
+
+### Views
+
+| Function | Returns |
+| --- | --- |
+| `collateralValue(uint256 tokenId)` | Locked BTC and its MUSD value at the live price. The one value used for borrowing and shown to users. |
+| `owedOf(uint256 tokenId)` | MUSD still owed, zero with no loan. |
+| `positionOf(uint256 tokenId)` | The recorded borrower. Zero means no position. |
+| `loanOf(uint256 tokenId)` | The loan: maturity, face, repaid, its own limit, line, penalty, floor and duration, and its state. |
+| `auctionOf(uint256 tokenId)` | The running auction's snapshot. A zero start time means none. |
+| `auctionPrice(uint256 tokenId)` | Exactly what a purchase would pay now. Reads the oracle. |
+| `isOverdue(uint256 tokenId)`, `isUnsafe(uint256 tokenId)` | The two auction triggers. |
+| `lockOf(uint256 tokenId)` | The lock's amount, end and permanent flag, decoded for this chain. |
+| `claimableMusd(address)`, `claimableBtc(address)`, `totalClaimableMusd()`, `totalClaimableBtc()` | What waits for each claimant, and the totals. |
+| `maxLtvBps()`, `liqLtvBps()`, `minLoan()`, `penaltyBps()`, `auctionFloorBps()`, `auctionDuration()`, `guardian()`, `borrowsPaused()`, `owner()`, `pendingOwner()` | The current settings, roles and pause. |
+| `veBTC()`, `priceFeed()`, `musd()`, `btc()`, `poolsVoter()`, `validatorsVoter()`, `feeDistributor()`, `creditMarkets()`, `lockLayoutWords()`, `maxVotes()` | Fixed at deployment. |
+| `MIN_MAX_LTV_BPS`, `MAX_LIQ_LTV_BPS`, `MAX_PENALTY_BPS`, `MIN_AUCTION_FLOOR_BPS`, `MAX_AUCTION_FLOOR_BPS`, `MIN_AUCTION_DURATION`, `MAX_AUCTION_DURATION`, `MIN_LOAN_FLOOR`, `MIN_LOAN_CEILING`, `ESCROW_NORMAL`, `MAX_REWARD_TOKENS` | The hard-coded bounds. |
+
+### Events
+
+| Event | Emitted when |
+| --- | --- |
+| `Deposited(uint256 indexed tokenId, address indexed borrower)` | A position enters custody. |
+| `Borrowed(uint256 indexed tokenId, address indexed borrower, uint64 indexed maturity, uint256 principal, uint256 face)` | A loan opens, including the new loan of a roll. |
+| `Repaid(uint256 indexed tokenId, address indexed payer, uint256 amount, uint256 owedAfter)` | Someone pays towards a loan. |
+| `LoanClosed(uint256 indexed tokenId, uint64 indexed maturity)` | A loan ends by any ending. |
+| `Withdrawn(uint256 indexed tokenId, address indexed borrower)` | A position goes back to its borrower. |
+| `Rolled(uint256 indexed tokenId, uint64 indexed oldMaturity, uint64 indexed newMaturity, uint256 oldOwed, uint256 excessPaid, uint256 topUp)` | A loan rolls to a later date. |
+| `AuctionStarted(uint256 indexed tokenId, uint64 indexed maturity, bool overdue, uint256 owed, uint256 startValue, uint256 floorPrice, uint32 duration, uint16 penaltyBps)` | An auction starts, with its snapshotted curve. |
+| `AuctionCancelled(uint256 indexed tokenId, uint256 owed, uint256 usdValue)` | A recovered loan leaves auction. |
+| `Purchased(uint256 indexed tokenId, address indexed buyer, address indexed borrower, uint256 price, uint256 toMarket, uint256 toTreasury, uint256 toBorrower)` | A position is bought. |
+| `SettlePrepared(uint256 indexed tokenId, bool poolsVoteReset, bool validatorsVoteReset, bool permanentUnlocked)` | Votes are cleared and a permanent lock is made normal for settle. |
+| `Settled(uint256 indexed tokenId, address indexed borrower, uint256 btcReceived, uint256 btcPrice, uint256 toMarket, uint256 toTreasury, uint256 toBorrower)` | An unsold lock is withdrawn and its BTC split. |
+| `WrittenOff(uint256 indexed tokenId, uint64 indexed maturity, uint256 owed)` | A loan whose position left custody is closed. |
+| `Claimed(address indexed account, uint256 musdAmount, uint256 btcAmount)` | A claimant collects. |
+| `RewardsForwarded(uint256 indexed tokenId, address indexed token, uint256 amount)` | A reward claim raised a token balance and the increase went to the borrower. |
+| `RebaseClaimed(uint256 indexed tokenId, address indexed borrower, uint256 btcCredited)` | A fee-distributor claim ran. |
+| `RiskParamsSet(uint16 maxLtvBps, uint16 liqLtvBps)`, `AuctionParamsSet(uint16 penaltyBps, uint16 auctionFloorBps, uint32 auctionDuration)`, `MinLoanSet(uint128 minLoan)` | A setting for new loans changes. |
+| `GuardianSet(address indexed guardian)`, `BorrowsPausedSet(bool paused)` | The guardian or the pause changes. |
+| `Rescued(address indexed token, address indexed to, uint256 amount)`, `PositionRescued(uint256 indexed tokenId, address indexed to)` | The owner moves a stray token or position. |
+| `OwnershipTransferStarted`, `OwnershipTransferred` | The two steps of an ownership transfer (OpenZeppelin). |
+
+## CreditMarkets
+
+Offers, one market per Thursday, and the ERC-1155 credit units whose token id is the Thursday. Every state-changing function runs under one reentrancy lock.
+
+### Lender and holder functions
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `postOffer(uint64 maturity, uint16 aprBps, uint128 amount)` | anyone | Escrows exactly `amount` MUSD as a fixed-rate offer for a valid Thursday within the longest term. Pausable. |
+| `cancelOffer(uint256 offerId)` | the offer's maker | Refunds the unfilled part. Never paused. |
+| `claimUnits(uint64 maturity)` | anyone with units waiting | Mints the caller's recorded units for that date. |
+| `withdrawCollected(uint64 maturity, uint256 units)` | any holder, after the date | Moves units into the caller's Claim and pays its share of what is collected so far. Zero units pays what arrived since. |
+| `finalize(uint64 maturity)` | anyone | Closes a date that has passed, had loans, and has none open. Freezes the redemption totals. |
+| `redeem(uint64 maturity, uint256 units)` | any holder, after `finalize` | Burns the caller's units and pays their share of MUSD (at most 1 per unit) and BTC. |
+| `safeTransferFrom`, `safeBatchTransferFrom`, `setApprovalForAll` | holders | Standard ERC-1155 transfers and approvals (OpenZeppelin). |
+
+### LoanManager-only functions
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `fill(uint64 maturity, uint256[] offerIds, uint128[] amounts, uint16 maxAprBps, address recipient)` | LoanManager | Fills up to 8 listed offers for one loan, records each lender's and the treasury's units, and sends the principal. |
+| `credit(uint64 maturity, uint256 musdAmount, bool closesLoan)` | LoanManager | Books MUSD into a date, measured as it arrives. |
+| `creditBtc(uint64 maturity, uint256 btcAmount, bool closesLoan)` | LoanManager | Books BTC from a settled loan into a date. |
+
+### Owner and guardian functions
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `setFeeShareBps(uint16 newFeeShareBps)` | owner | Protocol share of interest for future fills, at most 20%. |
+| `setMinOffer(uint128 newMinOffer)` | owner | Minimum offer, 1 to 1,000,000 MUSD. |
+| `setMaxTermSeconds(uint32 newMaxTermSeconds)` | owner | Longest term, 1 to 4 weeks. |
+| `setTreasury(address newTreasury)` | owner | Receiver of future fee units. |
+| `setGuardian(address newGuardian)` | owner | Sets the guardian. |
+| `setOffersPaused(bool paused)` | guardian or owner | Pauses or resumes `postOffer` only. |
+| `setURI(string newUri)` | owner | Metadata URI template for every date's units. |
+| `rescueToken(address token, address to, uint256 amount)` | owner | Moves a stray ERC-20 that is neither MUSD nor BTC. |
+| `transferOwnership(address newOwner)`, `acceptOwnership()` | owner, then the new owner | Two-step ownership transfer. |
+| `renounceOwnership()` | nobody | Always reverts `RenounceDisabled`. |
+
+### Views
+
+| Function | Returns |
+| --- | --- |
+| `quoteFill(uint128 principal, uint16 aprBps, uint64 maturity)` | The face, the lender's units and the treasury's units a fill would get now. |
+| `offerOf(uint256 offerId)` | Maker, maturity, rate and what is left. A zero maker means no such offer. |
+| `marketOf(uint64 maturity)` | Units issued, MUSD and BTC collected, open loans, and the closing snapshot. |
+| `pendingUnits(address account, uint64 maturity)` | Units recorded and not yet minted. |
+| `claimOf(address account, uint64 maturity)` | An early-payout Claim: units moved in and MUSD and BTC paid. |
+| `paidOutOf(uint64 maturity)` | MUSD and BTC paid out of a date so far. |
+| `isValidMaturity(uint64 maturity)` | True for a future Thursday 00:00 UTC within the longest term. |
+| `balanceOf`, `balanceOfBatch`, `isApprovedForAll`, `uri`, `supportsInterface` | Standard ERC-1155 reads. |
+| `feeShareBps()`, `minOffer()`, `maxTermSeconds()`, `treasury()`, `guardian()`, `offersPaused()`, `nextOfferId()`, `owner()`, `pendingOwner()` | The current settings and roles. |
+| `loanManager()`, `musd()`, `btc()` | Fixed at deployment. |
+| `WEEK`, `MAX_FILLS`, `MAX_APR_BPS`, `MAX_FEE_SHARE_BPS`, `MIN_OFFER_FLOOR`, `MIN_OFFER_CEILING`, `MIN_TERM_SECONDS`, `MAX_TERM_CEILING` | The hard-coded bounds. |
+
+### Events
+
+| Event | Emitted when |
+| --- | --- |
+| `OfferPosted(uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint16 aprBps, uint128 amount)` | An offer is posted. |
+| `OfferCancelled(uint256 indexed offerId, address indexed maker, uint128 refunded)` | An offer's unfilled MUSD goes back. |
+| `Filled(uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint256 principal, uint256 face)` | An offer lends to a loan, once per offer. |
+| `Credited(uint64 indexed maturity, uint256 musdAmount, bool closesLoan)` | MUSD is booked into a date. |
+| `CreditedBtc(uint64 indexed maturity, uint256 btcAmount, bool closesLoan)` | BTC from a settle is booked into a date. |
+| `UnitsClaimed(address indexed account, uint64 indexed maturity, uint256 units)` | Recorded units are minted. |
+| `MarketFinalized(uint64 indexed maturity, uint256 unitsAtFinal, uint256 musdAtFinal, uint256 btcAtFinal)` | A date closes for good. |
+| `Redeemed(address indexed account, uint64 indexed maturity, uint256 units, uint256 musdOut, uint256 btcOut)` | A holder redeems. |
+| `CollectedWithdrawn(address indexed account, uint64 indexed maturity, uint256 unitsAdded, uint256 musdOut, uint256 btcOut)` | A holder takes an early payout. |
+| `FeeShareBpsSet(uint16 feeShareBps)`, `MinOfferSet(uint128 minOffer)`, `MaxTermSecondsSet(uint32 maxTermSeconds)`, `TreasurySet(address indexed treasury)` | A setting for new offers and fills changes. |
+| `GuardianSet(address indexed guardian)`, `OffersPausedSet(bool paused)` | The guardian or the pause changes. |
+| `UriSet(string uri)` | The units' metadata URI changes. |
+| `Rescued(address indexed token, address indexed to, uint256 amount)` | The owner moves a stray token. |
+| `TransferSingle`, `TransferBatch`, `ApprovalForAll`, `URI` | Standard ERC-1155 events (OpenZeppelin). |
+| `OwnershipTransferStarted`, `OwnershipTransferred` | The two steps of an ownership transfer. |
+
+## PassThrough
+
+An external library that holds LoanManager's calls into Mezo's voters: `castVote`, `forwardRewards` and `clearForSettle`. It exists only to keep LoanManager under the contract size limit. LoanManager runs it with `delegatecall`, after its own borrower and custody checks and under its reentrancy lock. It keeps no state, and its events and errors are LoanManager's own, so logs carry LoanManager's address.

@@ -1,0 +1,56 @@
+---
+title: Audit
+description: What the independent review of 20 October 2026 found, how each finding was fixed, and the tests that prove it.
+---
+
+<Callout type="info">
+This was an independent review pass, separate from the build and read-only on the contracts and scripts. It was not a third-party audit firm. The full report is [docs/audit/findings-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-10-20.md).
+</Callout>
+
+The review read every contract, library, interface, the deploy script, the keeper and its workflow, against the threat model's section C and the risk study. It found no Critical or High issue: one Medium and three Low. The custody, accounting and settle paths held up. It ran the unit suite and wrote a failing test for each finding it could execute; it did not run the fork tests. The fixes were deployed in the contracts now on testnet.
+
+## Findings
+
+| Id | Severity | What went wrong | How it was fixed | Proven by |
+| --- | --- | --- | --- | --- |
+| M-01 | Medium | An auction never repriced upward. After a crash and a rebound, the market could be paid less than the debt while the collateral covered it, and the borrower could buy their own position back below the debt. | Every purchase reads a fresh price and pays the larger of the curve and the floor recomputed at today's value. Overdue auctions read the oracle too. | [AuctionNeverReanchors.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/audit/AuctionNeverReanchors.t.sol) and the M01 tests in [AuditFixes.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/AuditFixes.t.sol), including a fuzz test |
+| L-01 | Low | The owner could change the floor, penalty and length of the auction of a loan already open, inside the hard bounds. | Each loan copies its penalty, floor and duration when it opens or rolls, and its auction reads the loan's copy. | [OwnerRetunesLiveLoanAuction.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/audit/OwnerRetunesLiveLoanAuction.t.sol) and `test_L01_OpenLoanKeepsItsAuctionTerms` |
+| L-02 | Low | A roll could pay out new MUSD while new borrows were paused. | While paused, a roll that would pay anything out reverts. Refinancing and top-up rolls still work. | [RollCashOutWhilePaused.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/audit/RollCashOutWhilePaused.t.sol) and the two L02 tests in AuditFixes.t.sol |
+| L-03 | Low | The keeper rescanned every loan since deployment on each run, so it would outgrow its 10-minute job over time. Reasoned, not executed. | Each pass is bounded: explorer API first, at most 64 RPC pages, 150 open loans, 32 dates and 20 explorer calls per event. A date with more open loans on chain than the scan found fails the run loudly. | The bounds in [the keeper](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/keeper/README.md). Not executed over months of blocks. |
+
+### M-01 in numbers
+
+In the review's test, a borrower owed 30,038.63 MUSD. The price fell until the debt was 125% of the collateral and an auction started flat at 24,030.90. An hour later Bitcoin recovered to 80% LTV: the collateral was worth 37,548.29, more than the debt, but still above the 65% line, so the auction could not be cancelled. The borrower bought the position back for 24,030.90. Lenders lost 6,007.73 MUSD, 20% of the debt. With the fix, the same purchase pays at least the debt, because the collateral covers it at the moment of sale.
+
+### L-01 in numbers
+
+The owner lowered the line to 49% and then set a 50% floor, a 10% penalty and a one-hour auction. A loan opened under 65%, 70%, 5% and 72 hours went overdue by one second and sold an hour later. The borrower's share fell from 24,459.44 MUSD under the loan's own terms to 6,957.51. Lenders were unaffected; the money moved to the treasury and the buyer. With the fix, the loan keeps the terms it opened with.
+
+## Gaps in the standard, and how each was answered
+
+The review also attacked the threat model itself.
+
+1. No rule tied a sale to the value at the time of sale. C11 and C29 now require every purchase to reprice at a fresh value (M-01).
+2. Auction terms were copied per auction, not per loan. C19 now copies them per loan (L-01).
+3. The pause did not cover a roll's cash-out. C19 now says a paused roll may refinance or top up but not pay out (L-02).
+4. The keeper's scan was unbounded, nothing stopped its key from holding a role, and a manual run could use code from any branch. The keeper now bounds every loop, refuses to run when its key is the owner, pending owner, guardian or treasury, and its workflow runs only on `main` (C20).
+5. The time limit bounded how long one unpaid loan could hold up a date, but not the cost: one 10 MUSD loan could keep every lender at that date waiting about 5 weeks. Lenders can now withdraw what has been collected from the Thursday on ([Early payouts](/docs/concepts/early-payouts)), proven in [EarlyPayouts.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/EarlyPayouts.t.sol).
+6. `prepareSettle` could run before the Thursday on an unsafe auction past its floor time, and is not undone if the loan recovers. The standard now says this is deliberate and why: the borrower had the whole auction to repay (C11).
+7. A treasury address that refuses MUSD or BTC could block every sale and settle. Penalties now wait as claimables the treasury collects itself (C3, C28), proven by the treasury tests in AuditFixes.t.sol.
+8. `renounceOwnership` was inherited and not disabled. Both contracts now always revert `RenounceDisabled`, so the rescue paths always keep an owner (C19). It is attack 12 on [Try to break it](/docs/security/try-to-break-it).
+9. Three lines of text did not match the code (in C8, C12 and C15). They were corrected.
+
+## Checked and found sound
+
+Custody and identity, the collateral test, the fill rules, the quote (lender units plus protocol units equal the face exactly), the open-loan counts, finalisation and redemption, donations, repay, cancel, purchase and settle conditions, claimables, the pass-throughs, the vote cutoff, the setter bounds, the two contracts' mutual wiring, the lock reader and price, the time limit, the deploy checks and the keeper's writes. The report lists each one with what was checked.
+
+## Run the tests
+
+From `packages/contracts`:
+
+```bash
+forge test --match-path "test/audit/*" -vv
+forge test --match-path "test/unit/AuditFixes.t.sol" -vv
+```
+
+The audit tests were written to fail on the code the review read, and pass only when the promise they check holds. See [Run the proof yourself](/docs/developers/run-the-proof).

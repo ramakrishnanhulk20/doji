@@ -1,0 +1,52 @@
+---
+title: Credit units and payouts
+description: Claim your credit units, send them, take early payouts after the date, and close and redeem a date.
+---
+
+When a borrower takes your offer, you are owed MUSD on that Thursday. Doji records the claim as credit units: 1 unit is 1 MUSD due on that date. Units are ERC-1155 tokens whose token id is the Thursday, so all units for one date are interchangeable. On [Lend](/lend), "Your credit units" has one card per date.
+
+## A date's card
+
+The card's status follows the date:
+
+| Status | When |
+| --- | --- |
+| Open | Before the Thursday. Loans at this date are still running. |
+| Due, N loans still open | The Thursday has passed and the date is not closed yet. N is how many of its loans have not ended. |
+| Closed | Every loan has ended and the date is final. |
+
+| Row | Meaning |
+| --- | --- |
+| Units you hold | Units in your wallet for this date. |
+| Waiting to be claimed | Units from your filled offers that are recorded but not minted yet. |
+| In your withdrawal | Units you moved into an early payout, and what has been paid against them so far. Shown only once you have one. |
+| Collected for this date | MUSD and BTC that repayments, auctions and settlements have paid in, against the MUSD due in total. |
+| Value of one unit now | Collected MUSD and BTC divided by every unit at this date. |
+
+## Claim units
+
+When a borrower takes your offer, your units are written down in the contract but not minted, so nothing you control runs in the middle of someone's borrow. "Claim units" mints them to your wallet: "10.00 units for Thu 29 Oct are in your wallet."
+
+## Send units
+
+Before the date, "Send units" opens a small form: "Send to" takes an address (a wrong checksum or the zero address is refused) and "Units" takes an amount, with "Max". The button reads "Send 10.00 units". This is a plain ERC-1155 transfer: whoever holds the units is paid. Doji has no market for units; selling them is up to you and the buyer.
+
+## Early payouts, after the date
+
+You do not have to wait for the last loan at a date to end. Once the Thursday has passed:
+
+- "Withdraw what's collected" opens a sheet. Choose the "Units to move" (all of them by default) and it shows "You get now:" your share of the MUSD and BTC collected so far. "Withdraw" pays it.
+- Moved units go into your withdrawal for that date. They can no longer be sold or sent, and you keep your share of what is still to come.
+- As more is collected, "Withdraw the new part" pays what arrived since your last withdrawal. The card shows "Waiting for you:" with the amounts.
+
+However and whenever you withdraw, each unit receives the same total within a few wei of rounding, so nobody gains by withdrawing first. How the share is worked out is in [Early payouts](/docs/concepts/early-payouts).
+
+## Close and redeem
+
+When the Thursday has passed and every loan at it has ended, the card shows "Close this date" with the note "Anyone can close a date once its last loan has ended." Closing freezes the totals that redemptions pay from.
+
+Once closed, "Redeem 10.00 units" burns your units and pays your share, shown first as "You get ... MUSD and ... BTC". The MUSD part is at most 1 MUSD per unit. A unit is worth less than 1 MUSD only if a loan at that date fell short: a sale or settlement below the debt, or a position that left custody and was written off. If you had an early payout, "Withdraw the rest" pays what it is still owed.
+
+<Callout type="info">
+Part of a payout can be BTC. When nobody buys an auctioned position, the lenders at that date receive the Bitcoin itself at the oracle price, and BTC carries its own price risk until you sell it.
+</Callout>

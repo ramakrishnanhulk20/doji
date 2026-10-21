@@ -1,0 +1,67 @@
+---
+title: Borrow MUSD
+description: Every field, number and button on the Borrow screen, in the order you meet them.
+---
+
+[Borrow](/borrow) turns locked Bitcoin into MUSD at a fixed rate until a Thursday you choose. The offers, rates and limits on the screen are read live from the contracts, and you can see them before you connect a wallet.
+
+## 01 Your collateral
+
+Two tabs choose where the collateral comes from.
+
+| Tab | What you do | What your wallet signs |
+| --- | --- | --- |
+| Lock BTC now | Type the test BTC to lock. "Max" keeps 0.0002 BTC back for gas. The note shows your balance and its value at the oracle price, and "Locked until" the due date you pick: the new lock ends on the day the loan is due. | "Approve" the exact BTC amount (skipped if an earlier approval covers it), then "Lock and borrow". One transaction mints the veBTC position straight into Doji and opens the loan. |
+| Use a veBTC position | Pick one of your positions. Each row shows its id, its BTC, its lock end (or "permanent lock") and its value in MUSD. A position Doji already holds for you is tagged "in Doji". | "Approve veBTC #id" for that one position (skipped if already approved), "Hand it to Doji", then "Borrow". A position already in Doji with no loan needs only "Borrow". |
+
+Doji accepts only ordinary veBTC positions that nobody else can revoke. A grant-backed position shows "grant-backed, can't be used" and cannot be picked. Doji never asks for approval of all your positions, only of the one you pick.
+
+## 02 Due date
+
+Each card is a Thursday, 00:00 UTC, within the next 4 weeks. A card shows the best rate for that date and the MUSD available. A date whose offers add up to less than the minimum loan says so, and a date with no offers shows "no offers yet" and cannot be picked.
+
+For a normal lock, only Thursdays on or before the lock's end are shown, because a loan cannot outlive its lock. A permanent lock can pick any Thursday within the 4 weeks.
+
+## 03 Amount
+
+Type the MUSD to borrow, or drag the slider, or press "Max". The note says "You can borrow up to" the most this collateral allows on that date. Doji takes the cheapest offers first, then the oldest, using part of the last one if needed, and at most 8 offers per loan. The contract is told the highest rate among them as the most you accept, so no offer can fill you at a worse rate than the screen showed.
+
+## Your loan
+
+The summary card on the right (a "Review" bar at the bottom on a phone) shows:
+
+| Row | Meaning |
+| --- | --- |
+| Collateral | The BTC you are locking, or the veBTC position. |
+| Value now | Locked BTC times the oracle price. Voting power is never used. |
+| Due | The Thursday, 00:00 UTC. |
+| You receive now | The MUSD that arrives in your wallet. |
+| You owe on (date) | The fixed amount due on that Thursday, priced by the contract's own quote. |
+| Fixed rate | The yearly rate, weighted across the offers you take. |
+| Borrow limit used | What you owe as a share of the 40% limit. |
+| Auction line | The BTC price below which the loan would reach its 65% line and could be auctioned. |
+| Votes and rewards | "stay yours". |
+
+Under it: "Repaying early still costs the full amount owed: the lender's return is fixed." And a link to the protected auction that applies if the loan becomes unsafe or the date passes unpaid.
+
+## The button
+
+The button always says what it will do, or why it cannot yet:
+
+- "Connect wallet to borrow", then "Switch to Mezo testnet" if the wallet is elsewhere.
+- "Enter an amount", "Pick a veBTC position", "Pick a due date" or "Checking the numbers" while something is missing.
+- A plain reason when the numbers do not work, for example "The minimum loan is 10.00 MUSD." or "A loan can use at most 8 offers. Borrow a little less."
+- "Lock 0.0005 BTC and borrow 10.00 MUSD", or "Borrow 10.00 MUSD against veBTC #392", when everything checks out.
+- "Waiting for confirmation" and "Working..." while it runs, and "Try again from step 2" if a step fails.
+
+The steps appear above the button and tick off as each transaction confirms.
+
+## When it lands
+
+The card turns into "10.00 MUSD is in your wallet." with what you owe on the date and a reminder that the veBTC position is still locked and its votes and rewards are still yours. "See your loan" opens the loan's own page, "View transaction" opens Mezo's explorer, and "Borrow again" resets the form.
+
+<Callout type="info">
+If the guardian has paused new loans, the screen shows "New loans are paused right now. Repaying and rolling still work." If Mezo's price feed is more than 60 seconds old, the button says so and borrowing waits until it is fresh again.
+</Callout>
+
+Next: [Manage a loan](/docs/getting-started/manage-a-loan), or how the numbers are made in [How a loan works](/docs/concepts/how-a-loan-works).

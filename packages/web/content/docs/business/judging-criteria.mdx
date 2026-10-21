@@ -1,0 +1,77 @@
+---
+title: Judging criteria
+description: Each Mezo Buildathon criterion mapped to a screen, a file and a transaction you can open.
+---
+
+Each section names a screen on the live site, a file in the repository, and a transaction on Mezo's testnet explorer where one exists.
+
+## Mezo Integration (30%)
+
+veBTC is the collateral and MUSD is the loan. Doji calls veBTC, PoolsVoter, ValidatorsVoter, the veBTC fee distributor, MUSD, MUSD's PriceFeed and the BTC token, and does nothing without them.
+
+| Where | What it shows |
+| --- | --- |
+| Screen [/borrow](/borrow) | "Lock BTC now" mints a veBTC position with veBTC's `createLockFor` straight into Doji and borrows MUSD in the same transaction. The limits use MUSD's own price feed. |
+| Screen [/loans](/loans) | The lock, the votes and the fee-distributor rewards of a position Doji holds, still with the borrower. |
+| Screen [/](/) | Bitcoin locked as veBTC and the BTC price, read live from Mezo mainnet. |
+| Docs [/docs/mezo](/docs/mezo) | Every Mezo contract and function Doji calls, with testnet and mainnet addresses. |
+| File [LoanManager.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/LoanManager.sol) | Custody, borrowing, auctions and settle on top of veBTC and MUSD. |
+| File [PassThrough.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/libraries/PassThrough.sol) | The borrower's votes and reward claims through Mezo's PoolsVoter, and the vote clearing settle needs. |
+| File [PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol) | The same calls against real Mezo mainnet positions, voters and fee distributor. |
+| Transaction [0x4a536dc2...3dd8](https://explorer.test.mezo.org/tx/0x4a536dc2d02e43f2079f40a44159081d353d5ad50ac92815d75d7b8b38ea3dd8) | Sent from the Borrow page: lock 0.0005 BTC as veBTC #392 and borrow 10 MUSD until Thu 29 Oct. |
+| Transaction [0xe6cb9404...7813](https://explorer.test.mezo.org/tx/0xe6cb940454e61f45740a89ab14bb949ceda51a030cdae14ac771a7b4b6eb7813) | The prove-it command's lock and borrow of position 391. |
+
+## Product and Business Viability (30%)
+
+A two-sided market that extends what MUSD can do: veBTC holders borrow without ending their lock, and MUSD holders lend at a fixed rate to a fixed date. The protocol earns 10% of the interest and a 5% penalty on failed loans.
+
+| Where | What it shows |
+| --- | --- |
+| Screen [/](/) | Live numbers before any wallet: Bitcoin locked on Mezo, MUSD on offer and the best rate for each Thursday. |
+| Screen [/lend](/lend) | The lender's side: offers, credit units and payouts. |
+| Docs [/docs/business/business-model](/docs/business/business-model) | Who pays what, why fixed rate and fixed date, and the Wave 2 plan. |
+| Docs [/docs/concepts/risk-settings](/docs/concepts/risk-settings) | Limits set from Bitcoin's price history since 2017. |
+| File [docs/risk/parameters.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/risk/parameters.md) | The full drawdown study, with the script that re-runs it, [analysis/btc_drawdowns.py](https://github.com/ramakrishnanhulk20/doji/blob/main/analysis/btc_drawdowns.py). |
+| Transaction [0xe10ca369...7ce1](https://explorer.test.mezo.org/tx/0xe10ca369d7ca55f348bb885450219bc27127a8747528965c666384a8709a7ce1) | Sent from the Lend page: an offer of 20 MUSD at 6.50% until Thu 12 Nov. |
+| Transaction [0x2de0206d...204b](https://explorer.test.mezo.org/tx/0x2de0206d15a4a0debd3fbfadaaa00920929ededee152ba70e12c343d4117204b) | The first seeded offer: 60 MUSD at 5.00% for Thu 22 Oct. |
+
+## Technical Implementation (20%)
+
+Two immutable contracts, a written rulebook with 29 rules each pointing to the code that keeps it, fuzz and invariant tests, fork tests against Mezo mainnet, an independent review with every finding fixed, and one command that proves the main promise live.
+
+| Where | What it shows |
+| --- | --- |
+| Screen [/break](/break) | Twelve attacks simulated against the live contracts, each refused. |
+| Docs [/docs/developers/run-the-proof](/docs/developers/run-the-proof) | The prove-it command, the fork tests and the website test. |
+| File [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md) | The threat model: risks, attacker goals, the 29 rules and the non-goals. |
+| File [docs/audit/findings-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-10-20.md) | The review's findings and the failing tests behind them. |
+| File [CreditInvariants.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/CreditInvariants.t.sol) | Randomised sequences of posts, fills, repays, rolls, sales, settles and redemptions, with the accounting checked after every step. |
+| File [prove-it.sh](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/script/prove-it.sh) and its [run](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-20.md) | "Doji promise proven: 8 of 8 checks passed". |
+| File [keeper.yml](https://github.com/ramakrishnanhulk20/doji/blob/main/.github/workflows/keeper.yml) | The keeper on GitHub Actions: main only, read-only token, actions pinned by commit. |
+| Transaction [0x3f3370c0...3aee](https://explorer.test.mezo.org/tx/0x3f3370c0780f9f40b68cf13a637a72055f30afd9036ac95f8db29f5fcffa3aee) | The prove-it command repays 10.0116 MUSD in full. |
+| Transaction [0x806b8bd6...bd7e](https://explorer.test.mezo.org/tx/0x806b8bd6894f7c82033659c09893fc182bdf53c03e229cc8b2c7c9e6e2c9bd7e) | And takes position 391 back. |
+
+## User Experience (10%)
+
+A first-time user can borrow and lend without help: live numbers before a wallet, Mezo testnet added by the wallet button, a faucet link when test BTC runs low, lock and borrow in one action, dates as calendar days, the exact amount owed before signing, and errors in plain words.
+
+| Where | What it shows |
+| --- | --- |
+| Screen [/borrow](/borrow) | Three steps and a summary that shows what you receive now and what you owe on the date. |
+| Screen [/lend](/lend) | Post an offer in three steps, then follow it and your units on the same page. |
+| Screen [/loans](/loans) | Every position with its status in words, the auction line as a BTC price, and repay, roll and withdraw. |
+| Screen [/loans/389](/loans/389) | A public loan page anyone can read without a wallet. |
+| File [docs/proof/ui-live-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/ui-live-2026-10-20.md) | The site driven end to end on testnet, with every transaction checked on chain. |
+| Transaction [0x32c22f3f...97bd](https://explorer.test.mezo.org/tx/0x32c22f3f6b0bb40ba5b45abcb6867f450416643b2f72a91e35f7c954433897bd) | An offer posted from the Lend page, confirmed by the page in 4.9 seconds. |
+| Transaction [0x08d54363...98e7](https://explorer.test.mezo.org/tx/0x08d5436395c03d9e383db20770ca3395db020acee41c17bd49f39416d55a98e7) | A full repayment sent from My loans. |
+
+## Submission Materials (10%)
+
+| Where | What it shows |
+| --- | --- |
+| Docs [/docs](/docs) | These docs, inside the app. |
+| Docs [/docs/developers/architecture](/docs/developers/architecture) | Three diagrams: how the pieces connect, a loan's life and where the money goes. |
+| File [README.md](https://github.com/ramakrishnanhulk20/doji/blob/main/README.md) | The project's front page on GitHub. |
+| File [ARCHITECTURE.md](https://github.com/ramakrishnanhulk20/doji/blob/main/ARCHITECTURE.md) | The diagrams, addresses and every read and write the site makes. |
+| File [docs/proof/m1-live-testnet.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/m1-live-testnet.md) | The first live loan on Mezo testnet, step by step. |
+| Transaction [0xc6aa2ca5...57a0](https://explorer.test.mezo.org/tx/0xc6aa2ca576bca8fcd278bcb9954cedd78a819d0878d3c0aadb1ae76491a857a0) | That first loan: 15 MUSD borrowed against a real testnet veBTC position, on the first-slice contracts. |

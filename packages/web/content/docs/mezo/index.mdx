@@ -1,0 +1,42 @@
+---
+title: How Doji uses Mezo
+description: Every Mezo contract Doji calls, the exact functions, why each matters, and the testnet and mainnet addresses.
+---
+
+Doji is built on Mezo's own pieces. The collateral is veBTC, the loan is MUSD, the price is MUSD's own price feed, and the borrower's votes and fees keep flowing through Mezo's voters and fee distributor. Take Mezo away and nothing is left.
+
+## Every Mezo contract Doji calls
+
+Testnet addresses are the ones in Doji's [deployment record](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/deployments/31611.json). Mainnet addresses are Mezo's live mainnet contracts, checked on Mezo's explorer and chain, and the [fork tests](/docs/developers/run-the-proof) run Doji against them.
+
+| Mezo contract | Functions Doji calls | Why | Testnet (31611) | Mainnet (31612) |
+| --- | --- | --- | --- | --- |
+| veBTC, Mezo's vote-escrow Bitcoin NFT | `transferFrom`, `createLockFor`, `locked`, `ownerOf`, `escrowType`, `grantManager`, `voted`, `increaseUnlockTime`, `unlockPermanent`, `withdraw` | The collateral itself. Doji pulls or mints the position, reads the lock through one decoder, accepts only ordinary escrow with no grant manager, extends the lock for its borrower, and withdraws an unsold lock at settle. | `0xB63fcCd03521Cf21907627bd7fA465C129479231` | `0x3D4b1b884A7a1E59fE8589a3296EC8f8cBB6f279` |
+| PoolsVoter (on testnet, the older voter that testnet veBTC names) | `vote`, `reset`, `claimFees`, `claimBribes`, `gaugeToFees`, `gaugeToBribe`, `isWhitelistedToken`, `usedWeights` | The borrower keeps voting and claiming pool fees and incentives through Doji. Reward contracts and tokens are looked up from PoolsVoter itself. Settle clears the vote first. | `0x72F8dd7F44fFa19E45955aa20A5486E8EB255738` | `0x48233cCC97B87Ba93bCA212cbEe48e3210211f03` |
+| ValidatorsVoter | `usedWeights`, `reset` | Mainnet veBTC also counts votes here, and a lock with a standing vote cannot be withdrawn, so `prepareSettle` resets it when it holds one. | none: testnet veBTC has no secondary voters | `0xe99a9ad5Ed26BD30e4DB25397f378817e9b9515a` |
+| veBTC fee distributor | `claim` (the site also reads `claimable`) | The position's share of chain fees keeps flowing to its borrower through `claimRebase`. | `0x10B0E7b3411F4A38ca2F6BB697aA28D607924729` | `0xb58477e074265BdC7F7ca6100eD0f7De264F74A2` |
+| MUSD | `transferFrom`, `transfer`, `balanceOf`, `approve` | The loan currency. Every pull is exact and measured. LoanManager gives CreditMarkets a standing allowance at deployment so repayments can be booked into their date. | `0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503` | `0xdD468A1DDc392dcdbEf6db6e34E89AA338F9F186` |
+| MUSD PriceFeed | `fetchPrice` | The one BTC price for limits, auctions and settle. It refuses a Skip answer older than 60 seconds, and Doji then refuses to borrow, roll, start an auction, sell or settle. | `0x86bCF0841622a5dAC14A313a15f96A95421b9366` | `0xc5aC5A8892230E0A3e1c473881A2de7353fFcA88` |
+| Skip BTC/USD oracle | none directly: PriceFeed reads it | The source of the price, 18 decimals. | `0x7b7c000000000000000000000000000000000015` | `0x7b7c000000000000000000000000000000000015` |
+| BTC, Mezo's ERC-20 view of native BTC | `transferFrom`, `approve`, `balanceOf`, `transfer` | veBTC locks and pays in it. Doji pulls exactly the BTC to lock, approves veBTC for exactly that amount and resets it to zero, measures the BTC a withdrawal brings, and pays BTC to lenders and claimants. | `0x7b7C000000000000000000000000000000000000` | `0x7b7C000000000000000000000000000000000000` |
+
+Doji does not call BoostVoter. A mainnet fork test (test C in [PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol)) checks that a BoostVoter vote leaves veBTC's voted flag alone, so it can never block a settle.
+
+## Mezo rules Doji is built around
+
+- Weekly epochs turn on Thursday 00:00 UTC, and veBTC lock ends fall on the same boundaries. That is why every Doji loan is due on a Thursday.
+- A veBTC lock lasts at most 28 days, so no Doji loan runs longer than 4 weeks, permanent lock or not.
+- Votes persist from epoch to epoch. Each position gets one vote or reset per epoch, none in an epoch's first hour, and a lock with a standing vote cannot be withdrawn. Doji blocks votes in a normal lock's last week, so the reset settle needs is always possible.
+- `locked()` returns three words on testnet's older veBTC and four on mainnet (with a boost). One reader decodes it for the chain it was deployed on and refuses anything else.
+
+## What Doji never touches
+
+LoanManager acts on positions only through the calls in the table. It gives no veBTC approval or approval-for-all, has no generic call or multicall, never merges, splits or makes a lock permanent, and never swaps on a DEX. It accepts no meta-transactions and has no forwarder: every call acts for the address that sent it.
+
+<Callout type="warn">
+On 5 October 2026 an attacker moved 37 veBTC positions on Mezo mainnet through a flaw in how a trusted forwarder (Mezo's meta-transaction path) passed on the sender. Mezo has since turned meta-transactions on veBTC off, and live veBTC's `forwarder()` returns the zero address ([Mezo's incident report](https://mezo.org/blog/incident-report-october-5-2026)). A contract that holds many positions concentrates exactly that kind of risk, which is why custody comes first in Doji's [threat model](/docs/security). One non-goal remains and is stated: Mezo's PoolsVoter still trusts an ERC-2771 forwarder. A flaw there could act as LoanManager on PoolsVoter (vote, reset, claim). Rewards would still land with LoanManager, and the worst outcome is a delayed settle.
+</Callout>
+
+## Testnet and mainnet
+
+Doji is deployed on Mezo testnet only, and its deploy script refuses mainnet. Testnet runs an older veBTC: three-word `locked()`, no veMEZO boost and no secondary voters. Mainnet behaviour is proven by fork tests that run Doji against real mainnet positions, the real voters, MUSD and the fee distributor. See [Run the proof yourself](/docs/developers/run-the-proof).

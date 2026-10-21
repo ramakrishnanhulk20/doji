@@ -1,0 +1,93 @@
+---
+title: Run the proof yourself
+description: The prove-it command against the live testnet, the mainnet fork tests and the website test, with what each one prints.
+---
+
+Everything Doji claims can be checked with commands in the repository. Each one says what it does not cover.
+
+## Before you start
+
+- [Foundry](https://book.getfoundry.sh) (`forge` and `cast`), bash and Python 3.
+- The repository with its two submodules (forge-std and OpenZeppelin Contracts):
+
+```bash
+git clone https://github.com/ramakrishnanhulk20/doji.git
+cd doji
+git submodule update --init
+```
+
+## 1. The prove-it command (live testnet)
+
+One command exercises the main promise against the deployed contracts on Mezo testnet: lock a little test BTC, borrow the 10 MUSD minimum at a fixed rate, check the loan on chain, attack it as a stranger, repay in full and take the position back.
+
+It sends real testnet transactions from a borrower wallet you control. Copy `packages/contracts/.env.example` to `packages/contracts/.env` and fill in `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` for a fresh testnet wallet. It needs at least 0.0008 test BTC (0.0005 to lock, the rest for gas) from the [faucet](https://faucet.test.mezo.org), and a few cents of MUSD for the interest.
+
+```bash
+bash packages/contracts/script/prove-it.sh
+```
+
+It prints one PASS or FAIL line per check and an explorer link for every transaction it sends. The [20 October 2026 run](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-20.md) printed, among the rest:
+
+```text
+  == Checks on live position 391, block 16261184
+  PASS MUSD arrived: 10.00 MUSD moved from CreditMarkets to the borrower in the borrow transaction (loan principal 10.00)
+  PASS LoanManager holds position 391 for the borrower, loan Active, 10.0116 MUSD due 2026-10-29
+  PASS collateralValue matches the lock times the oracle: 0.0005 BTC x 81441.81 = 40.72 MUSD
+  == Attacks, simulated on the live state as a stranger, never sent
+  PASS a stranger's withdrawCollateral is refused: NotBorrower
+  PASS startAuction on a healthy, on-time loan is refused: NotLiquidatable
+  PASS settle on a healthy, on-time loan is refused: NoAuction
+  == Repaying 10.0116 MUSD in full and taking the position back
+  == After the repayment, block 16261202
+  PASS repaid in full: 10.0116 MUSD paid, nothing left owed, loan closed
+  PASS position 391 is back with the borrower and LoanManager keeps no record of it
+Doji promise proven: 8 of 8 checks passed
+```
+
+If a run stops after the borrow, it prints the position and block, and `bash packages/contracts/script/prove-it.sh --resume POSITION BLOCK` finishes the checks and the repayment on that position. That record shows exactly this happening: one of the nodes behind Mezo's public RPC answered null for a receipt, so the script now asks again up to 15 times before it counts a transaction as failed.
+
+Each run costs gas, a few cents of MUSD interest, and 0.0005 test BTC that stays locked in the returned veBTC position until the loan date. It does not prove auctions, settle or redemption, or behaviour while the oracle is stale. The mainnet fork tests and the demo loans cover those.
+
+## 2. The fork tests (real Mezo mainnet state)
+
+From `packages/contracts`:
+
+```bash
+forge test --match-path "test/fork/*" -vv
+```
+
+They fork Mezo mainnet and testnet through the public RPCs named in `foundry.toml`, so they need no key.
+
+| Suite | What it proves |
+| --- | --- |
+| [ForkSmoke.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/ForkSmoke.t.sol) | The tests can read a live veBTC position and the MUSD BTC price on mainnet and testnet, with the right `locked()` layout on each. |
+| [CoreSliceFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/CoreSliceFork.t.sol) | A real mainnet position's owner deposits, borrows, repays, withdraws and borrows again from a lender's offer, and after the date the lender redeems the full face. |
+| [ResolutionFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/ResolutionFork.t.sol) | An unsafe loan sells half way down its curve; an unsold auction settles the real lock and lenders redeem Bitcoin; a real vote is cleared through the real PoolsVoter once the epoch turns; a loan rolls. |
+| [PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol) | The borrower votes, collects a real incentive, extends the lock and claims from the real fee distributor through LoanManager; a BoostVoter vote leaves veBTC's voted flag alone; a permanent position voted on both voters is cleared and settled; `lockAndBorrow` mints a real testnet position into LoanManager; real pool fees reach the borrower. |
+
+Each suite ends with a line that starts "Suite result: ok." when every test in it passes, and prints FAIL with the reason when one does not.
+
+What they do not cover: the live Skip oracle and Mezo's BTC precompile cannot run inside a local fork, so the price is read from the node once at the fork block and then mocked or moved by hand, and a stand-in replaces the BTC token wherever BTC moves. Real buyers and keepers, positions owned by contracts, and grant or managed positions are not covered either.
+
+## 3. Unit, fuzz, invariant and audit tests
+
+From `packages/contracts`:
+
+```bash
+forge test --match-path "test/unit/*"
+forge test --match-path "test/audit/*" -vv
+```
+
+Fuzz tests run 1,000 cases each and invariant tests 256 runs of depth 64 (`foundry.toml`). The audit suite holds the tests written for the [audit findings](/docs/security/audit). Every test file opens with a comment that says what it does not cover.
+
+## 4. The website test
+
+The site itself was driven in a headless Chrome against Mezo testnet with a test wallet, clicking through Borrow, My loans and Lend. Every transaction was sent from the page and checked on chain through both the RPC and the explorer. The record, with every transaction link, is [docs/proof/ui-live-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/ui-live-2026-10-20.md). To repeat it, follow the [Quick start](/docs/getting-started) with your own wallet and open each transaction on the explorer.
+
+The twelve attacks of [Try to break it](/docs/security/try-to-break-it) also run from the command line, read-only, with no key. From `packages/web` after `npm ci`:
+
+```bash
+npx tsx scripts/check-attacks.ts
+```
+
+It prints one line per attack with the contract's refusal and the block it ran on, then a total of how many were refused with the expected error.

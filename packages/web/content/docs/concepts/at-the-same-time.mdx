@@ -1,0 +1,47 @@
+---
+title: At the same time
+description: How Doji holds a veBTC position while its lock keeps running and its votes, rewards and fees stay with the borrower.
+---
+
+Doji's name is the promise: your Bitcoin stays locked and earning while you borrow against it. This page is how the contracts keep that promise.
+
+## Custody
+
+LoanManager holds the veBTC position for as long as Doji has it. There are only two ways in:
+
+- `deposit` pulls a position you own with `transferFrom`, after you approve LoanManager for that one position. You become its borrower.
+- `lockAndDeposit` and `lockAndBorrow` lock your BTC with veBTC's `createLockFor`, which mints the new position straight to LoanManager. You become its borrower. The BTC allowance is set back to zero in the same call.
+
+A position sent to LoanManager any other way never gets a borrower, and only the owner's `rescuePosition` can send it on. The position leaves only to its recorded borrower (`withdrawCollateral`, with no loan open), to the buyer of an auction (`purchase`), or into BTC when an unsold lock ends (`settle`).
+
+## The lock keeps running
+
+Doji does not change your lock's amount or end on its own. It never merges, splits or makes a lock permanent. The only lock changes it makes are ones you ask for (`extendLock`, and `claimRebase`, which can add fees to the lock) and, if a loan is settled, the steps settle needs. Mezo's chain fees and votes keep working on the position because, to Mezo, it is still the same veBTC NFT.
+
+Collateral value is always the locked BTC times the oracle price. Voting power, which decays over a lock, is never used. Votes, incentives and boosts never count as collateral.
+
+## Votes, rewards and fees pass through
+
+While Doji holds the position, its borrower acts on it through LoanManager. Every call checks that the caller is the recorded borrower, that Doji still holds the position, and that the loan is not in auction.
+
+| Call | What it does | Extra condition |
+| --- | --- | --- |
+| `vote(tokenId, pools, weights)` | Casts the position's gauge vote on Mezo's PoolsVoter, up to 30 pools. | The loan must be on time and safe at a fresh price. A normal lock cannot vote in its last week, so a reset is always possible before the lock ends. |
+| `resetVotes(tokenId)` | Clears the vote on PoolsVoter. | Any health. Mezo allows one vote or reset per position per epoch, and none in an epoch's first hour. |
+| `claimRewards(tokenId, gauges, feeTokens, bribeTokens)` | Claims the position's pool fees and incentives and pays them to the borrower. | Any health. Up to 16 tokens. |
+| `claimRebase(tokenId)` | Claims the position's share of veBTC chain fees from Mezo's fee distributor. | Any health. |
+| `extendLock(tokenId, lockDuration)` | Pushes the lock's end out with veBTC's `increaseUnlockTime`. | The loan must be on time and safe at a fresh price. |
+
+For `claimRewards`, the borrower names gauges, never reward contracts. LoanManager looks up each gauge's fee and incentive contracts from PoolsVoter itself, and every token must be on PoolsVoter's own whitelist. It measures its balance of each token before and after the claim and pays the borrower exactly the increase, under a reentrancy lock.
+
+For `claimRebase`, Mezo's fee distributor adds the claim to the lock while the lock is unexpired or permanent, which only raises the collateral. For an expired lock it pays BTC, and LoanManager credits exactly the BTC that arrived to the borrower's claimable, collected with `claim()`.
+
+<Callout type="info">
+My loans and the loan page show the votes ("still counting" or "yours to cast") and the fee rewards waiting. The site has no buttons for these calls yet. They are ordinary LoanManager functions, listed in [Contracts](/docs/developers/contracts), that any wallet tool can send.
+</Callout>
+
+## When the loan ends
+
+After a full repayment the loan record is deleted and the position stays in Doji with no loan, still yours, until you withdraw it or borrow against it again. Withdrawing deletes the position record before the NFT moves, so a position that comes back later starts with a clean record.
+
+If a loan goes to auction, the pass-throughs close for it, because the resolution steps own the position until the auction ends one way or another. See [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).

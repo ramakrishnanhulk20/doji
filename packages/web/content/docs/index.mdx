@@ -1,0 +1,39 @@
+---
+title: Overview
+description: What Doji is, who it is for, and where to start.
+---
+
+Doji lends MUSD against veBTC on Mezo at a fixed rate until a fixed Thursday. Your Bitcoin stays locked the whole time, keeps its votes and earns its rewards, and you take it back when you repay.
+
+The problem, in Mezo's own FAQ: "Can I use my locked BTC as collateral?" "No." ([Mezo veBTC FAQ](https://mezo.org/docs/users/mezo-earn/lock/vebtc/faqs-and-resources))
+
+<Callout type="warn">
+Doji runs on Mezo testnet (chain 31611). Test BTC and test MUSD have no value. The contracts cannot be upgraded.
+</Callout>
+
+## Who it is for
+
+- veBTC holders who need MUSD and do not want to end their lock. Bring a position you already hold, or lock BTC and borrow in one step.
+- MUSD holders who want a fixed return to a known date. Post an offer for a Thursday at your rate, and you are paid back on that date.
+
+## How it works
+
+1. A lender posts an offer: an amount, a Thursday and a fixed rate. The MUSD waits in the contract until a borrower takes it, and whatever is not taken can be cancelled at any time.
+2. A borrower hands Doji a veBTC position, picks a Thursday and takes the cheapest offers. The MUSD arrives at once, and the amount owed on that date is fixed.
+3. The borrower repays and takes the position back, or rolls into a later Thursday in one step. The lock keeps running and the votes and rewards stay with the borrower throughout.
+4. After the date, lenders withdraw their share of what has been collected. Each lender's claim is a credit unit: 1 unit is 1 MUSD due on that Thursday.
+
+If a loan becomes unsafe or the date passes unpaid, the position is sold in a protected auction. If nobody buys, the lenders receive the Bitcoin itself. Each Thursday is its own market, so a bad loan in one week never touches another. The full story is in [How a loan works](/docs/concepts/how-a-loan-works) and [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).
+
+## The name
+
+Doji, 同時 (dōji), means "at the same time": your Bitcoin stays locked and earning while you borrow against it.
+
+A doji is also a candlestick: the day the price opens and closes at the same level. The candlestick chart is credited to the rice traders of Dōjima in Osaka. In 1730 they bought and sold rice for delivery on a fixed date, the first futures market. Doji runs one market for each Thursday in the same spirit.
+
+## Where to start
+
+- [Open the app](/borrow): borrow MUSD against locked Bitcoin, or [lend MUSD](/lend).
+- [Quick start](/docs/getting-started): test BTC, a wallet on Mezo testnet and your first loan in five steps.
+- [Security](/docs/security): the rules the contracts keep, what they do not defend against, and the audit.
+- [Run the proof yourself](/docs/developers/run-the-proof): one command that borrows and repays on Mezo testnet and prints what it checked.

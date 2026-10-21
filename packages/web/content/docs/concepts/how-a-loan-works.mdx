@@ -1,0 +1,67 @@
+---
+title: How a loan works
+description: Thursday markets, offers, fills, the face of a loan, credit units and the protocol fee.
+---
+
+## One market for every Thursday
+
+Every loan and every lender's claim is tied to a Thursday, 00:00 UTC. In the contracts a valid date is a whole number of weeks (604,800 seconds) of Unix time, which lands exactly on Thursday 00:00 UTC. It is the same rounding veBTC uses for lock ends, and the moment Mezo's weekly epoch turns.
+
+| Moment | What the contracts allow |
+| --- | --- |
+| Before the Thursday, within 4 weeks | New offers and new loans for that date. |
+| Up to and including the exact Thursday instant | Repay or roll without default. |
+| After the Thursday | The loan is overdue and anyone can start its auction. Lenders can withdraw what has been collected so far. |
+| After the last loan at the date ends | Anyone can close the date, and holders redeem. |
+
+Each Thursday is its own market. A loss at one date never touches another, and inside a date every unit shares what is collected pro rata.
+
+## Offers
+
+A lender posts an offer: an amount, a date and a yearly rate. The contract pulls exactly that amount of MUSD and holds it. The maker, the date and the rate never change after posting, and an offer number is never reused.
+
+- The minimum offer is 10 MUSD. The rate is capped at 50% a year in the contract's code.
+- Only the maker can cancel, at any time, for exactly what has not been lent. No pause can block a cancel.
+
+## Fills
+
+A borrower lists the offers to take. Only LoanManager can fill them, and each listed offer must be open, for exactly the loan's date, at or under the borrower's highest accepted rate, and have at least the listed amount left. One loan can take up to 8 offers. The Doji site lists the cheapest offers first, then the oldest, so an offer with a lower rate is taken sooner.
+
+The borrow itself goes through these checks at a fresh oracle price, all in one internal path:
+
+- The position is an ordinary veBTC lock with no grant manager, held by Doji, with no open loan.
+- The date is valid, open and no more than 4 weeks away. For a normal lock it is on or before the lock's end. For a permanent lock it is within the 4 weeks.
+- What the loan will owe is at most 40% of the collateral's value now: locked BTC times the oracle price. Voting power never counts.
+- The principal is at least 10 MUSD.
+
+## The face: what you owe
+
+Each fill has a face: the principal plus simple interest from the moment of the fill to the Thursday, counted per second and rounded up for the lender.
+
+```text
+interest = principal x rate x seconds from the fill to the Thursday / 365 days
+face     = principal + interest
+```
+
+A loan's face is the sum of its fills' faces, fixed when the loan opens. Repayments lower what is still owed, never the face. Repaying early still costs the full face: that is what makes the lender's return fixed. Anyone can repay, in part or in full.
+
+In the [20 October 2026 proof run](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-20.md), 10 MUSD borrowed at 5.00% that morning until Thursday 29 October owed 10.0116 MUSD on the date.
+
+## Credit units and the fee
+
+The face is issued as credit units at the same date, in two parts that add up to the face exactly:
+
+- The protocol's units: 10% of the interest.
+- The lender's units: everything else, so the principal plus 90% of the interest.
+
+For example, 1,000 MUSD lent at 6% for exactly 28 days has a face of 1,004.60 MUSD. The lender holds 1,004.14 units and the protocol 0.46. If that date later falls short, the protocol's units take their share of the loss alongside the lender's, pro rata. No MUSD is skimmed at the fill: the borrower receives the whole principal.
+
+Units are recorded when the offer fills and minted when the lender claims them, so no lender's code runs inside a borrow. See [Credit units and payouts](/docs/getting-started/credit-units).
+
+## Rolling
+
+Before or on its Thursday, a borrower can roll an active loan into a later Thursday. The new loan takes new offers and goes through every borrow check at today's price and today's settings. Its principal repays the old date in full in the same transaction; the borrower tops up any difference or receives any extra. A lock that keeps being extended becomes a rolling credit line.
+
+## Settings stay with the loan
+
+The borrow limit, the auction line, the auction floor, the auction length and the penalty are copied into each loan when it opens or rolls. A later settings change reaches only new offers and new loans. See [Risk settings](/docs/concepts/risk-settings).

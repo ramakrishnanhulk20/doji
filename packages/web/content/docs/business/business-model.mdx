@@ -1,0 +1,45 @@
+---
+title: Business model
+description: Who pays what, why the loans are fixed rate and fixed date, and what comes next.
+---
+
+## The market
+
+Mezo pays veBTC holders to keep their Bitcoin locked: chain fees, votes that steer emissions, and incentives on those votes. Until now that Bitcoin could not back a loan without ending the lock first. Mezo's own FAQ answers "Can I use my locked BTC as collateral?" with "No." ([Mezo veBTC FAQ](https://mezo.org/docs/users/mezo-earn/lock/vebtc/faqs-and-resources)).
+
+Doji is the market between two groups:
+
+- veBTC holders who need MUSD without ending their lock or giving up its votes and rewards.
+- MUSD holders who want a fixed return to a known date, backed by locked Bitcoin.
+
+The live numbers, Bitcoin locked as veBTC on Mezo, MUSD on offer and the best rate for each Thursday, are on the [landing page](/), read from the chain.
+
+## Who pays what
+
+| Who | Pays | When |
+| --- | --- | --- |
+| Borrowers | Interest at the lender's fixed rate, from the moment the offer is taken to the Thursday | In the fixed amount owed on the date. Repaying early still costs the full amount. |
+| The protocol's share | 10% of that interest, issued as the protocol's own credit units at the same date | At each fill. The units are paid like any lender's and share any loss at that date pro rata, so the protocol is paid in full only when its lenders are. |
+| A borrower whose loan is auctioned or settled | A penalty of 5% of the debt | Only out of what is left above the debt, after lenders are paid. In BTC when the loan settles in BTC. |
+
+There is no other fee. Posting, cancelling, repaying, rolling, withdrawing, claiming and redeeming cost only Mezo gas, paid in BTC.
+
+For example, 1,000 MUSD lent at 6% for 28 days earns 4.60 MUSD of interest. The lender is owed 1,004.14 MUSD and the protocol holds 0.46 units at that date.
+
+## Why fixed rate and fixed date
+
+- The lender knows the return and the date before lending. The borrower knows the cost and the date before borrowing. Neither moves with a pool's utilisation.
+- veBTC locks end on Thursday 00:00 UTC and Mezo's epochs turn then. A Thursday loan date lines up with the lock it is backed by.
+- One market per Thursday keeps risk where it belongs: a bad loan in one week never touches another, and every unit at a date is interchangeable with every other, so a claim on a date can change hands.
+- Mezo has written about fixed-rate, fixed-term Bitcoin credit ([How to build a Bitcoin-backed credit market](https://mezo.org/blog/how-to-build-a-bitcoin-backed-credit-market/), August 2026). Doji builds that shape of market for MUSD and veBTC.
+
+## What keeps it safe enough to grow
+
+The limits come from nine years of Bitcoin prices ([Risk settings](/docs/concepts/risk-settings)). A failing loan is sold in a protected auction or settled in Bitcoin, never dumped on a thin market ([If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong)). The contracts cannot be upgraded, and every setting the owner can touch sits inside hard bounds and is copied into each loan ([Security](/docs/security)).
+
+## Next: Wave 2
+
+- Idle offer money earning in sMUSD, Mezo's MUSD savings vault, while it waits for a borrower. sMUSD exists only on mainnet, so this part will be proven against mainnet state.
+- A place to sell credit units before their date, so lenders can exit early.
+- Rewards that pay the loan down: a borrower's rewards applied to what they owe.
+- A proposal to Mezo for a gauge on Doji's markets, so veBTC votes can steer MEZO emissions toward them.

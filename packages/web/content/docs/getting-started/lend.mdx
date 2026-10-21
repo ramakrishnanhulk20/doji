@@ -1,0 +1,57 @@
+---
+title: Lend MUSD
+description: Post a fixed-rate offer for a Thursday, follow it, and cancel what is not taken.
+---
+
+[Lend](/lend) lets you post an offer: an amount of MUSD, a Thursday and a fixed yearly rate. Your MUSD waits in the CreditMarkets contract until a borrower takes it, you can cancel whatever is not taken at any time, and you are paid back on that date.
+
+## Getting test MUSD
+
+Lending needs MUSD in your wallet. The Mezo faucet gives test BTC, not MUSD. The quickest way to get test MUSD is to [borrow it on Doji](/docs/getting-started/borrow). Mezo testnet also has a MUSD/BTC pool: Doji's [first live proof](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/m1-live-testnet.md) swapped 0.0003 test BTC for MUSD on it before posting its first offer.
+
+## 01 Due date
+
+Each card is a Thursday, 00:00 UTC, within the next 4 weeks. A date that already has offers shows "best now" with the lowest rate, how many offers it has and how much MUSD is already due to lenders on it. A date with none says "no offers yet: you'd set the rate". The screen starts on the earliest Thursday that already has offers, or the earliest Thursday when none has.
+
+## 02 Your rate
+
+Type a yearly rate in percent, from 0.01% up to the 50% cap written into the contract. The note reminds you that "Borrowers take the cheapest offers first." and shows the best offer for that date now. A lower rate gets taken sooner.
+
+## 03 Amount
+
+Type the MUSD to lend, or press "Max" for your whole balance. The minimum offer is 10 MUSD.
+
+## Your offer
+
+| Row | Meaning |
+| --- | --- |
+| Lend | The MUSD you put up. |
+| Until | The Thursday, 00:00 UTC. |
+| Rate | Your yearly rate, fixed. |
+| If taken now, you are owed | The MUSD due to you on that date if a borrower takes the whole offer right now. |
+| Credit units | The same amount, as units: 1 unit is 1 MUSD due on that date. |
+| Protocol fee | The protocol's units: 10% of the interest, sharing any loss with you. |
+
+Two notes sit under the card. Interest counts from when a borrower takes the offer, so an offer taken later earns a little less. And your units for a date share that date's repayments, auction proceeds and settled Bitcoin with every other lender at that date.
+
+The button reads "Connect wallet to lend", then for example "Post offer: 20.00 MUSD at 6.50% until Thu 12 Nov". The steps are "Approve 20.00 MUSD" (for that exact amount, skipped if an earlier approval covers it) and "Post offer", each signed in your wallet. The card then says "Your offer is live." with the offer number, and offers "View transaction" and "Post another".
+
+## Your offers
+
+The table under the form lists every offer this wallet has posted:
+
+| Status | Meaning |
+| --- | --- |
+| Open | Nothing taken yet. |
+| Partly taken | Some MUSD has been lent, the rest is still on offer. |
+| Taken | All of it has been lent. |
+| Cancelled | You took back what was left. |
+| Expired | The Thursday has passed with MUSD left on the offer. Cancel it to get that MUSD back. |
+
+Any offer with MUSD left has a "Cancel" button. It asks "Cancel offer #7? 20.00 MUSD comes back to you." with "Keep it" and "Yes, cancel". When it lands: "Offer #7 cancelled. 20.00 MUSD is back in your wallet." Cancelling is never paused and refunds exactly the part not taken.
+
+<Callout type="info">
+The guardian can pause new offers. The screen then says "New offers are paused right now. Cancelling still works." Nothing can stop a cancel.
+</Callout>
+
+When a borrower takes your offer, your credit units appear under "Your credit units". What to do with them is in [Credit units and payouts](/docs/getting-started/credit-units).

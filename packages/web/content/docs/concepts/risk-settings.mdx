@@ -1,0 +1,75 @@
+---
+title: Risk settings
+description: The five numbers that decide how much you can borrow and what happens in an auction, and the Bitcoin price study behind them.
+---
+
+## The five numbers
+
+Doji was deployed with these settings. Each loan copies them when it opens or rolls, so a later change never reaches a loan that is already open.
+
+| Setting | Value | What it means |
+| --- | --- | --- |
+| Borrow limit (maxLTV) | 40% | A new loan can owe at most 40% of the collateral's value: 40 MUSD per 100 MUSD of Bitcoin. |
+| Liquidation line (liqLTV) | 65% | Above this share of the value, anyone can start the loan's auction. |
+| Auction floor | 70% of the start value | The lowest the curve falls to, never below the debt while the Bitcoin still covers it. |
+| Auction duration | 72 hours | How long the price takes to fall from the start value to the floor. |
+| Penalty | 5% of the debt | Paid to the protocol from a sale or settlement, only out of what is left above the debt. |
+
+The live values are on the [landing page's auction chart](/#risk) and on each loan's page, read from the contracts.
+
+## Where the numbers come from
+
+The first four come from a study of Bitcoin's daily prices since August 2017: 3,347 days from Binance's public API, from 2017-08-17 to 2026-10-15, with no missing days. One script, `python -I analysis/btc_drawdowns.py`, produces every figure below, and anyone can re-run it. The full write-up is [docs/risk/parameters.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/risk/parameters.md).
+
+| Setting | The number behind it |
+| --- | --- |
+| 40% borrow limit | 59.3%, the worst fall of Bitcoin inside any 35 days since 2017. A 40% loan is only underwater after a 60% fall. |
+| 65% line | 35 points of room above the debt at the line, against 28.1%, the 95th percentile of 35-day falls. |
+| 70% floor | 28.1%, the same figure: a buyer who holds up to 35 days needs about that discount, and 70% gives 30%. |
+| 72 hours | 15.9%, the 99th percentile of 3-day falls, while the auction itself drops 30 points in those 72 hours. |
+
+The limits were set on the whole record, not on the calm last four years, because the contracts cannot be upgraded and a lender should be covered through a repeat of 2018 or 2020. The last four years show no lender loss at any setting tested, up to a 60% loan with a 75% line. That is the trap in a short history.
+
+## What the study found at 40% and 65%
+
+- Cushion: Bitcoin can fall 38.5% after a loan opens before the debt reaches the line.
+- In the simulation, 2.65% of loans opened at 40% crossed the line within 28 days (about one in 38).
+- On daily closing prices, no loan left lenders short after crossing the line. If the borrower also walked away at the date, 4 of 3,284 simulated loans ended short, all opened between 15 and 18 December 2017, the worst by 9.2% of the debt.
+- On intraday lows, a harsher test, lenders lost in 0.64% of loans (1.13% with unpaid loans), in three episodes, the worst by 14.5% of the debt.
+
+40% is the highest borrow limit in the grid that never loses on closing prices. The margin is thin, and the study says so: 35% would be the choice if lenders had to be covered against intraday spikes too.
+
+## The penalty
+
+The study does not set the penalty. At the 65% line the debt is 65% of the value, so a sale at the 70% floor pays the lenders in full and leaves 5 points, 7.7% of the debt, above it. The 5% penalty fits inside that, and the borrower keeps the rest. The protected floor and the repricing at the time of sale then lift the price further when an auction starts lower down. See [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).
+
+## The other settings
+
+| Setting | Value |
+| --- | --- |
+| Protocol fee | 10% of the interest, as credit units at the same date |
+| Minimum loan | 10 MUSD |
+| Minimum offer | 10 MUSD |
+| Longest term | 4 weeks, inside veBTC's 28-day maximum lock |
+| Highest rate an offer can ask | 50% a year, written into the code |
+| Offers per loan | at most 8 |
+| Pools per vote | at most 30, PoolsVoter's own limit |
+
+## Limits the owner cannot cross
+
+The owner can change settings only inside bounds written into the contracts, and every change touches only new offers and new loans:
+
+| Setting | Allowed range |
+| --- | --- |
+| Borrow limit and line | at least 10% for the limit, the limit below the line, the line at most 90% and below the auction floor |
+| Auction floor | 50% to 95% of the start value |
+| Auction duration | 1 hour to 7 days |
+| Penalty | at most 10% of the debt |
+| Protocol fee | at most 20% of the interest |
+| Minimum loan | 1 to 100,000 MUSD |
+| Minimum offer | 1 to 1,000,000 MUSD |
+| Longest term | 1 to 4 weeks |
+
+## What the study does not cover
+
+Years before August 2017; USDT prices rather than USD; moves inside a day beyond one exchange's daily lows; interest, which makes the real margin a little thinner; oracle delay, a late keeper and the MUSD price itself; and how fast real buyers show up at an auction. The floor and the duration are the weakest of the four numbers: price history can bound them, but only real buyers can test them.
