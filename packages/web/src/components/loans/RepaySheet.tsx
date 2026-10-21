@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanSteps, type FlowStep } from "../../hooks/useLoanSteps";
-import type { WriteResult } from "../../hooks/useWrite";
+import type { SuccessLine, WriteResult } from "../../hooks/useWrite";
 import { CENT } from "../../lib/borrow";
 import {
   approveMusdCall,
-  exactText,
+  approveText,
   musdText,
   repayCall,
   repaySteps,
@@ -23,7 +23,7 @@ import { musdFieldText, parseAmount } from "../borrow/format";
 import { AmountField } from "../borrow/Steps";
 import { Sheet } from "./Sheet";
 
-export type SendCall = (call: LoanCall, successLine: string) => Promise<WriteResult>;
+export type SendCall = (call: LoanCall, successLine: SuccessLine) => Promise<WriteResult>;
 
 type RepaySheetProps = {
   view: PositionView;
@@ -64,7 +64,7 @@ export function RepaySheet({ view, wallet, fullOnly, send, busy, onClose }: Repa
       ...step,
       run: () =>
         step.id === "approve"
-          ? send(approveMusdCall(pay), `Approved ${exactText(pay)} MUSD for Doji.`)
+          ? send(approveMusdCall(pay), `Approved ${approveText(pay)} MUSD for Doji.`)
           : send(
               repayCall(id, pay),
               isFull

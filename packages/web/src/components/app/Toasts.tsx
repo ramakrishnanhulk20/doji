@@ -1,10 +1,42 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { dismissToast, useToasts } from "./toast-store";
 import { Seal } from "../Seal";
 
+/** A Done toast closes by itself. Sending and Failed stay until the person closes them. */
+const DONE_CLOSES_AFTER_MS = 4_000;
+
 export function Toasts() {
   const toasts = useToasts();
+  const timers = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    const open = new Set(toasts.filter((toast) => toast.kind === "done").map((toast) => toast.id));
+    for (const id of open) {
+      if (timers.current.has(id)) continue;
+      timers.current.set(
+        id,
+        window.setTimeout(() => {
+          timers.current.delete(id);
+          dismissToast(id);
+        }, DONE_CLOSES_AFTER_MS),
+      );
+    }
+    for (const [id, timer] of timers.current) {
+      if (open.has(id)) continue;
+      window.clearTimeout(timer);
+      timers.current.delete(id);
+    }
+  }, [toasts]);
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      pending.forEach((timer) => window.clearTimeout(timer));
+      pending.clear();
+    };
+  }, []);
 
   return (
     <div className="toasts" role="region" aria-label="Transaction status" aria-live="polite">

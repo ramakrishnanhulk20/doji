@@ -2,26 +2,36 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
+import { useLoanClock } from "../../hooks/useLoanClock";
 import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanWrite } from "../../hooks/useLoanWrite";
 import { useMyLoans } from "../../hooks/useLoans";
+import { useVoteActions } from "../../hooks/useVotes";
 import { btcText, claimCall, musdText, withdrawCall } from "../../lib/loans";
 import { useReducedMotion } from "../../lib/motion-mode";
 import { Button } from "../Button";
 import "../borrow/borrow.css";
 import "./loans.css";
 import { ClaimStrip } from "./ClaimStrip";
+import { ExtendLockSheet } from "./ExtendLockSheet";
 import { PositionCard } from "./PositionCard";
 import { RepaySheet } from "./RepaySheet";
 import { RollSheet } from "./RollSheet";
+import { VoteSheet } from "./VoteSheet";
 
-type OpenSheet = { kind: "repay"; id: bigint; fullOnly: boolean } | { kind: "roll"; id: bigint };
+type OpenSheet =
+  | { kind: "repay"; id: bigint; fullOnly: boolean }
+  | { kind: "roll"; id: bigint }
+  | { kind: "vote"; id: bigint }
+  | { kind: "extend"; id: bigint };
 
 export function MyLoans() {
   const reduced = useReducedMotion();
   const gate = useLoanGate();
   const data = useMyLoans();
   const { send, busy } = useLoanWrite();
+  const voteActions = useVoteActions(send);
+  const now = useLoanClock(30_000);
   const [sheet, setSheet] = useState<OpenSheet | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
@@ -107,9 +117,13 @@ export function MyLoans() {
                     key={String(view.id)}
                     view={view}
                     index={index}
+                    now={now}
                     locked={gate.wrongChain}
                     acting={acting}
                     busy={busy}
+                    voteActions={voteActions}
+                    onVote={() => setSheet({ kind: "vote", id: view.id })}
+                    onExtend={() => setSheet({ kind: "extend", id: view.id })}
                     onRepay={(fullOnly) => setSheet({ kind: "repay", id: view.id, fullOnly })}
                     onRoll={() => setSheet({ kind: "roll", id: view.id })}
                     onWithdraw={() =>
@@ -142,6 +156,26 @@ export function MyLoans() {
           settings={data.settings.data}
           offers={data.offers.data}
           wallet={data.musd.data}
+          send={send}
+          busy={busy}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === "vote" && sheetView && (
+        <VoteSheet
+          key={`vote-${sheet.id}`}
+          view={sheetView}
+          now={now}
+          send={send}
+          busy={busy}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === "extend" && sheetView && (
+        <ExtendLockSheet
+          key={`extend-${sheet.id}`}
+          view={sheetView}
+          now={now}
           send={send}
           busy={busy}
           onClose={() => setSheet(null)}

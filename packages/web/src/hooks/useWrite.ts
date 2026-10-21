@@ -15,14 +15,16 @@ const EXPLORER_TX = "https://explorer.test.mezo.org/tx/";
 
 export type WriteTarget = "loanManager" | "creditMarkets" | "btc" | "veBTC" | "musd";
 
+export type SuccessLine = string | ((receipt: TransactionReceipt) => string);
+
 export type WriteRequest = {
   /** The contract, by name. The address comes from the address book for the connected chain. */
   target: WriteTarget;
   abi: Abi;
   functionName: string;
   args: readonly unknown[];
-  /** The line the Done toast shows. */
-  successLine: string;
+  /** The line the Done toast shows. A function gets the receipt, for lines that depend on what the transaction did. */
+  successLine: SuccessLine;
   /** "lock" lets an error the app cannot name read as Mezo's veBTC refusing the lock. */
   action?: ErrorContext["action"];
 };
@@ -39,12 +41,25 @@ export type WriteResult =
 let counter = 0;
 let queryClientRef: QueryClient | null = null;
 
+// The pending record keeps only text, so a line that is a function waits here until its transaction is settled.
+const lineFunctions = new Map<string, (receipt: TransactionReceipt) => string>();
+
 // A flow that is waiting on a transaction after the first ten minutes asks for the next answer here.
 const waiters: { hash: Hex; resolve: (result: WriteResult) => void }[] = [];
 
 /** Resolves with the next outcome for this hash, which arrives when the transaction is confirmed or checked again. */
 export function waitForSettlement(hash: Hex): Promise<WriteResult> {
   return new Promise((resolve) => waiters.push({ hash, resolve }));
+}
+
+/** A line that fails to build must never hide a transaction that went through, so it falls back to plain words. */
+function lineFor(line: SuccessLine, receipt: TransactionReceipt): string {
+  if (typeof line === "string") return line;
+  try {
+    return line(receipt);
+  } catch {
+    return "Confirmed on Mezo.";
+  }
 }
 
 function toReceipt(hash: Hex, confirmed: Extract<Confirmation, { status: "success" }>): TransactionReceipt {
@@ -60,9 +75,11 @@ function toReceipt(hash: Hex, confirmed: Extract<Confirmation, { status: "succes
  * Follows one sent transaction until it is confirmed, reverted, or ten minutes pass without an answer. The last case
  * is shown as "Sent, still confirming" with a button that asks again; it is never shown as a failure.
  */
-async function settle(hash: Hex, toastId: string, successLine: string): Promise<WriteResult> {
+async function settle(hash: Hex, toastId: string, successLine: SuccessLine): Promise<WriteResult> {
   const href = `${EXPLORER_TX}${hash}`;
-  setPending({ toastId, hash, stalled: false, successLine });
+  if (typeof successLine === "function") lineFunctions.set(toastId, successLine);
+  const pendingLine = typeof successLine === "string" ? successLine : "";
+  setPending({ toastId, hash, stalled: false, successLine: pendingLine });
   showToast({ id: toastId, kind: "sending", title: "Sending", detail: "Waiting for Mezo to confirm", href });
 
   const outcome = await confirmTransaction(hash);
@@ -70,17 +87,21 @@ async function settle(hash: Hex, toastId: string, successLine: string): Promise<
 
   if (outcome.status === "success") {
     setPending(null);
-    showToast({ id: toastId, kind: "done", title: "Done", detail: successLine, href });
+    const receipt = toReceipt(hash, outcome);
+    const detail = lineFor(successLine, receipt);
+    lineFunctions.delete(toastId);
+    showToast({ id: toastId, kind: "done", title: "Done", detail, href });
     await queryClientRef?.invalidateQueries();
-    result = { ok: true, hash, receipt: toReceipt(hash, outcome) };
+    result = { ok: true, hash, receipt };
   } else if (outcome.status === "reverted") {
     setPending(null);
+    lineFunctions.delete(toastId);
     const explained = explainReverted(await fetchRevertData(hash));
     showToast({ id: toastId, kind: "problem", title: explained.title, detail: explained.detail, href });
     await queryClientRef?.invalidateQueries();
     result = { ok: false, refresh: false, hash };
   } else {
-    setPending({ toastId, hash, stalled: true, successLine });
+    setPending({ toastId, hash, stalled: true, successLine: pendingLine });
     showToast({
       id: toastId,
       kind: "stalled",
@@ -103,7 +124,7 @@ async function settle(hash: Hex, toastId: string, successLine: string): Promise<
 export function recheckConfirmation() {
   const current = getPending();
   if (current === null) return;
-  void settle(current.hash, current.toastId, current.successLine);
+  void settle(current.hash, current.toastId, lineFunctions.get(current.toastId) ?? current.successLine);
 }
 
 /**

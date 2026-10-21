@@ -40,7 +40,7 @@ If the loan is overdue or in auction, the card shows "Repay in full" instead. On
 A roll works only while the loan is active and on time, at or before its Thursday. It takes that day's settings, like any new loan. Rolling is never paused; while new loans are paused, a roll can refinance or take a top-up but cannot pay out extra MUSD.
 
 <Callout type="info">
-A lock made on the Borrow screen ends on the loan's due date, so no later Thursday fits inside it. To roll such a loan, push the lock's end out first with LoanManager's `extendLock`. The site has no button for that yet; see [Contracts](/docs/developers/contracts).
+A lock made on the Borrow screen ends on the loan's due date, so rolling to a later Thursday also moves the lock's end. The Roll sheet marks those dates "extends your lock" and adds the step itself: "Extend lock to" the new date, then the top-up approval if one is needed, then "Roll". Your BTC stays locked until the new date. The lock can reach at most 28 days from today, so the latest Thursday on offer is the last one inside that window.
 </Callout>
 
 ## Withdraw veBTC
@@ -63,4 +63,4 @@ The page also offers the steps anyone may run when the contracts allow them: "St
 
 ## Votes and rewards
 
-While Doji holds the position you keep its votes and its rewards. The cards show both, and the contract calls that act on them are `vote`, `resetVotes`, `claimRewards`, `claimRebase` and `extendLock` on LoanManager. The site does not have buttons for these yet. How they work is in [At the same time](/docs/concepts/at-the-same-time).
+While Doji holds the position you keep its votes and its rewards. The card's Votes row has Vote and Reset, the Rewards row has Claim rebase and Claim pool rewards, and the Lock row has Extend; the loan page shows the same in a "Votes and rewards" card. Vote, Reset and Extend appear only while the loan is on time and safe; votes close one week before the lock ends. On testnet the two claims cannot succeed today for reasons on Mezo's side, and the buttons say so. How they work is in [At the same time](/docs/concepts/at-the-same-time).

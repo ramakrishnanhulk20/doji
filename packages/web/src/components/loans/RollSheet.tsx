@@ -10,7 +10,7 @@ import { groupOffersByDate, roundDownToCent, selectOffers, type DateGroup } from
 import type { BorrowSettings } from "../../lib/borrow-reads";
 import {
   approveMusdCall,
-  exactText,
+  approveText,
   musdText,
   quoteRoll,
   rollCall,
@@ -22,6 +22,7 @@ import {
   type PositionView,
 } from "../../lib/loans";
 import { formatApr, formatDate, formatMusd, type OpenOffer } from "../../lib/stats";
+import { buildExtendLockCall, rollExtensionDates } from "../../lib/votes";
 import { Button } from "../Button";
 import { Stepper } from "../app/Stepper";
 import { fmtMusd, musdFieldText, parseAmount } from "../borrow/format";
@@ -53,10 +54,13 @@ export function RollSheet({ view, client, settings, offers, wallet, send, busy, 
   const { id, owed } = view;
 
   const [pick, setPick] = useState<number | null>(null);
-  const [text, setText] = useState(() => musdFieldText(roundDownToCent(owed)));
+  // Rounding up leaves a payout of under a cent instead of a top-up, so the default roll needs no approval step.
+  const [text, setText] = useState(() => musdFieldText(roundDownToCent(owed + 10n ** 16n - 1n)));
 
   const groups = useMemo(() => groupOffersByDate(offers ?? []), [offers]);
-  const dates = useMemo(() => (settings ? rollDates(view, settings.maxTermSeconds, now) : []), [settings, view, now]);
+  const insideLock = useMemo(() => (settings ? rollDates(view, settings.maxTermSeconds, now) : []), [settings, view, now]);
+  const pastLock = useMemo(() => (settings ? rollExtensionDates(view, settings.maxTermSeconds, now) : []), [settings, view, now]);
+  const dates = useMemo(() => [...insideLock, ...pastLock], [insideLock, pastLock]);
 
   const minLoan = settings?.minLoan ?? 0n;
   const defaultDate =
@@ -84,18 +88,27 @@ export function RollSheet({ view, client, settings, offers, wallet, send, busy, 
     return rollProblem({ view, settings, group, principal, quote: quote.data, musdBalance: wallet.balance });
   })();
 
-  const plan = quote.data && wallet ? rollSteps(quote.data.topUp, wallet.allowance) : [];
+  const extendTo = maturity !== null && pastLock.includes(maturity) ? maturity : null;
+  const plan = quote.data && wallet ? rollSteps(quote.data.topUp, wallet.allowance, extendTo) : [];
 
   const run = async () => {
     if (!quote.data || wallet === undefined || maturity === null) return;
     const planned = quote.data;
     const date = maturity;
-    const steps: FlowStep[] = rollSteps(planned.topUp, wallet.allowance).map((step) => ({
+    const steps: FlowStep[] = rollSteps(planned.topUp, wallet.allowance, extendTo).map((step) => ({
       ...step,
-      run: () =>
-        step.id === "approve"
-          ? send(approveMusdCall(planned.topUp), `Approved ${exactText(planned.topUp)} MUSD for Doji.`)
-          : send(rollCall(id, date, planned.selection, planned.topUp), `veBTC #${id} rolled to ${formatDate(date)}.`),
+      run: () => {
+        if (step.id === "extend") {
+          return send(
+            buildExtendLockCall(id, date, Math.floor(Date.now() / 1000)),
+            `The lock on veBTC #${id} now runs to ${formatDate(date)}.`,
+          );
+        }
+        if (step.id === "approve") {
+          return send(approveMusdCall(planned.topUp), `Approved ${approveText(planned.topUp)} MUSD for Doji.`);
+        }
+        return send(rollCall(id, date, planned.selection, planned.topUp), `veBTC #${id} rolled to ${formatDate(date)}.`);
+      },
     }));
     if (await flow.start(steps)) onClose();
   };
@@ -167,6 +180,7 @@ export function RollSheet({ view, client, settings, offers, wallet, send, busy, 
                   ) : (
                     <span className="date-card-available">no offers yet</span>
                   )}
+                  {pastLock.includes(date) && <span className="date-card-tag">extends your lock</span>}
                 </label>
               );
             })}
@@ -214,6 +228,7 @@ export function RollSheet({ view, client, settings, offers, wallet, send, busy, 
             Rolling repays this loan from the new one in a single step. If the new principal is less than what you owe, you
             top up the difference.
           </p>
+          {extendTo !== null && <p className="field-note field-note-plain">Your BTC stays locked until the new date.</p>}
 
           {plan.length > 0 && (
             <div className="summary-steps">

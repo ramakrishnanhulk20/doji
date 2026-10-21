@@ -124,10 +124,18 @@ export function btcText(wei: bigint): string {
 /** The amount with all its digits and no trailing zeros, for approval labels. */
 export const exactText = (wei: bigint): string => formatUnits(wei, 18);
 
-type Entry = { status: "success"; result: unknown } | { status: "failure"; error: Error };
+/** An approval's amount as people read it, rounded up so the label never shows less than what is approved. */
+export function approveText(wei: bigint): string {
+  const decimals = wei < 10n ** 16n ? 6 : 2;
+  const step = 10n ** BigInt(18 - decimals);
+  const rounded = ((wei + step - 1n) / step) * step;
+  return Number(formatUnits(rounded, 18)).toLocaleString("en-US", { maximumFractionDigits: decimals });
+}
+
+export type Entry = { status: "success"; result: unknown } | { status: "failure"; error: Error };
 
 /** A multicall answer, or null when that one call reverted. */
-function answer<T>(entry: Entry | undefined): T | null {
+export function answer<T>(entry: Entry | undefined): T | null {
   return entry !== undefined && entry.status === "success" ? (entry.result as T) : null;
 }
 
@@ -626,21 +634,23 @@ export type StepSpec = { id: string; label: string };
 /** Repaying needs an approval for the exact amount first, unless the allowance already covers it. */
 export function repaySteps(pay: bigint, allowance: bigint): StepSpec[] {
   const steps: StepSpec[] = [];
-  if (allowance < pay) steps.push({ id: "approve", label: `Approve ${exactText(pay)} MUSD` });
+  if (allowance < pay) steps.push({ id: "approve", label: `Approve ${approveText(pay)} MUSD` });
   steps.push({ id: "repay", label: "Repay" });
   return steps;
 }
 
-export function rollSteps(topUp: bigint, allowance: bigint): StepSpec[] {
+/** A roll to a date past the lock end starts by extending the lock to that date. */
+export function rollSteps(topUp: bigint, allowance: bigint, extendTo: number | null = null): StepSpec[] {
   const steps: StepSpec[] = [];
-  if (topUp > 0n && allowance < topUp) steps.push({ id: "approve", label: `Approve ${exactText(topUp)} MUSD` });
+  if (extendTo !== null) steps.push({ id: "extend", label: `Extend lock to ${formatDate(extendTo)}` });
+  if (topUp > 0n && allowance < topUp) steps.push({ id: "approve", label: `Approve ${approveText(topUp)} MUSD` });
   steps.push({ id: "roll", label: "Roll" });
   return steps;
 }
 
 export function buySteps(maxPay: bigint, allowance: bigint): StepSpec[] {
   const steps: StepSpec[] = [];
-  if (allowance < maxPay) steps.push({ id: "approve", label: `Approve ${exactText(maxPay)} MUSD` });
+  if (allowance < maxPay) steps.push({ id: "approve", label: `Approve ${approveText(maxPay)} MUSD` });
   steps.push({ id: "buy", label: "Buy" });
   return steps;
 }
@@ -654,7 +664,7 @@ export type LoanCall = {
   args: readonly unknown[];
 };
 
-const managerCall = (functionName: string, args: readonly unknown[]): LoanCall => ({
+export const managerCall = (functionName: string, args: readonly unknown[]): LoanCall => ({
   target: "loanManager",
   address: book.loanManager,
   abi: loanManagerAbi as Abi,

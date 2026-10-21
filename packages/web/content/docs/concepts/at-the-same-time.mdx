@@ -37,7 +37,7 @@ For `claimRewards`, the borrower names gauges, never reward contracts. LoanManag
 For `claimRebase`, Mezo's fee distributor adds the claim to the lock while the lock is unexpired or permanent, which only raises the collateral. For an expired lock it pays BTC, and LoanManager credits exactly the BTC that arrived to the borrower's claimable, collected with `claim()`.
 
 <Callout type="info">
-My loans and the loan page show the votes ("still counting" or "yours to cast") and the fee rewards waiting. The site has no buttons for these calls yet. They are ordinary LoanManager functions, listed in [Contracts](/docs/developers/contracts), that any wallet tool can send.
+My loans and the loan page have Vote, Reset votes, Extend lock, Claim rebase and Claim pool rewards for the borrower. On Mezo testnet today the two claims cannot succeed for reasons on Mezo's side: the testnet PoolsVoter lists no whitelisted reward token, and the testnet fee distributor's weekly round has not moved since November 2025. The buttons say so instead of failing. The same calls run against real Mezo mainnet positions in the fork tests, which forward real MUSD and BTC pool fees through four real gauges ([PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol)).
 </Callout>
 
 ## When the loan ends

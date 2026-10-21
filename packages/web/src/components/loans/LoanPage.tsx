@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
 import type { Hex } from "viem";
+import { useAccount } from "wagmi";
 import { useLoan } from "../../hooks/useLoan";
 import { useLoanClock } from "../../hooks/useLoanClock";
 import { useLoanWrite } from "../../hooks/useLoanWrite";
@@ -16,6 +17,7 @@ import "./loans.css";
 import { AnyoneActions } from "./AnyoneActions";
 import { BuyCard } from "./BuyCard";
 import { Facts } from "./Facts";
+import { VotesAndRewards } from "./VotesAndRewards";
 
 export function LoanPage({ id }: { id: string }) {
   const tokenId = BigInt(id);
@@ -23,10 +25,13 @@ export function LoanPage({ id }: { id: string }) {
   const now = useLoanClock(15_000);
   const { view, opened, market, musd } = useLoan(tokenId);
   const { send, busy } = useLoanWrite();
+  const { address } = useAccount();
   const [boughtHash, setBoughtHash] = useState<Hex | null>(null);
 
   const loan = view.data;
   const failed = view.isError || (view.isSuccess && loan === null);
+  const isBorrower =
+    loan !== null && loan !== undefined && loan.borrower !== null && address !== undefined && loan.borrower.toLowerCase() === address.toLowerCase();
 
   const subtitle = (() => {
     if (failed) return <span className="loan-unavailable">This loan could not be read right now. Doji is trying again.</span>;
@@ -48,6 +53,8 @@ export function LoanPage({ id }: { id: string }) {
         {loan ? (
           <>
             <Facts view={loan} opened={opened} />
+
+            {isBorrower && loan.loan.state !== STATE_AUCTION && <VotesAndRewards view={loan} now={now} send={send} busy={busy} />}
 
             {boughtHash !== null ? (
               <section className="success-card">

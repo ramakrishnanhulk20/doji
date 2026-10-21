@@ -627,13 +627,356 @@
   color: var(--paper-dim);
 }
 
+/* Small text actions at the right end of a card row */
+.loan-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 4px 14px;
+}
+
+.row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 14px;
+}
+
+.row-action {
+  padding: 0 0 2px;
+  border: 0;
+  background-color: transparent;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--paper-dim);
+  cursor: pointer;
+}
+
+.row-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.row-action:disabled:hover {
+  color: var(--paper-dim);
+  background-size: 0 1px;
+}
+
+.row-action[data-busy] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+@media (pointer: coarse) {
+  .row-action {
+    padding: 8px 0 6px;
+  }
+}
+
+/* The tag on a roll date that needs a longer lock */
+.date-card-tag {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--paper-dim);
+}
+
+.date-card[data-selected="true"] .date-card-tag {
+  border-color: var(--beni-text);
+  color: var(--paper);
+}
+
+/* The vote sheet: one row per pool */
+.vote-pools {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.pool-skeleton {
+  display: block;
+  height: 62px;
+  border-radius: 8px;
+}
+
+.pool-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  transition:
+    border-color 160ms ease-out,
+    background-color 160ms ease-out;
+}
+
+.pool-row:hover:not([data-disabled="true"], [data-checked="true"]) {
+  border-color: var(--line-strong);
+}
+
+.pool-row[data-checked="true"] {
+  border-color: var(--beni);
+  background: rgba(196, 54, 70, 0.08);
+}
+
+.pool-row[data-disabled="true"] {
+  opacity: 0.6;
+}
+
+.pool-pick {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.pool-row[data-disabled="true"] .pool-pick {
+  cursor: not-allowed;
+}
+
+.pool-pick:has(input:focus-visible) {
+  outline: 2px solid var(--beni-text);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.pool-box {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 4px;
+  color: transparent;
+  transition:
+    background-color 160ms ease-out,
+    border-color 160ms ease-out;
+}
+
+.pool-row[data-checked="true"] .pool-box {
+  border-color: var(--beni-deep);
+  background: var(--beni-deep);
+  color: var(--paper);
+}
+
+.pool-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pool-name {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  color: var(--paper);
+}
+
+.pool-gauge {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--paper-dim);
+}
+
+.weight-field {
+  position: relative;
+  flex: none;
+  width: 84px;
+}
+
+.weight-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 28px 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--ink-3);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: right;
+  color: var(--paper);
+  transition: border-color 160ms ease-out;
+}
+
+.weight-input:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+.weight-input:focus-visible {
+  border-color: var(--beni-text);
+  outline: none;
+}
+
+.weight-unit {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 14px;
+  color: var(--paper-dim);
+  pointer-events: none;
+}
+
+.vote-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+
+.vote-total span:last-child {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  color: var(--paper);
+}
+
+.vote-total[data-valid="false"] span:last-child {
+  color: var(--watch);
+}
+
+/* The votes and rewards card on the loan page */
+.vr-card {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ink-2);
+}
+
+.vr-title {
+  margin: 0 0 20px;
+  font-size: 1.25rem;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.2;
+  color: var(--paper);
+}
+
+.vr-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.vr-col {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vr-col + .vr-col {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+@media (min-width: 768px) {
+  .vr-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .vr-col:first-child {
+    padding-right: 48px;
+  }
+
+  .vr-col + .vr-col {
+    margin-top: 0;
+    padding-top: 0;
+    padding-left: 48px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+}
+
+.vr-col .fact-label {
+  margin: 0;
+  font-weight: 400;
+}
+
+.vr-value {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--paper);
+}
+
+.vr-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--paper);
+}
+
+.vr-note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.vr-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.btn.vr-btn {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+.vr-extend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.vr-extend-note {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--paper-dim);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .loan-chart-price {
     transition: none;
     stroke-dashoffset: 0;
   }
 
-  .loan-sheet-close {
+  .loan-sheet-close,
+  .pool-row,
+  .pool-box,
+  .weight-input {
     transition: none;
   }
 }

@@ -13,15 +13,21 @@ import {
   toMusdNumber,
   type PositionView,
 } from "../../lib/loans";
+import type { VoteActions } from "../../hooks/useVotes";
 import { useReducedMotion } from "../../lib/motion-mode";
 import { formatDate, formatMusd } from "../../lib/stats";
+import { canExtendLock } from "../../lib/votes";
 import { Button } from "../Button";
 import { TweenText } from "../borrow/TweenText";
+import { RewardsPanel } from "./RewardsPanel";
+import { RowAction } from "./RowAction";
 import { LimitBar, StatusChip } from "./Status";
+import { VotesPanel } from "./VotesPanel";
 
 type PositionCardProps = {
   view: PositionView;
   index: number;
+  now: number;
   /** The wallet is on another network, so nothing can be sent yet. */
   locked: boolean;
   /** The action that is running now, as "withdraw:389", so only its button shows the busy seal. */
@@ -30,20 +36,43 @@ type PositionCardProps = {
   onRepay: (fullOnly: boolean) => void;
   onRoll: () => void;
   onWithdraw: () => void;
+  onVote: () => void;
+  onExtend: () => void;
+  voteActions: VoteActions;
 };
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
+function Row({ label, actions, children }: { label: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <div className="loan-row">
       <dt>{label}</dt>
-      <dd>{children}</dd>
+      {actions ? (
+        <dd className="loan-row-actions">
+          <span>{children}</span>
+          <span className="row-actions">{actions}</span>
+        </dd>
+      ) : (
+        <dd>{children}</dd>
+      )}
     </div>
   );
 }
 
 const unavailable = <span className="loan-unavailable">unavailable</span>;
 
-export function PositionCard({ view, index, locked, acting, busy, onRepay, onRoll, onWithdraw }: PositionCardProps) {
+export function PositionCard({
+  view,
+  index,
+  now,
+  locked,
+  acting,
+  busy,
+  onRepay,
+  onRoll,
+  onWithdraw,
+  onVote,
+  onExtend,
+  voteActions,
+}: PositionCardProps) {
   const reduced = useReducedMotion();
   const standing = standingOf(view);
   const hasLoan = view.loan.state !== STATE_NONE;
@@ -91,15 +120,38 @@ export function PositionCard({ view, index, locked, acting, busy, onRepay, onRol
       )}
 
       <dl className="loan-rows">
-        <Row label="Lock">
+        <Row
+          label="Lock"
+          actions={
+            canExtendLock(view, now) && (
+              <RowAction disabled={locked || busy} onClick={onExtend}>
+                Extend
+              </RowAction>
+            )
+          }
+        >
           {view.lock === null ? unavailable : view.lock.isPermanent ? "permanent" : `until ${formatDate(view.lock.end)}`}
         </Row>
-        <Row label="Votes">
-          {view.voted === null ? unavailable : view.voted ? "still counting" : "yours to cast"}
-        </Row>
-        <Row label="Rewards">
-          {view.rewards === null ? unavailable : view.rewards > 0n ? `${btcText(view.rewards)} BTC waiting` : "none due yet"}
-        </Row>
+        <VotesPanel
+          mode="row"
+          view={view}
+          now={now}
+          locked={locked}
+          busy={busy}
+          acting={voteActions.acting}
+          onVote={onVote}
+          onReset={() => void voteActions.resetVotes(view.id)}
+        />
+        <RewardsPanel
+          mode="row"
+          view={view}
+          now={now}
+          locked={locked}
+          busy={busy}
+          acting={voteActions.acting}
+          onClaimRebase={() => void voteActions.claimRebase(view.id)}
+          onClaimRewards={() => void voteActions.claimRewards(view.id)}
+        />
       </dl>
 
       <div className="loan-actions">
