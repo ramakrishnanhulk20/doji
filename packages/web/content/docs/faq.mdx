@@ -37,7 +37,7 @@ A script on GitHub Actions starts auctions, cancels recovered ones, settles unso
 
 ## Can the team change the rules?
 
-Not on your loan. The contracts cannot be upgraded, every setting the owner can change sits inside bounds written into the code, and each loan keeps the settings it opened with. The guardian can pause new offers and new loans, never repaying, cancelling, rolling, withdrawing, auctions, settling or redeeming. See [Risk settings](/docs/concepts/risk-settings).
+Not on your loan. The contracts cannot be upgraded, every setting the owner can change sits inside bounds written into the code, and each loan keeps the settings it opened with. The guardian can pause new offers, new loans and locks, and the extra MUSD a roll would pay out. It can never stop repaying, cancelling an offer, rolling to a later date, withdrawing, auctions, settling or redeeming. See [Risk settings](/docs/concepts/risk-settings).
 
 ## Why Thursdays?
 
@@ -45,7 +45,7 @@ Mezo's weekly epochs turn on Thursday 00:00 UTC, and veBTC locks end on the same
 
 ## What does it cost?
 
-Borrowers pay the lender's fixed rate; the protocol takes 10% of that interest as its own units. A loan that goes to auction or settles also pays a 5% penalty from what is left above the debt. Everything else costs only Mezo gas in BTC: in the testnet seed run a lock and borrow used about 660,000 to 710,000 gas and posting an offer about 99,000 to 121,000. See [Business model](/docs/business/business-model).
+Borrowers pay the lender's fixed rate; the protocol takes 10% of that interest as its own units. A loan that goes to auction or settles also pays a penalty of 5% of its debt, taken only out of what is left above the debt. Everything else costs only Mezo gas in BTC: in the testnet seed run a lock and borrow used about 660,000 to 710,000 gas and posting an offer about 99,000 to 121,000. See [Business model](/docs/business/business-model).
 
 ## Is it audited?
 

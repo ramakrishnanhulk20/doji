@@ -50,7 +50,7 @@ The full standard is [docs/security/threat-model.md](https://github.com/ramakris
 
 - C19. The guardian can pause only new offers, new loans, lock creation and a roll's cash-out. Exits and resolutions are never paused. Settings stay inside hard bounds and are copied into each loan. Ownership moves in two steps.
 - C20. The contracts re-check everything the keeper acts on. The keeper key holds gas only and refuses to run with a role, its workflow runs only on `main`, its loops are bounded, and a missed loan fails loudly.
-- C21. The website takes every value from the contract views, simulates every write, checks the chain, asks only for single-position or exact-amount approvals, and shows each loan's own auction terms.
+- C21. The website reads values from the contract views, or computes them with the contracts' own formulas where no view exists, and simulates every write. It checks the chain, asks only for single-position or exact-amount approvals, sends on a retry only what the screen shows, reads every offer and open loan, and shows each loan's own auction terms.
 - C22. A deploy fails unless every Mezo address has code, the lock layout and price check out, the two contracts point at each other, and the library's code hash matches.
 
 ### Credit-market specifics

@@ -115,9 +115,9 @@ The app (`packages/web`) talks to the chain through wagmi and viem, reads addres
 |---|---|---|
 | Landing | veBTC `supply` and PriceFeed `fetchPrice` on Mezo mainnet; open offers (`nextOfferId`, `offerOf`), `marketOf` per Thursday, risk settings, open auctions, explorer verification | none |
 | Borrow | offers, `quoteFill`, `fetchPrice`, risk settings, the wallet's veBTC (`balanceOf`, `ownerToNFTokenIdList`, `escrowType`, `grantManager`, `lockOf`) and positions Doji holds for it | BTC `approve`, `lockAndBorrow`; or veBTC `approve`, `deposit`, `borrow` |
-| Lend | offers, `quoteFill`, the wallet's offers (OfferPosted logs), units per Thursday (`balanceOf`, `pendingUnits`, `claimOf`, `marketOf`) | MUSD `approve`, `postOffer`, `cancelOffer`, `claimUnits`, `safeTransferFrom`, `withdrawCollected`, `finalize`, `redeem` |
-| My loans | positions from Deposited logs with `positionOf`, `loanOf`, `owedOf`, `collateralValue`, `lockOf`, `isUnsafe`, `isOverdue`, veBTC `voted`, fee distributor `claimable`, `claimableMusd`, `claimableBtc` | MUSD `approve`, `repay`, `roll`, `withdrawCollateral`, `claim` |
-| Loan page | the same for any id, plus `auctionOf` and `auctionPrice` | `purchase`, `startAuction`, `cancelAuction`, `prepareSettle`, `settle` |
+| Lend | offers, `quoteFill`, the wallet's offers (OfferPosted logs, each kept only if `offerOf` names the wallet as maker), units per Thursday (`balanceOf`, `pendingUnits`, `claimOf`, `marketOf`) | MUSD `approve`, `postOffer`, `cancelOffer`, `claimUnits`, `safeTransferFrom`, `withdrawCollected`, `finalize`, `redeem` |
+| My loans | positions from Deposited logs with `positionOf`, `loanOf`, `owedOf`, `collateralValue`, `lockOf`, `isUnsafe`, `isOverdue`, veBTC `voted`, fee distributor `claimable`, `claimableMusd`, `claimableBtc` | MUSD `approve`, `repay`, `roll`, `extendLock`, `vote`, `resetVotes`, `claimRewards`, `claimRebase`, `withdrawCollateral`, `claim` |
+| Loan page | the same for any id, plus `auctionOf` and `auctionPrice` | MUSD `approve` and `purchase`, `startAuction`, `cancelAuction`, `prepareSettle`, `settle`; for the loan's borrower, the My loans writes |
 | Try to break it | live targets | none: twelve simulated calls that the contracts refuse |
 
 ## 6. Rules the code keeps
