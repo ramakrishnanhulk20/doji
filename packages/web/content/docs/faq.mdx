@@ -33,7 +33,7 @@ The lenders receive the Bitcoin itself. Once the auction reaches its floor time 
 
 ## Who runs the keeper?
 
-A script on GitHub Actions runs every 30 minutes and starts auctions, cancels recovered ones, settles unsold ones and closes dates. It has no special power: every call it makes is open to any wallet, and the contracts check every condition. Anyone can run it, or make the same calls from a loan's page. See [Keeper](/docs/developers/keeper).
+A script on GitHub Actions starts auctions, cancels recovered ones, settles unsold ones and closes dates. It is scheduled every 30 minutes and in practice runs every two to six hours, because GitHub starts scheduled jobs late on a quiet repository. It has no special power: every call it makes is open to any wallet, and the contracts check every condition. Anyone can run it, or make the same calls from a loan's page. See [Keeper](/docs/developers/keeper).
 
 ## Can the team change the rules?
 

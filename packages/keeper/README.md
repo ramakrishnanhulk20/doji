@@ -1,6 +1,6 @@
 # Doji keeper
 
-The keeper moves Doji loans along when their time comes. Every 30 minutes it looks at every loan and every loan date on Mezo testnet and makes the one call each is ready for: it starts an auction on a loan that is overdue or unsafe, cancels an auction on a loan that is safe again, prepares and settles a position nobody bought, and finalizes a loan date once all of its loans are closed, so lenders can redeem.
+The keeper moves Doji loans along when their time comes. Each pass looks at every loan and every loan date on Mezo testnet and makes the one call each is ready for: it starts an auction on a loan that is overdue or unsafe, cancels an auction on a loan that is safe again, prepares and settles a position nobody bought, and finalizes a loan date once all of its loans are closed, so lenders can redeem.
 
 Anyone can run it. Every call it makes is open to any wallet, and the contracts re-check every condition themselves, so a keeper that is wrong, late or hostile can waste its own gas but cannot move anyone's money. The keeper wallet has no role in the contracts, gives no approvals and never holds MUSD. It only needs a little test BTC for gas.
 
@@ -56,14 +56,14 @@ Settings come from the environment. Any setting not in the environment is read f
 
 ## Run it on GitHub
 
-`.github/workflows/keeper.yml` runs one pass every 30 minutes and whenever you start it by hand. It only runs on a schedule or by hand, never for a pull request, so code from someone else's branch never sees the key. A manual run started from any branch other than `main` is skipped, so only code on `main` runs with the key.
+`.github/workflows/keeper.yml` asks for one pass every 30 minutes and runs one whenever you start it by hand. GitHub starts scheduled jobs late on a quiet repository, so from 19 to 22 October 2026 the scheduled passes came 2.3 to 5.9 hours apart (median 4.7). A call that cannot wait, such as starting the auction of a loan that turned unsafe, can be made by anyone at once from the loan's page. It only runs on a schedule or by hand, never for a pull request, so code from someone else's branch never sees the key. A manual run started from any branch other than `main` is skipped, so only code on `main` runs with the key.
 
 1. On GitHub, open the repository, then Settings, Secrets and variables, Actions, New repository secret.
 2. Name it `KEEPER_PRIVATE_KEY` and paste the keeper wallet's private key. Save.
 3. Optional: a secret named `MEZO_TESTNET_RPC` replaces the public RPC.
 4. To run it now: Actions, keeper, Run workflow.
 
-Each run is billed as at least one minute. Every 30 minutes is 1,440 runs a month, which fits inside the 2,000 free minutes of a private repository only while each run takes under a minute. Public repositories run free.
+Each run is billed as at least one minute. If GitHub ran every scheduled pass, that would be 1,440 runs a month, which fits inside the 2,000 free minutes of a private repository only while each run takes under a minute. Public repositories run free.
 
 ## Gas
 

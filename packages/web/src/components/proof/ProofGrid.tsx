@@ -59,7 +59,7 @@ const CARDS = [
     href: `${REPO}/blob/main/docs/proof/prove-it-2026-10-20.md`,
   },
   {
-    title: "Audited and fixed",
+    title: "Reviewed and fixed",
     body: "An independent review found no critical or high issues. Every finding was fixed with a test that failed before the fix.",
     link: "Read the findings",
     href: `${REPO}/blob/main/docs/audit/findings-2026-10-20.md`,
@@ -78,7 +78,7 @@ const CARDS = [
   },
   {
     title: "A keeper anyone can run",
-    body: "A small bot starts auctions and settles loans every 30 minutes on GitHub. Anyone can call the same functions; the contracts check every condition.",
+    body: "A small bot on GitHub starts auctions and settles loans, every few hours in practice. Anyone can call the same functions at any time; the contracts check every condition.",
     link: "See the keeper",
     href: `${REPO}/tree/main/packages/keeper`,
   },

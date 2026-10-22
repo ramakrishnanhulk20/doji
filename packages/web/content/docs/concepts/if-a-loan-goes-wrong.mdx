@@ -91,7 +91,7 @@ None of these needs a role. The contracts check every condition again, so a call
 | `writeOff` | The position has left LoanManager's custody. | No |
 | `finalize` | The Thursday has passed, the date had loans, and none is still open. | Yes |
 
-The [keeper](/docs/developers/keeper) is a script on GitHub that makes these calls every 30 minutes. Anyone can run the same script, or make the same calls from the loan's own page.
+The [keeper](/docs/developers/keeper) is a script on GitHub that makes these calls. It is scheduled every 30 minutes, and GitHub runs it late on a quiet repository, every two to six hours in practice. Anyone can run the same script, or make the same calls from the loan's own page.
 
 <Callout type="warn">
 Purchase, auction starts and settle all need a fresh price from Mezo's price feed, which refuses a Skip oracle answer older than 60 seconds. While the oracle is down, those steps wait. That is a stated non-goal, listed in [Security](/docs/security).

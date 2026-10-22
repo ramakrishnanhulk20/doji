@@ -1,9 +1,9 @@
 ---
 title: Keeper
-description: The script that moves loans along every 30 minutes, what one pass does, and how to run it yourself.
+description: The script that moves loans along on a schedule, what one pass does, and how to run it yourself.
 ---
 
-The keeper moves Doji loans along when their time comes. Every 30 minutes it looks at every open loan and every loan date on Mezo testnet and makes the one call each is ready for: it starts an auction on a loan that is overdue or unsafe, cancels an auction on a loan that is safe again, prepares and settles a position nobody bought, and closes a loan date once all of its loans have ended, so lenders can redeem.
+The keeper moves Doji loans along when their time comes. Each pass looks at every open loan and every loan date on Mezo testnet and makes the one call each is ready for: it starts an auction on a loan that is overdue or unsafe, cancels an auction on a loan that is safe again, prepares and settles a position nobody bought, and closes a loan date once all of its loans have ended, so lenders can redeem.
 
 Anyone can run it. Every call it makes is open to any wallet, and the contracts re-check every condition themselves, so a keeper that is wrong, late or hostile can waste its own gas but cannot move anyone's money. The keeper wallet has no role in the contracts, gives no approvals and never holds MUSD. It only needs a little test BTC for gas.
 
@@ -67,7 +67,7 @@ Exit code 0 means the pass finished, even if some simulations were refused. 1 me
 
 ## Run it on GitHub
 
-[.github/workflows/keeper.yml](https://github.com/ramakrishnanhulk20/doji/blob/main/.github/workflows/keeper.yml) runs one pass every 30 minutes and whenever it is started by hand.
+[.github/workflows/keeper.yml](https://github.com/ramakrishnanhulk20/doji/blob/main/.github/workflows/keeper.yml) asks for one pass every 30 minutes and runs one whenever it is started by hand. GitHub starts scheduled jobs late on a quiet repository, so from 19 to 22 October 2026 the scheduled passes came 2.3 to 5.9 hours apart (median 4.7). A call that cannot wait, such as starting the auction of a loan that turned unsafe, can be made by anyone at once from the loan's page.
 
 - It runs only on a schedule or by hand, never for a pull request, so code from someone else's branch never sees the key. A manual run from any branch other than `main` is skipped.
 - The job has a read-only token, actions pinned to exact commits, `npm ci --ignore-scripts` so no install script runs, a 10-minute timeout, and one run at a time.
