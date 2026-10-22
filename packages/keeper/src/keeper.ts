@@ -149,15 +149,23 @@ async function execute(
     line(subject, decision.action, decision.reason, "simulated");
     return;
   }
+  let hash: Hash;
   try {
-    const hash = await send();
+    hash = await send();
+  } catch (err) {
+    pass.summary.failedSends += 1;
+    line(subject, decision.action, decision.reason, `send failed: ${describeError(err)}`);
+    return;
+  }
+  try {
     const receipt = await reader.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
     if (receipt.status !== "success") pass.summary.failedSends += 1;
     const status = receipt.status === "success" ? "" : " REVERTED";
     line(subject, decision.action, decision.reason, `${hash}${status} https://explorer.test.mezo.org/tx/${hash}`);
-  } catch (err) {
-    pass.summary.failedSends += 1;
-    line(subject, decision.action, decision.reason, `send failed: ${describeError(err)}`);
+  } catch {
+    // Nodes behind rpc.test.mezo.org trailed by up to 494 s on 2026-10-20, so a missing receipt is not a failure: the
+    // next pass reads the chain again and acts only if the call is still due.
+    line(subject, decision.action, decision.reason, `${hash} sent, no receipt within ${RECEIPT_TIMEOUT_MS / 1000} s yet https://explorer.test.mezo.org/tx/${hash}`);
   }
 }
 
