@@ -14,6 +14,7 @@ import {
   isAddress,
   isAddressEqual,
   isHex,
+  nonceManager,
   toEventSelector,
   type Address,
   type Hex,
@@ -186,7 +187,10 @@ export interface Clients {
 export function makeClients(config: Config): Clients {
   const transport = http(config.rpcUrl, { retryCount: 0, timeout: REQUEST_TIMEOUT_MS });
   const reader = createPublicClient({ chain: mezoTestnet, transport });
-  const account = config.privateKey === undefined ? undefined : privateKeyToAccount(config.privateKey);
+  // A lagging node behind rpc.test.mezo.org can report the nonce from before the last confirmed send, which got the
+  // second of two sends in one pass rejected on 2026-10-22. The nonce manager never reuses a nonce it has handed out.
+  const account =
+    config.privateKey === undefined ? undefined : privateKeyToAccount(config.privateKey, { nonceManager });
   const writer =
     config.dry || account === undefined ? undefined : createWalletClient({ chain: mezoTestnet, transport, account });
   return { reader, writer, account };
@@ -422,7 +426,7 @@ export function describeError(err: unknown): string {
       if (reverted.signature) return plainText(`unknown error ${reverted.signature}`);
       if (reverted.reason) return plainText(`reverted: ${reverted.reason}`);
     }
-    return plainText(err.shortMessage);
+    return plainText(err.details ? `${err.shortMessage} (${err.details})` : err.shortMessage);
   }
   return plainText(err instanceof Error ? err.message : String(err));
 }
