@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanSteps, type FlowStep } from "../../hooks/useLoanSteps";
 import type { PositionView } from "../../lib/loans";
@@ -34,6 +34,11 @@ export function ExtendLockSheet({ view, now, send, busy, onClose }: ExtendLockSh
 
   const dates = useMemo(() => (lockEnd === null ? [] : extensionDates(lockEnd, now)), [lockEnd, now]);
   const [pick, setPick] = useState<number | null>(null);
+
+  // A new choice of any input clears a failed run, so "Try again" never repeats stale numbers.
+  useEffect(() => {
+    if (!flow.running) flow.reset();
+  }, [pick]);
   const date = pick !== null && dates.includes(pick) ? pick : (dates[0] ?? null);
 
   const plan = date === null ? [] : [{ id: "extend", label: `Extend lock to ${formatDate(date)}` }];

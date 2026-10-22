@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PublicClient } from "viem";
 import { useLoanClock } from "../../hooks/useLoanClock";
@@ -56,6 +56,11 @@ export function RollSheet({ view, client, settings, offers, wallet, send, busy, 
   const [pick, setPick] = useState<number | null>(null);
   // Rounding up leaves a payout of under a cent instead of a top-up, so the default roll needs no approval step.
   const [text, setText] = useState(() => musdFieldText(roundDownToCent(owed + 10n ** 16n - 1n)));
+
+  // A new choice of any input clears a failed run, so "Try again" never repeats stale numbers.
+  useEffect(() => {
+    if (!flow.running) flow.reset();
+  }, [pick, text]);
 
   const groups = useMemo(() => groupOffersByDate(offers ?? []), [offers]);
   const insideLock = useMemo(() => (settings ? rollDates(view, settings.maxTermSeconds, now) : []), [settings, view, now]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanSteps, type FlowStep } from "../../hooks/useLoanSteps";
 import { useVoterAddresses, useVotePools, useVotes } from "../../hooks/useVotes";
@@ -36,6 +36,11 @@ export function VoteSheet({ view, now, send, busy, onClose }: VoteSheetProps) {
 
   const [picks, setPicks] = useState<string[] | null>(null);
   const [typed, setTyped] = useState<Record<string, string>>({});
+
+  // A new choice of any input clears a failed run, so "Try again" never repeats stale numbers.
+  useEffect(() => {
+    if (!flow.running) flow.reset();
+  }, [picks, typed]);
 
   const chosen = picks ?? defaults;
   const split = evenSplit(chosen.length);

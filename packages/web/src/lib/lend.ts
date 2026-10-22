@@ -5,6 +5,7 @@
 import {
   decodeEventLog,
   formatUnits,
+  isAddressEqual,
   pad,
   parseAbi,
   parseAbiItem,
@@ -299,16 +300,22 @@ export async function readMyOffers(client: PublicClient, maker: Address): Promis
     contracts: ids.map((id) => ({ address: book.creditMarkets, abi: offerRead, functionName: "offerOf" as const, args: [id] as const })),
   });
 
-  return ids.map((id, index) => {
+  // The logs only name candidates. An offer is shown as this wallet's only when the contract says this wallet made it;
+  // cancelOffer keeps the maker, so cancelled offers still pass.
+  return ids.flatMap((id, index) => {
+    const onChain = live[index] as { maker: Address; remaining: bigint };
+    if (!isAddressEqual(onChain.maker, maker)) return [];
     const fixed = offers.get(id) as { maturity: number; aprBps: number; posted: bigint };
-    return {
-      id,
-      maturity: fixed.maturity,
-      aprBps: fixed.aprBps,
-      posted: fixed.posted,
-      remaining: (live[index] as { remaining: bigint }).remaining,
-      cancelled: cancelledIds.has(id),
-    };
+    return [
+      {
+        id,
+        maturity: fixed.maturity,
+        aprBps: fixed.aprBps,
+        posted: fixed.posted,
+        remaining: onChain.remaining,
+        cancelled: cancelledIds.has(id),
+      },
+    ];
   });
 }
 

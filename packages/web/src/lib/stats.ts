@@ -38,8 +38,6 @@ const loanManagerAbi = parseAbi([
 const veBtcVotedAbi = parseAbi(["function voted(uint256 tokenId) view returns (bool)"]);
 const feeDistributorAbi = parseAbi(["function claimable(uint256 tokenId) view returns (uint256 amount)"]);
 
-// Only the newest offers are scanned: older ids are long settled and would cost a read each.
-const OFFER_WINDOW = 200n;
 
 export type MezoLocked = {
   btc: number;
@@ -71,7 +69,10 @@ export type OpenOffer = { id: bigint; maturity: number; aprBps: number; remainin
 // The hero and the Thursday board both read the offers every 15 seconds, so one scan serves both inside two seconds.
 let recentScan: { at: number; scan: Promise<OpenOffer[]> } | null = null;
 
-/** Offers with MUSD left and a maturity in the future, from the newest OFFER_WINDOW ids. */
+/**
+ * Offers with MUSD left and a maturity in the future. Every id is read, in multicall batches: an old offer can stay
+ * open for a far Thursday, and Borrow, Roll and the hero must never leave out MUSD a borrower could take.
+ */
 export function scanOpenOffers(): Promise<OpenOffer[]> {
   if (recentScan !== null && Date.now() - recentScan.at < 2_000) return recentScan.scan;
   const scan = readOpenOffers();
@@ -90,9 +91,8 @@ async function readOpenOffers(): Promise<OpenOffer[]> {
     functionName: "nextOfferId",
   });
 
-  const first = next > OFFER_WINDOW + 1n ? next - OFFER_WINDOW : 1n;
   const ids: bigint[] = [];
-  for (let id = first; id < next; id++) ids.push(id);
+  for (let id = 1n; id < next; id++) ids.push(id);
 
   const offers =
     ids.length === 0
@@ -383,8 +383,6 @@ const EXPLORER_API = "https://api.explorer.test.mezo.org/api";
 const EXPLORER_PAGE_LOGS = 1_000;
 // Each call reads up to 1,000 events, so this covers about 20,000 loan events.
 const EXPLORER_MAX_CALLS = 20;
-// Open loans are read in the order they fall due, and no more than this many are read per poll.
-const MAX_POSITIONS = 50;
 const LOAN_STATE_AUCTION = 2;
 
 const loanEventsAbi = parseAbi([
@@ -464,13 +462,15 @@ function openLoans(logs: LoanLog[]): LoanLog[] {
   });
 }
 
-/** Every loan in auction right now. The explorer names the open loans; LoanManager says which are in auction. */
+/**
+ * Every loan in auction right now. The explorer names the open loans; LoanManager says which are in auction. Every
+ * open loan is read before filtering, because an auction on a later date must still reach the buyers.
+ */
 export async function readOpenAuctions(): Promise<OpenAuction[]> {
   const { loanManager } = addressBook[31611];
   const [borrowed, closed] = await Promise.all([fetchLoanLogs("Borrowed"), fetchLoanLogs("LoanClosed")]);
   const tokenIds = openLoans([...borrowed, ...closed])
     .sort((a, b) => (a.maturity < b.maturity ? -1 : a.maturity > b.maturity ? 1 : a.tokenId < b.tokenId ? -1 : 1))
-    .slice(0, MAX_POSITIONS)
     .map((log) => log.tokenId);
   if (tokenIds.length === 0) return [];
 

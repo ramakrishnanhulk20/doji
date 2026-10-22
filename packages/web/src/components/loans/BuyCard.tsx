@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Hex } from "viem";
 import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanSteps, type FlowStep } from "../../hooks/useLoanSteps";
@@ -37,6 +38,12 @@ type BuyCardProps = {
 export function BuyCard({ view, now, wallet, send, busy, onBought }: BuyCardProps) {
   const gate = useLoanGate();
   const flow = useLoanSteps();
+  const [runCap, setRunCap] = useState<bigint | null>(null);
+  const capNow = view.auctionPrice === null ? null : maxPayFor(view.auctionPrice);
+  // A price that rose above the cap a failed run used makes every retry fail, so the run starts over at today's price.
+  useEffect(() => {
+    if (!flow.running && flow.failedAt !== null && runCap !== null && capNow !== null && capNow > runCap) flow.reset();
+  }, [capNow, runCap]);
   const { id, auction, auctionPrice: price } = view;
 
   if (auction === null || price === null) {
@@ -58,6 +65,9 @@ export function BuyCard({ view, now, wallet, send, busy, onBought }: BuyCardProp
   const plan = wallet === undefined ? [] : buySteps(maxPay, wallet.allowance);
 
   const reason = (() => {
+    if (auction.startTime <= view.loan.maturity && view.unsafe === false) {
+      return "This loan is safe again, so it can't be bought. Anyone can cancel its auction.";
+    }
     if (wallet === undefined) return "Checking your wallet";
     if (wallet.balance < price) return `You don't have that much MUSD. Your balance is ${musdText(wallet.balance)} MUSD.`;
     return null;
@@ -67,6 +77,7 @@ export function BuyCard({ view, now, wallet, send, busy, onBought }: BuyCardProp
     if (wallet === undefined) return;
     // The cap is fixed when the button is pressed, so the approval and the purchase agree even if the price moves.
     const cap = maxPay;
+    setRunCap(cap);
     const steps: FlowStep[] = buySteps(cap, wallet.allowance).map((step) => ({
       ...step,
       run: async () => {

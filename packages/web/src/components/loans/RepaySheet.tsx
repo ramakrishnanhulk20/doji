@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanSteps, type FlowStep } from "../../hooks/useLoanSteps";
 import type { SuccessLine, WriteResult } from "../../hooks/useWrite";
@@ -43,6 +43,11 @@ export function RepaySheet({ view, wallet, fullOnly, send, busy, onClose }: Repa
   const { id, owed } = view;
   const fullText = musdFieldText(roundUpToCent(owed));
   const [text, setText] = useState(fullText);
+
+  // A new choice of any input clears a failed run, so "Try again" never repeats stale numbers.
+  useEffect(() => {
+    if (!flow.running) flow.reset();
+  }, [text]);
 
   // Typing at or above what is owed pays exactly what is owed: the contract takes the smaller of the two.
   const typed = fullOnly ? owed : parseAmount(text);

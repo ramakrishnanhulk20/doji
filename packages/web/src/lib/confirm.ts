@@ -62,19 +62,17 @@ export async function askRpc(hash: Hex): Promise<Verdict> {
   throw new Error("the receipt has no status");
 }
 
+// Throws rather than returning an empty list: the success cards read ids and amounts from these logs, so a partial
+// answer must lose to the RPC or the next round instead of showing "#0".
 async function explorerLogs(hash: Hex): Promise<ConfirmedLog[]> {
-  try {
-    const { status, body } = await getJson(`${EXPLORER_TX}/${hash}/logs`);
-    const items = (body as { items?: { address?: { hash?: string }; topics?: (string | null)[]; data?: string }[] } | null)?.items;
-    if (status !== 200 || !Array.isArray(items)) return [];
-    return items.map((item) => ({
-      address: (item.address?.hash ?? "0x") as Address,
-      topics: (item.topics ?? []).filter((topic): topic is Hex => typeof topic === "string"),
-      data: (item.data ?? "0x") as Hex,
-    }));
-  } catch {
-    return [];
-  }
+  const { status, body } = await getJson(`${EXPLORER_TX}/${hash}/logs`);
+  const items = (body as { items?: { address?: { hash?: string }; topics?: (string | null)[]; data?: string }[] } | null)?.items;
+  if (status !== 200 || !Array.isArray(items)) throw new Error("the explorer has not indexed the logs yet");
+  return items.map((item) => ({
+    address: (item.address?.hash ?? "0x") as Address,
+    topics: (item.topics ?? []).filter((topic): topic is Hex => typeof topic === "string"),
+    data: (item.data ?? "0x") as Hex,
+  }));
 }
 
 /** One fresh request to the explorer's transaction page. 404 and a still-pending transaction both mean keep waiting. */

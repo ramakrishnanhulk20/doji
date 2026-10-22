@@ -41,6 +41,16 @@ export type WriteResult =
 let counter = 0;
 let queryClientRef: QueryClient | null = null;
 
+// rpc.test.mezo.org balances across nodes that trailed the explorer by up to 494 s on 2026-10-20, and the explorer can
+// confirm a step first. For ten minutes after any confirmation a failed simulation or gas estimate is asked again for
+// up to 90 s, so the next step is never refused for a state older than the receipt it follows.
+let lastConfirmedAt = 0;
+const CATCH_UP_WINDOW_MS = 10 * 60_000;
+const CATCH_UP_WAIT_MS = 90_000;
+const CATCH_UP_POLL_MS = 3_000;
+const GAS_HEADROOM_PERCENT = 125n;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // The pending record keeps only text, so a line that is a function waits here until its transaction is settled.
 const lineFunctions = new Map<string, (receipt: TransactionReceipt) => string>();
 
@@ -86,6 +96,7 @@ async function settle(hash: Hex, toastId: string, successLine: SuccessLine): Pro
   let result: WriteResult;
 
   if (outcome.status === "success") {
+    lastConfirmedAt = Date.now();
     setPending(null);
     const receipt = toReceipt(hash, outcome);
     const detail = lineFor(successLine, receipt);
@@ -162,23 +173,35 @@ export function useWrite() {
 
         const to: Address = addressBook[APP_CHAIN_ID][request.target as "loanManager"];
 
+        const call = {
+          account: address,
+          address: to,
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+        } as never;
         let simulated;
-        try {
-          simulated = await publicClient.simulateContract({
-            account: address,
-            address: to,
-            abi: request.abi,
-            functionName: request.functionName,
-            args: request.args,
-          } as never);
-        } catch (error) {
-          return fail(error, { phase: "simulate" });
+        let gas: bigint;
+        const askedAt = Date.now();
+        for (;;) {
+          try {
+            simulated = await publicClient.simulateContract(call);
+            gas = await publicClient.estimateContractGas(call);
+            break;
+          } catch (error) {
+            const catchingUp = Date.now() - lastConfirmedAt < CATCH_UP_WINDOW_MS;
+            if (!catchingUp || Date.now() - askedAt >= CATCH_UP_WAIT_MS) return fail(error, { phase: "simulate" });
+            showToast({ id, kind: "sending", title: "Checking", detail: "Waiting for Mezo's nodes to catch up with your last step" });
+            await sleep(CATCH_UP_POLL_MS);
+          }
         }
 
         showToast({ id, kind: "wallet", title: "Confirm in your wallet" });
         let hash: Hex;
         try {
-          hash = await walletClient.writeContract((simulated as unknown as { request: never }).request);
+          // The gas is passed so the wallet does not estimate again on a node that may still be behind.
+          const sent = (simulated as unknown as { request: Record<string, unknown> }).request;
+          hash = await walletClient.writeContract({ ...sent, gas: (gas * GAS_HEADROOM_PERCENT) / 100n } as never);
         } catch (error) {
           return fail(error, { phase: "wallet" });
         }
