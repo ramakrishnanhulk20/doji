@@ -1,4 +1,4 @@
-# An auction sale and an early payout on Mezo testnet, 2026-10-22 and 2026-10-23
+# An auction sale, an early payout and a roll on Mezo testnet, 2026-10-22 and 2026-10-23
 
 Demo loans 387 and 388 were left unpaid on purpose. Each owed 28.506382 MUSD on Thursday 22 October 2026 against 0.001 BTC locked as veBTC. This page follows loan 388 from the missed date to a sale, and the lender of that date to an early payout, with every step checked on chain. Contracts: LoanManager 0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa, CreditMarkets 0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de (code at commit 09e20c3).
 
@@ -43,6 +43,17 @@ The deployer wallet (0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e) was the only le
 | 2 | `withdrawCollected(1792627200, 57.012764 units)` | [0x72708d2a...2377](https://explorer.test.mezo.org/tx/0x72708d2a08c05704700489ee1333f40fdeef51d0274d91158a8ea4fd8b792377) | 23 Oct 05:30:42 UTC, 28.506382 MUSD paid |
 
 The lender's MUSD went from 271.780609 to 300.286990. `claimOf(lender, 1792627200)` now reads 57.012764 units, 28.506382 MUSD paid, 0 BTC paid, and `paidOutOf(1792627200)` reads 28.506382 MUSD. When loan 387 ends, the same claim pays the rest without paying any of this twice.
+
+## 4. The demo loan rolls to a later Thursday through the website
+
+Demo loan 389 owed 24.458896 MUSD on 29 October, and its lock ended the same day. On My loans, with the borrower's test wallet (0x92DcCb70C33300848Da555eDe8597d3F7037AE2b), "Roll to a later date" offered 5 and 12 November. For 12 November it showed a new principal of 24.46 MUSD from offer 5 at 7.00%, 24.55 MUSD owed on 12 November, and two steps.
+
+| Step | What the page did | Transaction | Checked on chain |
+|---|---|---|---|
+| 1 | Extend the lock to Thu 12 Nov | [0x72ebf54a...4c5d](https://explorer.test.mezo.org/tx/0x72ebf54afdae7da6b2e94cdb8bdd062f18eb41647ff9628aa9a7d25732644c5d) | 23 Oct 05:39:26 UTC, block 16,312,743, lock end now 1794441600 (12 Nov 00:00 UTC) |
+| 2 | `roll` to 12 November; the page showed "veBTC #389 rolled to Thu 12 Nov." | [0xdc1ce964...96b3](https://explorer.test.mezo.org/tx/0xdc1ce96480bdba552321fc44736812dae0b35e6219b7ee1c09f2a9e9d79396b3) | 23 Oct 05:39:41 UTC, block 16,312,746, `owedOf(389)` 24.552713 MUSD, not overdue, not unsafe |
+
+After the roll My loans showed the same position with its two pool votes still counting. The Bitcoin never left the lock and the loan moved without a repayment from the borrower's wallet.
 
 ## What this does not cover
 
