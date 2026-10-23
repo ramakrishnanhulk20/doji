@@ -38,7 +38,7 @@ export function LimitBar({ usedBps, label }: LimitBarProps) {
           {usedBps === null ? (
             <span className="loan-unavailable">unavailable</span>
           ) : (
-            <TweenText value={usedBps / 100} format={(value) => `${value.toFixed(1)}%`} />
+            <TweenText value={usedBps / 100} format={(value) => `${value.toFixed(1)}% of the way there`} />
           )}
         </span>
       </div>

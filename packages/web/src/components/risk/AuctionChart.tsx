@@ -299,7 +299,7 @@ function LoanCurveChart({ curve, now, width, height }: { curve: LoanCurve; now: 
       )}
 
       <text className="loan-chart-text" x={PAD.left + plotW - 6} y={y(curve.startValue) - 6} textAnchor="end">
-        start {money(curve.startValue)}
+        value at start {money(curve.startValue)}
       </text>
       <text className="loan-chart-text" x={PAD.left + 6} y={y(curve.floorPrice) - 6}>
         floor {money(curve.floorPrice)}

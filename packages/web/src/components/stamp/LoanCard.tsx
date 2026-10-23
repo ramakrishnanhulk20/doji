@@ -133,7 +133,7 @@ export function LoanCard({ struck, reduced }: LoanCardProps) {
             <span className="sr-only">Loading</span>
           </span>
         )}
-        <p className="card-wallet">in your wallet</p>
+        <p className="card-wallet">in the borrower&apos;s wallet</p>
       </div>
 
       <div className="card-footer">

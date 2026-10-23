@@ -71,7 +71,7 @@ export function Facts({ view, opened }: FactsProps) {
       </Fact>
 
       {(opened.isPending || opened.isError || opened.data) && (
-        <Fact label="Opened">
+        <Fact label="Last borrowed">
           {opened.isPending ? (
             <span className="shimmer fact-bar" aria-hidden="true" />
           ) : opened.isError || !opened.data ? (

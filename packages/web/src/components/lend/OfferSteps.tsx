@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ThursdayCard } from "../../lib/stats";
 import { formatApr, formatDate, formatMusd } from "../../lib/stats";
 import { fmtMusd, sanitizeAmount } from "../borrow/format";
@@ -43,7 +44,7 @@ export function LendDateStep({ dates, selected, onSelect, status }: DateStepProp
                     <span className="date-card-rate">{formatApr(card.bestAprBps / 100)}</span>
                   </span>
                   <span className="date-card-available">
-                    {card.offerCount} {card.offerCount === 1 ? "offer" : "offers"}, {formatMusd(card.lent)} MUSD due to lenders
+                    {card.offerCount} {card.offerCount === 1 ? "offer" : "offers"} · {formatMusd(card.musdOnOffer)} MUSD on offer · {formatMusd(card.lent)} MUSD due to lenders
                   </span>
                 </>
               )}
@@ -137,6 +138,15 @@ export function LendAmountStep({ amountText, onAmountText, onMax, maxDisabled, b
           {lead}
           {minimum !== null && ` · ${minimum}`}
         </p>
+        {(balance.kind === "connect" || (balance.kind === "ready" && balance.wei === 0n)) && (
+          <p className="field-note field-note-plain">
+            No test MUSD yet?{" "}
+            <Link className="link-draw" href="/borrow">
+              Borrow some on Doji
+            </Link>
+            , then lend it.
+          </p>
+        )}
       </div>
     </section>
   );

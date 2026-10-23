@@ -110,7 +110,11 @@ export function Mermaid({ chart }: { chart: string }) {
   }
 
   if (state.status === "drawing") {
-    return <div className="docs-mermaid docs-mermaid-drawing shimmer" role="status" aria-label="Drawing the diagram" />;
+    return (
+      <div className="docs-mermaid docs-mermaid-drawing shimmer" role="status">
+        <p className="mermaid-drawing">Drawing the diagram</p>
+      </div>
+    );
   }
 
   return (

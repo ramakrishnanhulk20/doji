@@ -33,7 +33,7 @@ Doji is for veBTC holders who need MUSD and do not want to end their lock, and f
 | A fixed rate | Mezo's MUSD loans take BTC that is not locked, at a rate set by Mezo governance. | Lenders post fixed rates, the cheapest are taken first, and the amount you owe is shown before you sign. |
 | A fixed date | An MUSD loan stays open until repaid. | Every loan is due on a Thursday you pick, up to 4 weeks out, and can roll to a later one. |
 | What lenders get | A variable return: the sMUSD savings vault, or liquidation BTC in the Stability Pool. | A fixed rate to a known Thursday, as credit units they can send, with payouts from the date on. |
-| What happens in a crash | An MUSD loan under 110% collateral is liquidated, and a funded Stability Pool takes the BTC. | A protected auction starts at the full value. The borrower keeps everything above the debt and a 5% penalty. If nobody buys, the lenders take the Bitcoin itself. |
+| What happens in a crash | An MUSD loan under 110% collateral is liquidated, and a funded Stability Pool takes the BTC. | A protected auction starts at the full value. The borrower keeps everything left after the debt and the protocol's 5% penalty. If nobody buys, the lenders take the Bitcoin itself. |
 
 ## Features
 
