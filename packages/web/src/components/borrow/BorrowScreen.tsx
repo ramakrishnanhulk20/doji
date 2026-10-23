@@ -69,6 +69,15 @@ export function BorrowScreen() {
   const engine = useStepFlow<RunStep>();
   const [result, setResult] = useState<Borrowed | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSheetOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sheetOpen]);
   // /borrow?position={id} opens the veBTC tab on that position. It is read once, when the page opens.
   const [wantedPosition, setWantedPosition] = useState<bigint | null>(null);
 
@@ -322,11 +331,12 @@ export function BorrowScreen() {
     collateralText: tab === "lock" ? (btcWei > 0n ? `${fmtExact(btcWei)} BTC` : null) : position ? `veBTC #${position.id}` : null,
     valueWei: valueWei !== undefined && valueWei > 0n ? valueWei : null,
     maturity,
+    // A loan that cannot be taken shows no terms, so the summary never looks ready beside a refusal.
     principal: amountProblem === null ? principalWei : null,
-    face,
-    aprBps,
-    usedBps,
-    auctionPriceWei,
+    face: amountProblem === null ? face : null,
+    aprBps: amountProblem === null ? aprBps : null,
+    usedBps: amountProblem === null ? usedBps : null,
+    auctionPriceWei: amountProblem === null ? auctionPriceWei : null,
   };
 
   const cents = Number(principalWei / CENT);
