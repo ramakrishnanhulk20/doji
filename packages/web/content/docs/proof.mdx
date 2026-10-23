@@ -1,11 +1,11 @@
 ---
-title: Judging criteria
-description: Each Mezo Buildathon criterion mapped to a screen, a file and a transaction you can open.
+title: Check it yourself
+description: Every claim Doji makes, with a screen, a file and a transaction you can open.
 ---
 
-Each section names a screen on the live site, a file in the repository, and a transaction on Mezo's testnet explorer where one exists.
+Doji asks you to take nothing on trust. Each answer below points to a screen on this site, a file in the open source repository, and a transaction on Mezo's testnet explorer where one exists.
 
-## Mezo Integration (30%)
+## Does it really run on Mezo?
 
 veBTC is the collateral and MUSD is the loan. Doji calls veBTC, PoolsVoter, ValidatorsVoter, the veBTC fee distributor, MUSD, MUSD's PriceFeed and the BTC token, and does nothing without them.
 
@@ -21,7 +21,7 @@ veBTC is the collateral and MUSD is the loan. Doji calls veBTC, PoolsVoter, Vali
 | Transaction [0x4a536dc2...3dd8](https://explorer.test.mezo.org/tx/0x4a536dc2d02e43f2079f40a44159081d353d5ad50ac92815d75d7b8b38ea3dd8) | Sent from the Borrow page: lock 0.0005 BTC as veBTC #392 and borrow 10 MUSD until Thu 29 Oct. |
 | Transaction [0xe6cb9404...7813](https://explorer.test.mezo.org/tx/0xe6cb940454e61f45740a89ab14bb949ceda51a030cdae14ac771a7b4b6eb7813) | The prove-it command's lock and borrow of position 391. |
 
-## Product and Business Viability (30%)
+## Is it a real market, and who pays?
 
 A two-sided market that extends what MUSD can do: veBTC holders borrow without ending their lock, and MUSD holders lend at a fixed rate to a fixed date. The protocol earns 10% of the interest and a 5% penalty on failed loans.
 
@@ -29,13 +29,13 @@ A two-sided market that extends what MUSD can do: veBTC holders borrow without e
 | --- | --- |
 | Screen [/](/) | Live numbers before any wallet: Bitcoin locked on Mezo, MUSD on offer and the best rate for each Thursday. |
 | Screen [/lend](/lend) | The lender's side: offers, credit units and payouts. |
-| Docs [/docs/business/business-model](/docs/business/business-model) | Who pays what, why fixed rate and fixed date, and the Wave 2 plan. |
+| Docs [/docs/business/business-model](/docs/business/business-model) | Who pays what, why fixed rate and fixed date, and what comes next. |
 | Docs [/docs/concepts/risk-settings](/docs/concepts/risk-settings) | Limits set from Bitcoin's price history since 2017. |
 | File [docs/risk/parameters.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/risk/parameters.md) | The full drawdown study, with the script that re-runs it, [analysis/btc_drawdowns.py](https://github.com/ramakrishnanhulk20/doji/blob/main/analysis/btc_drawdowns.py). |
 | Transaction [0xe10ca369...7ce1](https://explorer.test.mezo.org/tx/0xe10ca369d7ca55f348bb885450219bc27127a8747528965c666384a8709a7ce1) | Sent from the Lend page: an offer of 20 MUSD at 6.50% until Thu 12 Nov. |
 | Transaction [0x2de0206d...204b](https://explorer.test.mezo.org/tx/0x2de0206d15a4a0debd3fbfadaaa00920929ededee152ba70e12c343d4117204b) | The first seeded offer: 60 MUSD at 5.00% for Thu 22 Oct. |
 
-## Technical Implementation (20%)
+## Is my Bitcoin safe in it?
 
 Two immutable contracts, a written rulebook with 29 rules each pointing to the code that keeps it, fuzz and invariant tests, fork tests against Mezo mainnet, an independent review with every finding fixed, and one command that proves the main promise live.
 
@@ -51,7 +51,7 @@ Two immutable contracts, a written rulebook with 29 rules each pointing to the c
 | Transaction [0x3f3370c0...3aee](https://explorer.test.mezo.org/tx/0x3f3370c0780f9f40b68cf13a637a72055f30afd9036ac95f8db29f5fcffa3aee) | The prove-it command repays 10.0116 MUSD in full. |
 | Transaction [0x806b8bd6...bd7e](https://explorer.test.mezo.org/tx/0x806b8bd6894f7c82033659c09893fc182bdf53c03e229cc8b2c7c9e6e2c9bd7e) | And takes position 391 back. |
 
-## User Experience (10%)
+## Can I use it without help?
 
 A first-time user can borrow and lend without help: live numbers before a wallet, Mezo testnet added by the wallet button, a faucet link when test BTC runs low, lock and borrow in one action, dates as calendar days, the exact amount owed before signing, and errors in plain words.
 
@@ -65,7 +65,7 @@ A first-time user can borrow and lend without help: live numbers before a wallet
 | Transaction [0x32c22f3f...97bd](https://explorer.test.mezo.org/tx/0x32c22f3f6b0bb40ba5b45abcb6867f450416643b2f72a91e35f7c954433897bd) | An offer posted from the Lend page, confirmed by the page in 4.9 seconds. |
 | Transaction [0x08d54363...98e7](https://explorer.test.mezo.org/tx/0x08d5436395c03d9e383db20770ca3395db020acee41c17bd49f39416d55a98e7) | A full repayment sent from My loans. |
 
-## Submission Materials (10%)
+## Where to read more
 
 | Where | What it shows |
 | --- | --- |

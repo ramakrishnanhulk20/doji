@@ -40,7 +40,7 @@ export function Footer() {
           </ul>
         </div>
         <p className="footer-note">
-          Built on Mezo for the Mezo Buildathon. Testnet only: test BTC and test MUSD have no value.
+          Built on Mezo. Testnet only: test BTC and test MUSD have no value.
         </p>
         <p className="footer-credit">
           <a className="link-draw" href={IMAGE_CREDIT_URL} target="_blank" rel="noopener noreferrer">

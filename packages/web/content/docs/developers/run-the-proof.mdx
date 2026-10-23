@@ -46,7 +46,7 @@ Doji promise proven: 8 of 8 checks passed
 
 If a run stops after the borrow, it prints the position and block, and `bash packages/contracts/script/prove-it.sh --resume POSITION BLOCK` finishes the checks and the repayment on that position. That record shows exactly this happening: one of the nodes behind Mezo's public RPC answered null for a receipt, so the script now asks again up to 15 times before it counts a transaction as failed.
 
-Each run costs gas, a few cents of MUSD interest, and 0.0005 test BTC that stays locked in the returned veBTC position until the loan date. It does not prove auctions, settle or redemption, or behaviour while the oracle is stale. The mainnet fork tests and the demo loans cover those.
+Each run costs gas, a few cents of MUSD interest, and 0.0005 test BTC that stays locked in the returned veBTC position until the loan date. It does not prove auctions, settle or redemption, or behaviour while the oracle is stale. The mainnet fork tests and the example loans cover those.
 
 ## 2. The fork tests (real Mezo mainnet state)
 

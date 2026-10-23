@@ -227,7 +227,7 @@ export function buildAttacks(targets: AttackTargets, caller: Address): Attack[] 
       title: "Buy a position for almost nothing",
       line: hasAuction
         ? `Tries to buy veBTC #${buyText} out of its auction while paying at most 1 MUSD.`
-        : "No loan is in auction right now, so this tries to buy the demo loan's position, which is not for sale.",
+        : "No loan is in auction right now, so this tries to buy the example loan's position, which is not for sale.",
       contract: "LoanManager",
       functionName: "purchase",
       shown: [buyText, "1 MUSD", `now + ${DEADLINE_SECONDS}`],

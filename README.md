@@ -174,7 +174,7 @@ flowchart TB
   M -->|after the last loan ends| F[finalize, then redeem the rest]
 ```
 
-## The two-minute judge path
+## Try it in two minutes
 
 No wallet is needed to follow this path, and nothing in it spends anything.
 
@@ -182,9 +182,9 @@ No wallet is needed to follow this path, and nothing in it spends anything.
 2. Scroll once. Mezo's FAQ asks "Can I use my locked BTC as collateral?" and answers "No." The seal stamps "Yes. At the same time." beside a real open loan whose lock, votes and rewards are read live.
 3. Click "Borrow MUSD". The offers by date and rate are there before any wallet. Type a BTC amount and an MUSD amount to see exactly what you would owe on that Thursday; borrowing for real needs a wallet and test BTC from the [faucet](https://faucet.test.mezo.org).
 4. Click "Lend" in the top bar: dates, best rates, and an offer summary with the protocol's 10% share of the interest.
-5. Open [the demo loan's page](https://dojis.site/loans/389): its owed amount, collateral, auction line, lock, votes, rewards and its own terms. A loan in auction shows the live price and a Buy button; the landing page's auction chart links to any open one.
+5. Open [an example loan's page](https://dojis.site/loans/389): its owed amount, collateral, auction line, lock, votes, rewards and its own terms. A loan in auction shows the live price and a Buy button; the landing page's auction chart links to any open one.
 6. Click "Try to break it" in the top bar, then "Run all". Twelve attacks are simulated against the live contracts, and each card shows the contract's refusal and the block it ran on.
-7. Open [Judging criteria](https://dojis.site/docs/business/judging-criteria) in the docs: each criterion mapped to a screen, a file and a transaction.
+7. Open [Check it yourself](https://dojis.site/docs/proof) in the docs: every claim mapped to a screen, a file and a transaction.
 
 Then prove the main promise on the live network yourself. With a funded borrower wallet in `packages/contracts/.env` (see [Run the proof yourself](https://dojis.site/docs/developers/run-the-proof)):
 
@@ -320,7 +320,7 @@ Static analysis: slither on the deployed contracts (2026-10-21, dependencies exc
 
 The Lows are capped loops, calls to fixed Mezo contracts or the same unit burn under the reentrancy lock, week-scale timestamp comparisons, and two return names in `ICreditMarkets.paidOutOf` that repeat the token names.
 
-The live website test drove the real site in a headless Chrome on Mezo testnet with a test wallet: 11 transactions across Borrow, My loans and Lend, each checked on chain through the RPC and the explorer ([docs/proof/ui-live-2026-10-20.md](docs/proof/ui-live-2026-10-20.md)). On 22 and 23 October two unpaid demo loans went to auction, one was bought through its loan page for 74.42 MUSD (lenders 28.51, protocol 1.43, borrower 44.49), the lender withdrew its 28.51 MUSD before the date closed, and demo loan 389 rolled to 12 November with its votes still in place ([docs/proof/auction-and-early-payout-2026-10-23.md](docs/proof/auction-and-early-payout-2026-10-23.md)).
+The live website test drove the real site in a headless Chrome on Mezo testnet with a test wallet: 11 transactions across Borrow, My loans and Lend, each checked on chain through the RPC and the explorer ([docs/proof/ui-live-2026-10-20.md](docs/proof/ui-live-2026-10-20.md)). On 22 and 23 October two example loans, left unpaid on purpose, went to auction, one was bought through its loan page for 74.42 MUSD (lenders 28.51, protocol 1.43, borrower 44.49), the lender withdrew its 28.51 MUSD before the date closed, and example loan 389 rolled to 12 November with its votes still in place ([docs/proof/auction-and-early-payout-2026-10-23.md](docs/proof/auction-and-early-payout-2026-10-23.md)).
 
 ## Gas
 
