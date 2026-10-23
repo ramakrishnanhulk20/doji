@@ -116,6 +116,8 @@ export type Attack = {
   expected: string;
   /** Rule ids in docs/security/threat-model.md. */
   rules: readonly string[];
+  /** The card's sentence when the expected refusal comes back, when the generic error text would mislead. */
+  refusal?: string;
   /** The line shown when the simulation succeeds. */
   goesThrough: string;
   /** Why the attack cannot run right now, or null when it can. */
@@ -231,6 +233,7 @@ export function buildAttacks(targets: AttackTargets, caller: Address): Attack[] 
       shown: [buyText, "1 MUSD", `now + ${DEADLINE_SECONDS}`],
       expected: hasAuction ? "PriceAboveMax" : "NoAuction",
       rules: ["C11", "C29"],
+      refusal: hasAuction ? "A purchase must pay at least the live auction price. This one offered almost nothing, so the contract refuses it." : undefined,
       goesThrough: "The auction price is 1 MUSD or less right now, so the buy is allowed. That is the rule working, not a way around it.",
       unavailable: targets.auctionKnown ? null : "Looking for an open auction.",
       args: (blockTimestamp) => [buyId, ONE_MUSD, BigInt(blockTimestamp + DEADLINE_SECONDS)],
@@ -359,7 +362,7 @@ export async function runAttack(client: PublicClient, attack: Attack, account: A
       return {
         kind: "refused",
         errorName,
-        detail: OUTSIDE_DETAIL[errorName] ?? explainError(error).detail,
+        detail: (errorName === attack.expected ? attack.refusal : undefined) ?? OUTSIDE_DETAIL[errorName] ?? explainError(error).detail,
         matches: errorName === attack.expected,
         block: Number(block.number),
       };

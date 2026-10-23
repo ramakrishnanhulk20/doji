@@ -194,9 +194,10 @@
 }
 
 /* Nav */
+/* Above the title block and the credits row, so the open Menu panel is never painted under them. */
 .hero-nav {
   position: absolute;
-  z-index: 3;
+  z-index: 5;
   top: 0;
   left: 0;
   right: 0;
@@ -267,6 +268,80 @@
 .hero-link:hover::after,
 .hero-link:focus-visible::after {
   transform: scaleX(1);
+}
+
+/* Below 1024px the links move into a Menu panel that opens under the nav. */
+.hero-menu-button {
+  display: none;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--paper);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.hero-menu-button:hover {
+  border-color: var(--paper-dim);
+}
+
+.hero-menu-button[aria-expanded="true"] {
+  border-color: var(--beni);
+}
+
+.hero-menu {
+  position: absolute;
+  top: 64px;
+  left: 16px;
+  right: 16px;
+  z-index: 20;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  background: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  animation: hero-menu-in 180ms ease-out;
+}
+
+.hero-menu a {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-family: var(--display-family);
+  font-size: 22px;
+  color: var(--paper);
+}
+
+.hero-menu a:hover,
+.hero-menu a:focus-visible {
+  background: var(--ink-2);
+}
+
+@keyframes hero-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@media (max-width: 1023px) {
+  .hero-links {
+    display: none;
+  }
+
+  .hero-menu-button {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 32px;
+  }
 }
 
 .net-tag {
@@ -637,6 +712,10 @@
   .hero-link::after {
     transition: none;
   }
+
+  .hero-menu {
+    animation: none;
+  }
 }
 
 .hero[data-motion="reduced"] .print-stage {
@@ -662,4 +741,8 @@
 .hero[data-motion="reduced"] .hero-link,
 .hero[data-motion="reduced"] .hero-link::after {
   transition: none;
+}
+
+.hero[data-motion="reduced"] .hero-menu {
+  animation: none;
 }

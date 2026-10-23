@@ -192,19 +192,26 @@ export function BorrowScreen() {
     return null;
   })();
 
-  const checkReason = (() => {
-    if (!settings || valueWei === undefined || !group) return null;
-    if (tab === "lock" && balanceWei !== undefined && btcWei > balanceWei) {
-      return explainProblem({ kind: "noBalance", balance: balanceWei });
-    }
+  // Amount problems no wallet can fix. They show in the amount note and on the button before "Connect wallet".
+  const amountProblem = (() => {
+    if (!settings || valueWei === undefined || !group || principalWei === 0n) return null;
     if (principalWei < settings.minLoan) return explainProblem({ kind: "belowMin", minLoan: settings.minLoan });
     if (selection.filled < principalWei) {
       return selection.offerIds.length >= 8
         ? explainProblem({ kind: "tooManyOffers" })
         : explainProblem({ kind: "overOffers", most: group.available });
     }
+    if (maxFace !== undefined && face !== null && face > maxFace) return explainProblem({ kind: "overLimit", maxFace });
+    return null;
+  })();
+
+  const checkReason = (() => {
+    if (!settings || valueWei === undefined || !group) return null;
+    if (tab === "lock" && balanceWei !== undefined && btcWei > balanceWei) {
+      return explainProblem({ kind: "noBalance", balance: balanceWei });
+    }
+    if (amountProblem) return amountProblem;
     if (quote.isLoading || face === null) return "Checking the numbers";
-    if (maxFace !== undefined && face > maxFace) return explainProblem({ kind: "overLimit", maxFace });
     return null;
   })();
 
@@ -290,6 +297,7 @@ export function BorrowScreen() {
 
   const confirm: ConfirmButton = (() => {
     if (problem) return { label: problem, disabled: true, loading: false, onClick: () => undefined };
+    if (amountProblem) return { label: amountProblem, disabled: true, loading: false, onClick: () => undefined };
     if (!data.isConnected) return { label: "Connect wallet to borrow", disabled: false, loading: false, onClick: openConnectModal };
     if (data.chainId !== APP_CHAIN_ID) {
       return { label: "Switch to Mezo testnet", disabled: false, loading: false, onClick: () => switchChain({ chainId: APP_CHAIN_ID }) };
@@ -314,7 +322,7 @@ export function BorrowScreen() {
     collateralText: tab === "lock" ? (btcWei > 0n ? `${fmtExact(btcWei)} BTC` : null) : position ? `veBTC #${position.id}` : null,
     valueWei: valueWei !== undefined && valueWei > 0n ? valueWei : null,
     maturity,
-    principal: principalWei,
+    principal: amountProblem === null ? principalWei : null,
     face,
     aprBps,
     usedBps,
@@ -414,7 +422,8 @@ export function BorrowScreen() {
                       onSlide={(value) => setPrincipalText(musdFieldText(BigInt(value) * CENT))}
                       onMax={() => setPrincipalText(maxWei ? musdFieldText(maxWei) : "")}
                       maxDisabled={!maxWei}
-                      note={amountNote}
+                      note={amountProblem ?? amountNote}
+                      noteProblem={amountProblem !== null}
                     />
                   )}
                 </motion.div>
@@ -434,7 +443,7 @@ export function BorrowScreen() {
         <div className="summary-bar">
           <div className="summary-bar-text">
             <p className="summary-bar-receive">
-              You receive {principalWei > 0n ? fmtMusd(principalWei) : "0.00"} MUSD
+              You receive {amountProblem !== null ? "-" : `${principalWei > 0n ? fmtMusd(principalWei) : "0.00"} MUSD`}
             </p>
             <p className="summary-bar-owe">
               {face !== null && maturity !== null ? `owe ${fmtMusd(face)} on ${formatDate(maturity)}` : "owe -"}

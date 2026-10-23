@@ -116,7 +116,15 @@ export function CollateralStep(props: CollateralStepProps) {
               ? `Balance ${fmtBtc(props.balance, 4)} BTC${
                   props.balanceValue !== undefined ? ` · worth ${fmtMusd(props.balanceValue)} MUSD at the oracle price` : ""
                 }`
-              : "Connect a wallet to see your balance"}
+              : (
+                <>
+                  Connect a wallet to see your balance. Test BTC comes from the{" "}
+                  <a className="link-draw" href="https://faucet.test.mezo.org" target="_blank" rel="noopener noreferrer">
+                    Mezo faucet
+                  </a>
+                  .
+                </>
+              )}
           </p>
           {props.maturity !== null && (
             <p className="field-note field-note-plain">
@@ -252,9 +260,11 @@ type AmountStepProps = {
   onMax: () => void;
   maxDisabled: boolean;
   note: ReactNode;
+  /** True when the note is a problem with the amount. */
+  noteProblem?: boolean;
 };
 
-export function AmountStep({ principalText, onPrincipalText, maxCents, cents, onSlide, onMax, maxDisabled, note }: AmountStepProps) {
+export function AmountStep({ principalText, onPrincipalText, maxCents, cents, onSlide, onMax, maxDisabled, note, noteProblem }: AmountStepProps) {
   const fill = maxCents > 0 ? Math.min(100, (cents / maxCents) * 100) : 0;
   return (
     <section className="borrow-step">
@@ -282,7 +292,7 @@ export function AmountStep({ principalText, onPrincipalText, maxCents, cents, on
           style={{ "--fill": `${fill}%` } as CSSProperties}
           onChange={(event) => onSlide(Number(event.target.value))}
         />
-        <p className="field-note">{note}</p>
+        <p className={noteProblem ? "field-note field-note-problem" : "field-note"}>{note}</p>
       </div>
     </section>
   );

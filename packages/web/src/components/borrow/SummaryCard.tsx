@@ -14,7 +14,7 @@ export type SummaryData = {
   collateralText: string | null;
   valueWei: bigint | null;
   maturity: number | null;
-  principal: bigint;
+  principal: bigint | null;
   face: bigint | null;
   aprBps: number | null;
   usedBps: number | null;
@@ -102,7 +102,7 @@ export function SummaryCard({ data, steps, confirm }: SummaryCardProps) {
               dash
             ) : (
               <>
-                if BTC falls below <TweenText value={toNumber(data.auctionPriceWei)} format={formatMusd} /> MUSD
+                if the BTC price falls below <TweenText value={toNumber(data.auctionPriceWei)} format={formatMusd} /> MUSD
               </>
             )}
           </dd>

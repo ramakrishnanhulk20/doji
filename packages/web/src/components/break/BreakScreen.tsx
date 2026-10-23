@@ -31,6 +31,7 @@ export function BreakScreen() {
   // The address a finished Run all was for, so the tally shows only for results that are still on screen.
   const [ranFor, setRanFor] = useState<string | null>(null);
   const alive = useRef(true);
+  const scrollToTally = useRef(false);
 
   useEffect(() => {
     alive.current = true;
@@ -74,7 +75,10 @@ export function BreakScreen() {
           ?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
         await simulate(attack);
       }
-      if (alive.current) setRanFor(account);
+      if (alive.current) {
+        scrollToTally.current = true;
+        setRanFor(account);
+      }
     } finally {
       if (alive.current) setProgress(null);
     }
@@ -88,6 +92,13 @@ export function BreakScreen() {
   const unexpected = outcomes.filter((outcome) => outcome !== null && !(outcome.kind === "refused" && outcome.matches)).length;
   const notRunnable = (attacks ?? []).filter((attack) => attack.unavailable !== null).length;
   const showTally = attacks !== null && ranFor === account && !busy;
+
+  // Run all ends on the last card, so the page comes back up to the tally once it is on screen.
+  useEffect(() => {
+    if (!showTally || !scrollToTally.current) return;
+    scrollToTally.current = false;
+    document.getElementById("break-tally")?.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+  }, [showTally, reduced]);
 
   const rise = reduced ? { initial: false as const } : { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 } };
 
@@ -122,7 +133,7 @@ export function BreakScreen() {
         )}
 
         {showTally && attacks && (
-          <p className="break-tally" aria-live="polite">
+          <p id="break-tally" className="break-tally" aria-live="polite">
             <span className="break-tally-safe">
               {refused} of {attacks.length} refused
             </span>

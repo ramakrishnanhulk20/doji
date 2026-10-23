@@ -82,7 +82,7 @@ export function AttackCard({ attack, outcome, running, locked, onRun }: AttackCa
               {index > 0 && ", "}
               <a
                 className="break-link"
-                href={THREAT_MODEL_URL}
+                href={`${THREAT_MODEL_URL}#${rule.toLowerCase()}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`Rule ${rule} in the threat model, opens in a new tab`}
