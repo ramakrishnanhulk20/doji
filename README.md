@@ -24,6 +24,8 @@ Mezo rewards people who keep Bitcoin locked as veBTC: a share of chain fees, a v
 
 Doji makes it yes. A borrower hands Doji a veBTC position, or locks BTC and borrows in one step, picks a Thursday and takes lenders' fixed-rate offers. The MUSD arrives at once and the amount owed on that date is fixed. While the loan runs, the lock keeps running and the votes and rewards stay with the borrower.
 
+In August 2026 Mezo described the credit market Bitcoin lending needs ([How to Build a Bitcoin-Backed Credit Market](https://mezo.org/blog/how-to-build-a-bitcoin-backed-credit-market/)): the repayment is known in advance, lenders choose their date and post offers that wait until a borrower takes them, and the lender's claim is a unit that can change hands. Doji is that market for veBTC and MUSD, live on Mezo testnet today.
+
 Doji is for veBTC holders who need MUSD and do not want to end their lock, and for MUSD holders who want a fixed return to a known date, backed by locked Bitcoin.
 
 | | Without Doji | With Doji |
