@@ -703,3 +703,30 @@
     font-size: 12px;
   }
 }
+
+.mezo-figure {
+  margin: 16px 0 4px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 28px;
+  line-height: 1.1;
+  color: var(--paper);
+}
+
+.mezo-figure.is-unavailable {
+  color: var(--paper-dim);
+  font-size: 16px;
+}
+
+.mezo-figure-note {
+  margin: 0 0 16px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--paper-dim);
+}
+
+.mezo-more {
+  margin-top: 32px;
+}

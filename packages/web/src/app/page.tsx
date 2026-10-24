@@ -5,6 +5,7 @@ import { Hero } from "../components/hero/Hero";
 import { PRINT_SIZES, PRINT_SOURCES } from "../components/hero/copy";
 import { HowItWorks } from "../components/how/HowItWorks";
 import "../components/landing/landing.css";
+import { BuiltOnMezo } from "../components/mezo/BuiltOnMezo";
 import { NameBand } from "../components/name/NameBand";
 import { FoldingScreen } from "../components/osaka/FoldingScreen";
 import { ProofGrid } from "../components/proof/ProofGrid";
@@ -36,6 +37,7 @@ export default function Home() {
         <NameBand />
         <FoldingScreen motion="full" />
         <HowItWorks />
+        <BuiltOnMezo />
         <AuctionChart />
         <ProofGrid />
         <ClosingCall />
