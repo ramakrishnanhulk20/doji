@@ -49,6 +49,11 @@ const CATCH_UP_WINDOW_MS = 10 * 60_000;
 const CATCH_UP_WAIT_MS = 90_000;
 const CATCH_UP_POLL_MS = 3_000;
 const GAS_HEADROOM_PERCENT = 125n;
+// A node that has not caught up can estimate a contract call as if no code ran (21,204 gas for a settle on
+// 2026-10-25), and the network then refuses the transaction. Every token approve costs more than 23,000 and every
+// Doji write more than 30,000, so a lower estimate is asked again, and after five tries the wallet estimates instead.
+const minPlausibleGas = (functionName: string) => (functionName === "approve" ? 23_000n : 30_000n);
+const ESTIMATE_TRIES = 5;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // The pending record keeps only text, so a line that is a function waits here until its transaction is settled.
@@ -181,12 +186,17 @@ export function useWrite() {
           args: request.args,
         } as never;
         let simulated;
-        let gas: bigint;
+        let gas: bigint | undefined;
         const askedAt = Date.now();
         for (;;) {
           try {
             simulated = await publicClient.simulateContract(call);
-            gas = await publicClient.estimateContractGas(call);
+            gas = undefined;
+            for (let tries = 0; tries < ESTIMATE_TRIES && gas === undefined; tries++) {
+              const estimate = await publicClient.estimateContractGas(call);
+              if (estimate >= minPlausibleGas(request.functionName)) gas = estimate;
+              else await sleep(CATCH_UP_POLL_MS);
+            }
             break;
           } catch (error) {
             const catchingUp = Date.now() - lastConfirmedAt < CATCH_UP_WINDOW_MS;
@@ -201,7 +211,8 @@ export function useWrite() {
         try {
           // The gas is passed so the wallet does not estimate again on a node that may still be behind.
           const sent = (simulated as unknown as { request: Record<string, unknown> }).request;
-          hash = await walletClient.writeContract({ ...sent, gas: (gas * GAS_HEADROOM_PERCENT) / 100n } as never);
+          const gasLimit = gas === undefined ? undefined : (gas * GAS_HEADROOM_PERCENT) / 100n;
+          hash = await walletClient.writeContract({ ...sent, gas: gasLimit } as never);
         } catch (error) {
           return fail(error, { phase: "wallet" });
         }

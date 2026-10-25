@@ -23,6 +23,19 @@ const WEEK = 604_800n;
 // PoolsVoter refuses a reset in the first hour of every epoch, so prepareSettle waits it out.
 const EPOCH_LOCKOUT = 3_600n;
 const RECEIPT_TIMEOUT_MS = 180_000;
+// A node that has not caught up can estimate a call as if no code ran (21,204 gas for settle(387) on 2026-10-25), and
+// the network then refuses the transaction. Every keeper call costs over 70,000, so a lower estimate is asked again.
+const MIN_PLAUSIBLE_GAS = 30_000n;
+const ESTIMATE_TRIES = 5;
+
+async function plausibleGas(estimate: () => Promise<bigint>): Promise<bigint> {
+  for (let tries = 0; tries < ESTIMATE_TRIES; tries++) {
+    const gas = await estimate();
+    if (gas >= MIN_PLAUSIBLE_GAS) return (gas * 125n) / 100n;
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+  }
+  throw new Error(`gas estimates stayed below ${MIN_PLAUSIBLE_GAS}, so nothing was sent; the next pass tries again`);
+}
 
 // ILoanManager.LoanState. Closed is never stored: a closed loan is deleted and reads back as None.
 const STATE_NONE = 0;
@@ -127,7 +140,15 @@ async function execute(
         args: [call.tokenId],
         account,
       });
-      send = () => writer!.writeContract(request);
+      const estimate = () =>
+        reader.estimateContractGas({
+          address: pass.record.loanManager,
+          abi: loanManagerAbi,
+          functionName: call.functionName,
+          args: [call.tokenId],
+          account: account!,
+        });
+      send = async () => writer!.writeContract({ ...request, gas: await plausibleGas(estimate) });
     } else {
       const { request } = await reader.simulateContract({
         address: pass.record.creditMarkets,
@@ -136,7 +157,15 @@ async function execute(
         args: [call.maturity],
         account,
       });
-      send = () => writer!.writeContract(request);
+      const estimate = () =>
+        reader.estimateContractGas({
+          address: pass.record.creditMarkets,
+          abi: creditMarketsAbi,
+          functionName: "finalize",
+          args: [call.maturity],
+          account: account!,
+        });
+      send = async () => writer!.writeContract({ ...request, gas: await plausibleGas(estimate) });
     }
   } catch (err) {
     pass.summary.failedSimulations += 1;
