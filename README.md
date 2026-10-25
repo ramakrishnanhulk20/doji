@@ -8,7 +8,7 @@ Dōji (同時) means "at the same time": your Bitcoin stays locked and earning w
 
 Borrow MUSD against the Bitcoin you have locked on Mezo, at a fixed rate until a fixed date, without ending the lock or losing the rewards.
 
-[Live app](https://dojis.site) · [Docs](https://dojis.site/docs) · [Try to break it](https://dojis.site/break) · [Architecture](ARCHITECTURE.md)
+[Live app](https://dojis.site) · [Demo video](https://youtu.be/rLvW37wmeaY) · [Docs](https://dojis.site/docs) · [Try to break it](https://dojis.site/break) · [Architecture](ARCHITECTURE.md)
 
 ## Live deployments
 
