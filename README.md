@@ -188,7 +188,14 @@ No wallet is needed to follow this path, and nothing in it spends anything.
 6. Click "Try to break it" in the top bar, then "Run all". Twelve attacks are simulated against the live contracts, and each card shows the contract's refusal and the block it ran on.
 7. Open [Check it yourself](https://dojis.site/docs/proof) in the docs: every claim mapped to a screen, a file and a transaction.
 
-Then prove the main promise on the live network yourself. With a funded borrower wallet in `packages/contracts/.env` (see [Run the proof yourself](https://dojis.site/docs/developers/run-the-proof)):
+Then prove the main promise on the live network yourself. It needs bash, Python 3, Foundry and one testnet wallet of your own:
+
+1. Run `cast wallet new` to get a fresh address and private key.
+2. Run `cp packages/contracts/.env.example packages/contracts/.env` and set only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` to that wallet. The other wallets in the file belong to the deploy and seed scripts.
+3. Claim test BTC for that address from the [Mezo faucet](https://faucet.test.mezo.org), which has a CAPTCHA. The run needs at least 0.0008 test BTC.
+4. Get a few cents of test MUSD for the interest. The faucet gives only BTC, so borrow 10 MUSD on [Borrow](https://dojis.site/borrow) with the same wallet, or swap BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). The script checks both balances before it sends anything.
+
+More detail is in [Run the proof yourself](https://dojis.site/docs/developers/run-the-proof).
 
 ```bash
 bash packages/contracts/script/prove-it.sh
@@ -210,7 +217,7 @@ git submodule update --init
 
 The submodule step fetches forge-std and OpenZeppelin Contracts into `packages/contracts/lib`. `forge install` with no arguments does the same.
 
-Contracts (needs [Foundry](https://book.getfoundry.sh)):
+Contracts (needs [Foundry](https://book.getfoundry.sh) 1.8 or newer; the full `forge test` takes 2 to 3 minutes and prints its summary at the end):
 
 ```bash
 cd packages/contracts
@@ -295,10 +302,10 @@ Every event, view and setting is listed in the [Contracts](https://dojis.site/do
 
 ## Tests
 
-The last full run, on 2026-10-21, including the 13 Mezo mainnet fork tests:
+The last full run, on 2026-10-25, including the 13 Mezo mainnet fork tests:
 
 ```text
-Ran 19 test suites in 110.88s (712.74s CPU time): 311 tests passed, 0 failed, 0 skipped (311 total tests)
+Ran 19 test suites in 218.11s (751.29s CPU time): 311 tests passed, 0 failed, 0 skipped (311 total tests)
 ```
 
 - Unit tests for the public functions, their reverts and their events. Each test file opens with what it does not cover.

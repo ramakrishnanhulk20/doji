@@ -20,7 +20,7 @@ git submodule update --init
 
 One command exercises the main promise against the deployed contracts on Mezo testnet: lock a little test BTC, borrow the 10 MUSD minimum at a fixed rate, check the loan on chain, attack it as a stranger, repay in full and take the position back.
 
-It sends real testnet transactions from a borrower wallet you control. Copy `packages/contracts/.env.example` to `packages/contracts/.env` and fill in `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` for a fresh testnet wallet. It needs at least 0.0008 test BTC (0.0005 to lock, the rest for gas) from the [faucet](https://faucet.test.mezo.org), and a few cents of MUSD for the interest.
+It sends real testnet transactions from a borrower wallet you control, and needs bash, Python 3 and Foundry. Make a fresh testnet wallet with `cast wallet new`. Copy `packages/contracts/.env.example` to `packages/contracts/.env` and fill in only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` for that wallet; the other wallets in the file belong to the deploy and seed scripts. It needs at least 0.0008 test BTC (0.0005 to lock, the rest for gas) from the [faucet](https://faucet.test.mezo.org), and a few cents of MUSD for the interest. The faucet gives only BTC, so get the MUSD by borrowing 10 MUSD on [Borrow](/borrow) with the same wallet, or by swapping BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). The script checks both balances before it sends anything.
 
 ```bash
 bash packages/contracts/script/prove-it.sh
