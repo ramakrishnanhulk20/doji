@@ -614,14 +614,34 @@ contract PassThroughForkTest is Test {
         return (true, Candidate(id, holder, uint256(int256(amount)), end, isPermanent));
     }
 
-    /// @dev A normal lock ending at or after `minEnd`, with no standing vote and no vote this epoch.
-    function _findUnvoted(uint256 minEnd) internal view returns (Candidate memory) {
+    /// @dev A normal lock ending at or after `minEnd`, with no standing vote and no vote this epoch. Failing that, one
+    ///      whose standing vote dates from an earlier epoch, after its holder clears it on PoolsVoter.
+    function _findUnvoted(uint256 minEnd) internal returns (Candidate memory) {
         uint256 newest = ve.tokenId();
         uint256 start = vm.getBlockTimestamp() - vm.getBlockTimestamp() % WEEK;
         for (uint256 i; i < MAX_ID_TRIES && i < newest; ++i) {
             (bool ok, Candidate memory c) = _usable(newest - i);
             if (!ok || c.isPermanent || c.end < minEnd) continue;
             if (ve.voted(c.tokenId) || voter.lastVoted(c.tokenId) >= start) continue;
+            return c;
+        }
+        // A busy week can leave every newest id voted; any holder clears a standing vote before handing it to Doji.
+        for (uint256 i; i < MAX_ID_TRIES && i < newest; ++i) {
+            (bool ok, Candidate memory c) = _usable(newest - i);
+            if (!ok || c.isPermanent || c.end < minEnd) continue;
+            if (!ve.voted(c.tokenId) || voter.lastVoted(c.tokenId) >= start) continue;
+            vm.prank(c.holder);
+            try IPoolsVoter(POOLS_VOTER).reset(c.tokenId) {} catch {
+                continue;
+            }
+            // A ValidatorsVoter vote also keeps veBTC.voted set and PoolsVoter cannot clear it, so such a position
+            // is passed over for the next one.
+            if (ve.voted(c.tokenId)) continue;
+            console.log(
+                "(A) no unvoted position among the newest ids; the holder of",
+                c.tokenId,
+                "cleared a standing vote first"
+            );
             return c;
         }
         revert NoUsablePosition("unvoted", newest, MAX_ID_TRIES);
