@@ -7,7 +7,7 @@ description: What the independent review of 20 October 2026 found, how each find
 This was an independent review pass, separate from the build and read-only on the contracts and scripts. It was not a third-party audit firm. The full report is [docs/audit/findings-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-10-20.md).
 </Callout>
 
-The review read every contract, library, interface, the deploy script, the keeper and its workflow, against the threat model's section C and the risk study. It found no Critical or High issue: one Medium and three Low. The custody, accounting and settle paths held up. It ran the unit suite and wrote a failing test for each finding it could execute; it did not run the fork tests. The fixes were deployed in the contracts now on testnet.
+The review read every contract, library, interface, the deploy script, the keeper and its workflow, against the threat model's section C and the risk study. It found no Critical or High issue: one Medium and three Low. The custody, accounting and settle paths held up. It ran the unit suite and wrote a failing test for each finding it could execute; it did not run the fork tests. The fixes were deployed in the contracts now on testnet, together with code this review never read: [Code added with the fixes](#code-added-with-the-fixes) says who checked that code and how.
 
 ## Findings
 
@@ -44,6 +44,18 @@ The review also attacked the threat model itself.
 
 Custody and identity, the collateral test, the fill rules, the quote (lender units plus protocol units equal the face exactly), the open-loan counts, finalisation and redemption, donations, repay, cancel, purchase and settle conditions, claimables, the pass-throughs, the vote cutoff, the setter bounds, the two contracts' mutual wiring, the lock reader and price, the time limit, the deploy checks and the keeper's writes. The report lists each one with what was checked.
 
+## Code added with the fixes
+
+The commit that fixed these findings, [09e20c3](https://github.com/ramakrishnanhulk20/doji/commit/09e20c3), also added code this review never read: early payouts (`withdrawCollected`, the answer to gap 5), purchase prices recomputed at today's value, each loan keeping its own auction terms, and penalties waiting as treasury claimables. Two more review passes read it before it was deployed. The first read the fixes: its one important finding, the keeper's list of open loans, was fixed, and two design questions were settled (who gains when Bitcoin recovers during a sale, and whether to build early payouts). The second read only the early payout code and the keeper fix and found no important issue: no order of calls pays a date more than it collected, pays a holder more per unit, or locks a holder out (C14, C15, C25).
+
+What proves it:
+
+- [EarlyPayouts.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/EarlyPayouts.t.sol) runs 1,000 random cases of a lender who withdraws early against one who waits, and 1,000 of one lender who mixes both: part of its units paid early, the rest redeemed after the date is finalized, while loans are repaid, sold, settled in BTC or written off in between. No holder gets more than its share of what the date collected, no unit is paid twice, and only rounding dust is left. Two deliberately broken versions of `withdrawCollected`, one that forgets what a Claim was already paid and one that does not burn the units it takes, both fail it.
+- [CreditInvariants.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/CreditInvariants.t.sol) runs random sequences of early withdrawals, redemptions, sales and settles across three dates and checks after every call that no date has paid out more MUSD or BTC than it collected.
+- On testnet the 22 October date went through this order for real: an early payout of 28.51 MUSD, then a settle that added 0.00035461 BTC, then finalize. All 28.51 MUSD collected has been paid out and none of the BTC yet. A read-only call of the lender's next withdrawal returns exactly the 0.00035461 BTC collected, and nothing more.
+
+None of these passes was a third-party audit firm, and no outside firm has reviewed Doji's code. Doji runs on Mezo testnet only.
+
 ## Run the tests
 
 From `packages/contracts`:
@@ -51,6 +63,7 @@ From `packages/contracts`:
 ```bash
 forge test --match-path "test/audit/*" -vv
 forge test --match-path "test/unit/AuditFixes.t.sol" -vv
+forge test --match-path "test/unit/EarlyPayouts.t.sol" -vv
 ```
 
 The audit tests were written to fail on the code the review read, and pass only when the promise they check holds. See [Run the proof yourself](/docs/developers/run-the-proof).

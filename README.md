@@ -226,7 +226,7 @@ forge test                            # everything, including the Mezo mainnet f
 forge test --match-path "test/fork/*" -vv
 ```
 
-The fork tests use the public RPCs named in `foundry.toml`: `https://mezo.drpc.org` for Mezo mainnet and `https://rpc.test.mezo.org` for testnet. They need no key. When a public node is overloaded, a fork test fails with an HTTP error such as 504, not a revert. `forge test --no-match-path "test/fork/*"` runs the 298 tests that need no network, and pointing `mezo_mainnet` in `foundry.toml` at another of Mezo's public RPCs, such as `https://mezo-mainnet.boar.network`, runs the fork suites again.
+The fork tests use the public RPCs named in `foundry.toml`: `https://mezo-mainnet.boar.network` for Mezo mainnet and `https://rpc.test.mezo.org` for testnet. They need no key. When a public node is overloaded, a fork test fails with an HTTP error such as 504 or a reset connection. If the dropped read was inside a call to a Mezo contract, it shows as `EvmError: Revert`; the `-vvvv` trace and the ERROR line above it name the HTTP failure. `forge test --no-match-path "test/fork/*"` runs the 300 tests that need no network, and pointing `mezo_mainnet` in `foundry.toml` at another of Mezo's public RPCs, such as `https://mezo.drpc.org`, runs the fork suites again.
 
 Web app (needs Node 20.12 or newer):
 
@@ -302,14 +302,14 @@ Every event, view and setting is listed in the [Contracts](https://dojis.site/do
 
 ## Tests
 
-The last full run, on 2026-10-25, including the 13 Mezo mainnet fork tests:
+The last full run, on 2026-10-29, including the 13 Mezo mainnet fork tests:
 
 ```text
-Ran 19 test suites in 218.11s (751.29s CPU time): 311 tests passed, 0 failed, 0 skipped (311 total tests)
+Ran 19 test suites in 609.93s (1071.84s CPU time): 313 tests passed, 0 failed, 0 skipped (313 total tests)
 ```
 
 - Unit tests for the public functions, their reverts and their events. Each test file opens with what it does not cover.
-- Fuzz tests at 1,000 runs each: units always equal the face, sale and settle splits always add up, early and late lenders get the same total per unit, and no sale pays the market below the smaller of the debt and the value at the time of sale.
+- Fuzz tests at 1,000 runs each: units always equal the face, sale and settle splits always add up, early and late lenders get the same total per unit, one lender who mixes early payouts and redeem never gets more than its share, and no sale pays the market below the smaller of the debt and the value at the time of sale.
 - Invariant tests at 256 runs of depth 64: random sequences of posts, borrows, repays, rolls, auctions, settles, redemptions and early withdrawals across three dates, with the accounting rules checked after every call.
 - Fork tests against real Mezo mainnet state: real veBTC positions, PoolsVoter and ValidatorsVoter, the fee distributor and MUSD, including a sale half way down the curve, a settle of a real lock, a vote cleared through the real voter, a roll, and real pool fees forwarded to the borrower.
 - The four audit regression tests, written to fail on the code the review read.
@@ -368,7 +368,7 @@ analysis              the Bitcoin drawdown study and its data
 Custody comes first. Doji holds other people's veBTC positions, and on 5 October 2026 an attacker moved 37 veBTC positions on Mezo mainnet through a trusted-forwarder (meta-transaction) flaw ([Mezo's incident report](https://mezo.org/blog/incident-report-october-5-2026)). Doji has no meta-transaction or forwarder path at all.
 
 - The threat model was written before any contract code. Its 29 rules are the definition of done, each kept by named code and tested: [docs/security/threat-model.md](docs/security/threat-model.md).
-- An independent review pass on 2026-10-20, separate from the build and not a third-party audit firm, found no Critical or High issue, one Medium and three Low. Each was fixed with tests that failed before the fix, and the fixed contracts are the ones deployed: [docs/audit/findings-2026-10-20.md](docs/audit/findings-2026-10-20.md).
+- An independent review pass on 2026-10-20, separate from the build and not a third-party audit firm, found no Critical or High issue, one Medium and three Low. Each was fixed with tests that failed before the fix, and the fixed contracts are the ones deployed: [docs/audit/findings-2026-10-20.md](docs/audit/findings-2026-10-20.md). The same commit added early payouts, which that pass never read; two more passes read that code before deployment, and the [audit page](https://dojis.site/docs/security/audit#code-added-with-the-fixes) lists the tests that hold it.
 - Non-goals, stated openly: a flaw or upgrade in Mezo's own contracts, an oracle outage, Bitcoin price moves after a settle, losses shared across one date, and an exit before the date (units can be sent, but Doji provides no buyer).
 - To report a problem, open an issue at [github.com/ramakrishnanhulk20/doji/issues](https://github.com/ramakrishnanhulk20/doji/issues).
 

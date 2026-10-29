@@ -229,7 +229,12 @@ contract ResolutionForkTest is Test {
         uint256 face = _borrowAt(pos, maturity, 3_000);
 
         (, uint256 value) = lm.collateralValue(pos.tokenId);
-        uint128 principal = uint128(value * BORROW_LTV_BPS / BPS);
+        // The cap applies to the face, and the roll's face carries up to two weeks of interest: at a 39.9%
+        // principal it crossed 40% whenever the fork ran from Thursday to Saturday. Sizing the principal so the
+        // face lands at 39.9% keeps the roll just inside the cap on any weekday.
+        uint256 target = value * BORROW_LTV_BPS / BPS;
+        (uint256 targetFace,,) = cm.quoteFill(uint128(target), APR_BPS, later);
+        uint128 principal = uint128(Math.mulDiv(target, target, targetFace));
         uint256 offerId = _post(later, principal);
         uint256 before = musd.balanceOf(pos.holder);
         (uint256[] memory ids, uint128[] memory amounts) = _one(offerId, principal);

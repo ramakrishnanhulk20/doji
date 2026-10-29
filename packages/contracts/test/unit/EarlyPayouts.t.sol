@@ -5,10 +5,12 @@ pragma solidity 0.8.28;
 // withdrawCollected and is paid its share of what that date's market has collected so far, then more as each
 // remaining loan closes, without waiting for finalize. An early lender and a lender who waits for redeem end with
 // the same total per unit, in MUSD and BTC, whatever the order and kind of closings and whoever withdraws first.
+// One holder that mixes both paths, part early and the rest by redeem, gets its share and never more.
 // Runs on the real CreditMarkets and LoanManager with the LoanFixture mocks.
 // It does NOT cover: real Mezo contracts (test/fork), unit transfers between holders before a withdrawal,
 // fee-on-transfer tokens, or randomised sequences across dates (CreditInvariants.t.sol).
 
+import {Vm} from "forge-std/Vm.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {ICreditMarkets} from "../../src/interfaces/ICreditMarkets.sol";
@@ -31,6 +33,21 @@ contract EarlyPayoutsTest is LoanFixture {
     uint256 internal musdA;
     uint256 internal btcA;
     uint256 internal withdrawalsA;
+
+    /// @dev What one mixed-holder run paid each holder in MUSD and BTC, the units each held, and how many redeem
+    ///      and withdrawCollected calls paid out.
+    struct MixedRun {
+        uint256 musdA;
+        uint256 btcA;
+        uint256 musdB;
+        uint256 btcB;
+        uint256 musdT;
+        uint256 btcT;
+        uint256 unitsA;
+        uint256 unitsB;
+        uint256 unitsT;
+        uint256 payouts;
+    }
 
     function setUp() public override {
         super.setUp();
@@ -157,6 +174,110 @@ contract EarlyPayoutsTest is LoanFixture {
             musdOut[order[i]] += m;
             btcOut[order[i]] += b;
         }
+    }
+
+    /// @dev Lender A moves part of its units into a Claim right after the date and takes payouts as the three
+    ///      loans close in a fuzzed order and in fuzzed ways, redeems its plain units after finalize, then tries to
+    ///      be paid again. Lender B only redeems. The treasury splits its units across both paths after finalize.
+    function _mixedHolderScenario(
+        uint256 sizeSeed,
+        uint256 kindSeed,
+        uint256 orderSeed,
+        uint256 splitSeed,
+        uint256 pokeMask
+    ) internal returns (MixedRun memory run) {
+        (run.unitsA, run.unitsB) = _threeLoansFromTwoLenders(sizeSeed);
+        if (cm.pendingUnits(treasury, m1) > 0) {
+            vm.prank(treasury);
+            run.unitsT = cm.claimUnits(m1);
+        }
+        vm.assume(run.unitsA >= 2);
+
+        vm.warp(m1 + 1);
+        uint256 splitA = bound(splitSeed, 1, run.unitsA - 1);
+        _withdraw(lenderA, splitA);
+        run.payouts = 1;
+        uint256 first = orderSeed % 3;
+        uint256 flip = (orderSeed / 3) % 2;
+        uint256[3] memory order = [first, (first + 1 + flip) % 3, (first + 2 - flip) % 3];
+        for (uint256 i; i < 3; ++i) {
+            _closeLoan(order[i], (kindSeed >> (8 * order[i])) % 4);
+            if ((pokeMask >> i) & 1 == 1) {
+                _withdraw(lenderA, 0);
+                ++run.payouts;
+            }
+        }
+        cm.finalize(m1);
+
+        vm.prank(lenderA);
+        cm.redeem(m1, run.unitsA - splitA);
+        _assertPaidOutCovered();
+        _withdraw(lenderA, 0);
+        run.payouts += 2;
+
+        // Every unit A held is now burned by redeem or sits in its Claim, so neither path can pay it twice.
+        bytes memory noUnits =
+            abi.encodeWithSelector(IERC1155Errors.ERC1155InsufficientBalance.selector, lenderA, 0, 1, uint256(m1));
+        vm.expectRevert(noUnits);
+        vm.prank(lenderA);
+        cm.redeem(m1, 1);
+        vm.expectRevert(noUnits);
+        vm.prank(lenderA);
+        cm.withdrawCollected(m1, 1);
+        (uint256 againMusd, uint256 againBtc) = _withdraw(lenderA, 0);
+        ++run.payouts;
+        assertEq(againMusd, 0, "a Claim already paid in full pays no more MUSD");
+        assertEq(againBtc, 0, "a Claim already paid in full pays no more BTC");
+
+        vm.prank(lenderB);
+        cm.redeem(m1, run.unitsB);
+        _assertPaidOutCovered();
+        ++run.payouts;
+        if (run.unitsT > 0) {
+            uint256 splitT = Math.max(run.unitsT / 2, 1);
+            _withdraw(treasury, splitT);
+            ++run.payouts;
+            if (run.unitsT > splitT) {
+                vm.prank(treasury);
+                cm.redeem(m1, run.unitsT - splitT);
+                _assertPaidOutCovered();
+                ++run.payouts;
+            }
+            _withdraw(treasury, 0);
+            ++run.payouts;
+        }
+
+        // Both lenders' offers took every MUSD they were minted and the treasury starts empty, so each balance is
+        // the real tokens this date sent out. Any other income would break the bounds, never hide a breach.
+        (run.musdA, run.btcA) = (musd.balanceOf(lenderA), btc.balanceOf(lenderA));
+        (run.musdB, run.btcB) = (musd.balanceOf(lenderB), btc.balanceOf(lenderB));
+        (run.musdT, run.btcT) = (musd.balanceOf(treasury), btc.balanceOf(treasury));
+    }
+
+    /// @dev Lender A's share is taken against everything the date collected, so a mixed holder is held to the same
+    ///      figure whichever path paid each unit. Lender B is held to redeem's own formula.
+    function _assertWithinShares(MixedRun memory run) internal view {
+        ICreditMarkets.Market memory market = cm.marketOf(m1);
+        uint256 shareMusd = Math.mulDiv(run.unitsA, market.collectedMusd, market.faceTotal);
+        uint256 shareBtc = Math.mulDiv(run.unitsA, market.collectedBtc, market.faceTotal);
+        assertLe(run.musdA, shareMusd, "A's MUSD above its share of what was collected");
+        assertLe(run.btcA, shareBtc, "A's BTC above its share of what was collected");
+        assertGe(run.musdA + 2, shareMusd, "A's MUSD short of its share beyond rounding");
+        assertGe(run.btcA + 2, shareBtc, "A's BTC short of its share beyond rounding");
+
+        uint256 redeemMusdB = Math.min(run.unitsB, Math.mulDiv(run.unitsB, market.musdAtFinal, market.unitsAtFinal));
+        assertEq(run.musdB, redeemMusdB, "B's MUSD is what redeem pays");
+        assertEq(run.btcB, Math.mulDiv(run.unitsB, market.btcAtFinal, market.unitsAtFinal), "B's BTC is redeem's");
+
+        (uint256 paidMusd, uint256 paidBtc) = cm.paidOutOf(m1);
+        assertEq(paidMusd, run.musdA + run.musdB + run.musdT, "paidOutOf matches the MUSD that left");
+        assertEq(paidBtc, run.btcA + run.btcB + run.btcT, "paidOutOf matches the BTC that left");
+        // Every holder has taken everything, so what stays is rounding, under one wei per payout.
+        assertLe(market.collectedMusd - paidMusd, run.payouts, "MUSD locked in beyond rounding");
+        assertLe(market.collectedBtc - paidBtc, run.payouts, "BTC locked in beyond rounding");
+        assertEq(cm.balanceOf(lenderA, m1), 0, "A kept units");
+        assertEq(cm.balanceOf(lenderB, m1), 0, "B kept units");
+        assertEq(cm.balanceOf(treasury, m1), 0, "the treasury kept units");
     }
 
     function test_WithdrawBeforeTheDateReverts() public {
@@ -384,5 +505,46 @@ contract EarlyPayoutsTest is LoanFixture {
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.NothingToClaim.selector, lender, m1));
         vm.prank(lender);
         cm.withdrawCollected(m1, 0);
+    }
+
+    function testFuzz_OneHolderMixingBothPathsGetsNoMoreThanItsShare(
+        uint256 sizeSeed,
+        uint256 kindSeed,
+        uint256 orderSeed,
+        uint256 splitSeed,
+        uint256 pokeMask
+    ) public {
+        _assertWithinShares(_mixedHolderScenario(sizeSeed, kindSeed, orderSeed, splitSeed, pokeMask));
+    }
+
+    /// @dev The BTC a settle credits lands on a Claim that was already paid out against, so it must be added to
+    ///      what A is owed, not lost, and not paid twice when A redeems the rest.
+    function test_MixedHolderGetsTheBtcASettleAddsAfterItsEarlyPayout() public {
+        // Loans close in the order 0, 2, 1: repaid in full, settled in BTC, repaid in full. A takes a payout after
+        // each closing.
+        uint256 kinds = 2 << 16;
+        uint256 orderSettleSecond = 3;
+        vm.recordLogs();
+        MixedRun memory run = _mixedHolderScenario(42, kinds, orderSettleSecond, 4_000e18, 7);
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 firstPayout = type(uint256).max;
+        uint256 settle;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics.length < 2) continue;
+            bytes32 topic = logs[i].topics[0];
+            if (topic == ICreditMarkets.CreditedBtc.selector) settle = i;
+            if (
+                topic == ICreditMarkets.CollectedWithdrawn.selector && firstPayout == type(uint256).max
+                    && logs[i].topics[1] == bytes32(uint256(uint160(lenderA)))
+            ) firstPayout = i;
+        }
+        assertLt(firstPayout, settle, "the settle credits BTC after A's first early payout");
+
+        ICreditMarkets.Market memory market = cm.marketOf(m1);
+        assertGt(market.collectedBtc, 0, "the settle credited BTC to the date");
+        assertGt(run.btcA, 0, "A was paid BTC that arrived after its early payout");
+        assertApproxEqAbs(run.btcA, Math.mulDiv(run.unitsA, market.collectedBtc, market.faceTotal), 2, "A's BTC");
+        _assertWithinShares(run);
     }
 }

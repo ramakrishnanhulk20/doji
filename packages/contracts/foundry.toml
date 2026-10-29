@@ -21,5 +21,6 @@ fail_on_revert = false
 
 [rpc_endpoints]
 mezo_testnet = "https://rpc.test.mezo.org"
-# On 2026-10-21 both boar.network nodes and validationcloud timed out under the fork suites; dRPC ran all 13 clean.
-mezo_mainnet = "https://mezo.drpc.org"
+# Free public nodes change from week to week: on 2026-10-21 only dRPC ran all 13 fork tests clean, on 2026-10-29
+# dRPC dropped connections and validationcloud rate-limited while mezo-mainnet.boar.network ran all 13 clean.
+mezo_mainnet = "https://mezo-mainnet.boar.network"
