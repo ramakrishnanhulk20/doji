@@ -57,17 +57,20 @@ function Counter({ principal, running, instant }: CounterProps) {
     if (!element) return;
 
     if (!running) {
-      element.textContent = formatMusd(0);
+      element.textContent = formatMusd(principal);
+      element.style.visibility = "hidden";
       return;
     }
+    element.style.visibility = "";
     if (instant) {
       element.textContent = formatMusd(principal);
       return;
     }
 
     let frame = 0;
-    const start = performance.now();
+    let start: number | null = null;
     const step = (now: number) => {
+      start ??= now;
       const progress = Math.min(1, (now - start) / COUNT_MS);
       element.textContent = formatMusd(principal * (1 - Math.pow(1 - progress, 3)));
       if (progress < 1) frame = requestAnimationFrame(step);

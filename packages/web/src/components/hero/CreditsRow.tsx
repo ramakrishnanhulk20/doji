@@ -70,6 +70,12 @@ export function CreditsRow({ reduced }: { reduced: boolean }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [pulse, setPulse] = useState(0);
   const seenFirstBlock = useRef(false);
+  const mountedAt = useRef<number | null>(null);
+
+  // The tiles' entrance delays count from this mount, so the counts do too.
+  useEffect(() => {
+    mountedAt.current = performance.now();
+  }, []);
 
   useEffect(() => {
     if (openIndex === null) return;
@@ -99,7 +105,13 @@ export function CreditsRow({ reduced }: { reduced: boolean }) {
   const lockedValue =
     lockedState === "ready" && locked.data ? (
       <>
-        <CountValue value={locked.data.btc} format={formatBtc} startAfterMs={startAfter(0)} reduced={reduced} />
+        <CountValue
+          value={locked.data.btc}
+          format={formatBtc}
+          startAfterMs={startAfter(0)}
+          since={mountedAt}
+          reduced={reduced}
+        />
         {NBSP}BTC
       </>
     ) : lockedState === "error" ? (
@@ -124,6 +136,7 @@ export function CreditsRow({ reduced }: { reduced: boolean }) {
           value={offers.data.musdOnOffer}
           format={formatMusd}
           startAfterMs={startAfter(1)}
+          since={mountedAt}
           reduced={reduced}
         />
         {NBSP}MUSD
@@ -144,6 +157,7 @@ export function CreditsRow({ reduced }: { reduced: boolean }) {
           value={best.aprBps / 100}
           format={formatApr}
           startAfterMs={startAfter(2)}
+          since={mountedAt}
           reduced={reduced}
         />
       ) : (
@@ -166,7 +180,13 @@ export function CreditsRow({ reduced }: { reduced: boolean }) {
 
   const blockValue =
     blockState === "ready" && block.data !== undefined ? (
-      <CountValue value={block.data} format={formatBlock} startAfterMs={startAfter(3)} reduced={reduced} />
+      <CountValue
+        value={block.data}
+        format={formatBlock}
+        startAfterMs={startAfter(3)}
+        since={mountedAt}
+        reduced={reduced}
+      />
     ) : blockState === "error" ? (
       unavailable
     ) : (
