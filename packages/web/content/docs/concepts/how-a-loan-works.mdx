@@ -18,14 +18,14 @@ Each Thursday is its own market. A loss at one date never touches another, and i
 
 ## Offers
 
-A lender posts an offer: an amount, a date and a yearly rate. The contract pulls exactly that amount of MUSD and holds it. The maker, the date and the rate never change after posting, and an offer number is never reused.
+A lender posts an offer: an amount, a date and a yearly rate. The contract pulls exactly that amount of MUSD and holds it, or, for an offer posted to earn while it waits, deposits it in Mezo's sMUSD savings vault ([Earn while an offer waits](/docs/concepts/earn-while-waiting)). The maker, the date and the rate never change after posting, and an offer number is never reused.
 
 - The minimum offer is 10 MUSD. The rate is capped at 50% a year in the contract's code.
-- Only the maker can cancel, at any time, for exactly what has not been lent. No pause can block a cancel.
+- Only the maker can cancel, at any time, for exactly what has not been lent. No pause can block a cancel. A parked offer's cancel also withdraws its MUSD from Mezo's vault, so it needs the vault to pay out.
 
 ## Fills
 
-A borrower lists the offers to take. Only LoanManager can fill them, and each listed offer must be open, for exactly the loan's date, at or under the borrower's highest accepted rate, and have at least the listed amount left. One loan can take up to 8 offers. The Doji site lists the cheapest offers first, then the oldest, so an offer with a lower rate is taken sooner.
+A borrower lists the offers to take. Only LoanManager can fill them, and each listed offer must be open, for exactly the loan's date, at or under the borrower's highest accepted rate, and have at least the listed amount left. One loan can take up to 8 offers. The Doji site lists the cheapest offers first, then the oldest, so an offer with a lower rate is taken sooner. When a loan takes parked offers, CreditMarkets withdraws their MUSD from the vault in one call inside the same transaction, so the borrower always receives plain MUSD.
 
 The borrow itself goes through these checks at a fresh oracle price, all in one internal path:
 
@@ -56,12 +56,16 @@ The face is issued as credit units at the same date, in two parts that add up to
 
 For example, 1,000 MUSD lent at 6% for exactly 28 days has a face of 1,004.60 MUSD. The lender holds 1,004.14 units and the protocol 0.46. If that date later falls short, the protocol's units take their share of the loss alongside the lender's, pro rata. No MUSD is skimmed at the fill: the borrower receives the whole principal.
 
-Units are recorded when the offer fills and minted when the lender claims them, so no lender's code runs inside a borrow. See [Credit units and payouts](/docs/getting-started/credit-units).
+Units are recorded when the offer fills and minted when the lender claims them, so no lender's code runs inside a borrow. Units from the Wave 2 contracts can also be sold before their date ([Selling credit units](/docs/concepts/selling-units)). See [Credit units and payouts](/docs/getting-started/credit-units).
 
 ## Rolling
 
-Before or on its Thursday, a borrower can roll an active loan into a later Thursday. The new loan takes new offers and goes through every borrow check at today's price and today's settings. Its principal repays the old date in full in the same transaction; the borrower tops up any difference or receives any extra. A lock that keeps being extended becomes a rolling credit line.
+Before or on its Thursday, a borrower can roll an active loan into a later Thursday. The new loan takes new offers and goes through every borrow check at today's price and today's settings. Its principal repays the old date in full in the same transaction; the borrower tops up any difference or receives any extra. A lock that keeps being extended becomes a rolling credit line. A loan rolls only within the set of contracts it opened on.
 
 ## Settings stay with the loan
 
 The borrow limit, the auction line, the auction floor, the auction length and the penalty are copied into each loan when it opens or rolls. A later settings change reaches only new offers and new loans. See [Risk settings](/docs/concepts/risk-settings).
+
+## Two sets of contracts
+
+Doji runs two pairs of LoanManager and CreditMarkets on Mezo testnet. The 20 October 2026 pair took the first loans. The Wave 2 pair, deployed on 4 November 2026 with PayDown and UnitMarket beside it, takes every new offer and loan. Everything opened on the 20 October pair keeps working there: repaying, rolling, cancelling, claiming, early payouts and redemption. A loan rolls only within its own pair, and units from the two pairs are different tokens even for the same Thursday. The rules on this page hold on both.

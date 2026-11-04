@@ -22,26 +22,29 @@ Collateral value is always the locked BTC times the oracle price. Voting power, 
 
 ## Votes, rewards and fees pass through
 
-While Doji holds the position, its borrower acts on it through LoanManager. Every call checks that the caller is the recorded borrower, that Doji still holds the position, and that the loan is not in auction.
+While Doji holds the position, its borrower acts on it through LoanManager. Every call checks that the caller is the recorded borrower, that Doji still holds the position, and that the loan is not in auction. On the Wave 2 contracts two calls differ: `claimRewards` also runs during an auction and for the position's reward operator, and `setRewardOperator`, the borrower's own, works in any loan state.
 
 | Call | What it does | Extra condition |
 | --- | --- | --- |
 | `vote(tokenId, pools, weights)` | Casts the position's gauge vote on Mezo's PoolsVoter, up to 30 pools. | The loan must be on time and safe at a fresh price. A normal lock cannot vote in its last week, so a reset is always possible before the lock ends. |
 | `resetVotes(tokenId)` | Clears the vote on PoolsVoter. | Any health. Mezo allows one vote or reset per position per epoch, and none in an epoch's first hour. |
-| `claimRewards(tokenId, gauges, feeTokens, bribeTokens)` | Claims the position's pool fees and incentives and pays them to the borrower. | Any health. Up to 16 tokens. |
+| `claimRewards(tokenId, gauges, feeTokens, bribeTokens)` | Claims the position's pool fees and incentives and pays them to the caller: the borrower, or the reward operator the borrower named. | Any health, and on Wave 2 during an auction too. Up to 16 tokens. |
 | `claimRebase(tokenId)` | Claims the position's share of veBTC chain fees from Mezo's fee distributor. | Any health. |
 | `extendLock(tokenId, lockDuration)` | Pushes the lock's end out with veBTC's `increaseUnlockTime`. | The loan must be on time and safe at a fresh price. |
+| `setRewardOperator(tokenId, operator)` | Wave 2 only. Names the one other address that may call `claimRewards` for this position, or clears it with the zero address. Pay-down uses it to name PayDown. | Any health, auction included. |
 
-For `claimRewards`, the borrower names gauges, never reward contracts. LoanManager looks up each gauge's fee and incentive contracts from PoolsVoter itself, and every token must be on PoolsVoter's own whitelist. It measures its balance of each token before and after the claim and pays the borrower exactly the increase, under a reentrancy lock.
+For `claimRewards`, the caller names gauges, never reward contracts. LoanManager looks up each gauge's fee and incentive contracts from PoolsVoter itself. On the Wave 2 contracts every token must be one that the gauge's own fee or incentive contract lists as a reward (`isReward`); on the 20 October contracts it must be on PoolsVoter's whitelist. LoanManager measures its balance of each token before and after the claim and pays the caller exactly the increase, under a reentrancy lock.
 
 For `claimRebase`, Mezo's fee distributor adds the claim to the lock while the lock is unexpired or permanent, which only raises the collateral. For an expired lock it pays BTC, and LoanManager credits exactly the BTC that arrived to the borrower's claimable, collected with `claim()`.
 
+A reward operator can make that one call for that one position and nothing else: it can never vote, reset, extend, claim the rebase, borrow, roll or withdraw. The borrower's own claim keeps working, and the operator is deleted with the position's record when the veBTC leaves Doji. The borrower can also let the rewards repay the loan: see [Rewards pay down the loan](/docs/concepts/rewards-pay-down).
+
 <Callout type="info">
-My loans and the loan page have Vote, Reset votes, Extend lock, Claim rebase and Claim pool rewards for the borrower. On Mezo testnet today the two claims cannot succeed for reasons on Mezo's side: the testnet PoolsVoter lists no whitelisted reward token, and the testnet fee distributor's weekly round has not moved since November 2025. The buttons say so instead of failing. The same calls run against real Mezo mainnet positions in the fork tests, which forward real MUSD and BTC pool fees through four real gauges ([PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol)).
+My loans and the loan page have Vote, Reset votes, Extend lock, Claim rebase and Claim pool rewards for the borrower. On Mezo testnet the Wave 2 contracts can claim a pool's MUSD and BTC incentives, because their rule asks the pool's own reward contract. The 20 October contracts cannot: the testnet PoolsVoter whitelists neither MUSD nor BTC, and the loan page says there is nothing Doji can claim. The testnet fee distributor has not been funded since 12 November 2025, so no rebase is waiting on testnet. The same calls run against real Mezo mainnet positions in the fork tests, which forward real MUSD and BTC pool fees through four real gauges ([PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol)).
 </Callout>
 
 ## When the loan ends
 
 After a full repayment the loan record is deleted and the position stays in Doji with no loan, still yours, until you withdraw it or borrow against it again. Withdrawing deletes the position record before the NFT moves, so a position that comes back later starts with a clean record.
 
-If a loan goes to auction, the pass-throughs close for it, because the resolution steps own the position until the auction ends one way or another. See [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).
+If a loan goes to auction, the pass-throughs close for it, because the resolution steps own the position until the auction ends one way or another. On the Wave 2 contracts `claimRewards` stays open: rewards are not collateral, and Mezo pays a week's incentives at the same Thursday 00:00 UTC a loan falls due, so closing the claim would hand the borrower's last week of rewards to a buyer. See [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).

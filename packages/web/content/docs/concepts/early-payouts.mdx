@@ -19,6 +19,8 @@ BTC owed  = units x collected BTC / every unit ever issued at the date
 
 3. The Claim is paid what it is owed minus what it was already paid. Calling again later, with zero new units, pays only what arrived since.
 
+Units listed for sale sit in UnitMarket, not in the wallet, so they can move into a Claim only once the listing is cancelled or returned ([Selling credit units](/docs/concepts/selling-units)).
+
 On Lend this is "Withdraw what's collected", then "Withdraw the new part". See [Credit units and payouts](/docs/getting-started/credit-units).
 
 ## Why it is fair

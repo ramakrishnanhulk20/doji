@@ -1,9 +1,9 @@
 ---
 title: Lend MUSD
-description: Post a fixed-rate offer for a Thursday, follow it, and cancel what is not taken.
+description: Post a fixed-rate offer for a Thursday, let it earn in sMUSD while it waits, follow it, cancel what is not taken, and buy credit units from other lenders.
 ---
 
-[Lend](/lend) lets you post an offer: an amount of MUSD, a Thursday and a fixed yearly rate. Your MUSD waits in the CreditMarkets contract until a borrower takes it, you can cancel whatever is not taken at any time, and you are paid back on that date.
+[Lend](/lend) lets you post an offer: an amount of MUSD, a Thursday and a fixed yearly rate. Until a borrower takes it, your MUSD earns in Mezo's sMUSD savings vault, or waits in the CreditMarkets contract if you choose. You can cancel whatever is not taken, and you are paid back on that date. Every new offer goes to the Wave 2 contracts of 4 November 2026.
 
 ## Getting test MUSD
 
@@ -11,7 +11,7 @@ Lending needs MUSD in your wallet. The Mezo faucet gives test BTC, not MUSD. The
 
 ## 01 Due date
 
-Each card is a Thursday, 00:00 UTC, within the next 4 weeks. A date that already has offers shows "best now" with the lowest rate, how many offers it has and how much MUSD is already due to lenders on it. A date with none says "no offers yet: you'd set the rate". The screen starts on the earliest Thursday that already has offers, or the earliest Thursday when none has.
+Each card is a Thursday, 00:00 UTC, within the next 4 weeks. A date that already has offers shows "best now" with the lowest rate, how many offers it has, how much MUSD is on offer and how much is already due to lenders on it. A date with none says "no offers yet: you'd set the rate". The screen starts on the earliest Thursday that already has offers, or the earliest Thursday when none has.
 
 ## 02 Your rate
 
@@ -21,6 +21,20 @@ Type a yearly rate in percent, from 0.01% up to the 50% cap written into the con
 
 Type the MUSD to lend, or press "Max" for your whole balance. The minimum offer is 10 MUSD.
 
+## 04 While it waits
+
+The switch "Earn in sMUSD while it waits" is on by default. On, it reads "Your MUSD sits in Mezo's sMUSD savings vault and earns its rate until a borrower takes it. The borrower still receives plain MUSD." and shows the vault's address under it. Off, it reads "Your MUSD sits in the Doji contract until a borrower takes it. It earns nothing while it waits."
+
+The switch turns itself off, and new offers wait in the contract, when earning is not open:
+
+| The switch says | Why |
+| --- | --- |
+| "Doji's guardian has paused earning in sMUSD. New offers wait in the contract, as before." | The guardian has stopped parking for new offers. |
+| "Mezo's sMUSD vault is not paying out right now, so new offers wait in the contract. Offers already earning stay in the vault." | A simulated withdraw of everything parked would be refused by the vault. |
+| "The sMUSD vault could not be read. New offers wait in the contract for now." | The check itself failed. |
+
+The trade: a plain offer's cancel can never be blocked, while a parked offer's cancel and fill need Mezo's vault to pay out. How it works and what Doji does if the vault fails are in [Earn while an offer waits](/docs/concepts/earn-while-waiting).
+
 ## Your offer
 
 | Row | Meaning |
@@ -28,17 +42,22 @@ Type the MUSD to lend, or press "Max" for your whole balance. The minimum offer 
 | Lend | The MUSD you put up. |
 | Until | The Thursday, 00:00 UTC. |
 | Rate | Your yearly rate, fixed. |
+| While it waits | "Earning in sMUSD", or "In the contract" for a plain offer. |
 | If taken now, you are owed | The MUSD due to you on that date if a borrower takes the whole offer right now. |
 | Credit units | The same amount, as units: 1 unit is 1 MUSD due on that date. |
 | Protocol fee | The protocol's units: 10% of the interest, sharing any loss with you. |
 
 Two notes sit under the card. Interest counts from when a borrower takes the offer, so an offer taken later earns a little less. And your units for a date share that date's repayments, auction proceeds and settled Bitcoin with every other lender at that date.
 
-The button reads "Connect wallet to lend", then for example "Post offer: 20.00 MUSD at 6.50% until Thu 12 Nov". The steps are "Approve 20.00 MUSD" (for that exact amount, skipped if an earlier approval covers it) and "Post offer", each signed in your wallet. The card then says "Your offer is live." with the offer number, and offers "View transaction" and "Post another".
+The button reads "Connect wallet to lend", then for example "Post offer: 20.00 MUSD at 6.50% until Thu 12 Nov". The steps are "Approve 20.00 MUSD" (for that exact amount, skipped if an earlier approval covers it) and "Post offer, earning in sMUSD", or "Post offer" with the switch off, each signed in your wallet. The card then says "Your offer is live." with the offer number, adds "Earning in sMUSD until a borrower takes it. Withdraw what it earns from Your offers below." for a parked offer, and offers "View transaction" and "Post another".
+
+## Credit units for sale
+
+Under the form, "Credit units for sale" lists units other lenders are selling before their date, at 1 MUSD a unit or less. Each card shows the price, what a unit earns by its Thursday and over a year, the units left and the listing's expiry. "Buy units" opens a sheet: type the "Units to buy", read "You pay", "You receive" and "You earn", then sign "Approve" for exactly the cost and "Buy units". The units arrive under "Your credit units". Your own listings show "Your listing" and "Cancel listing", and after a listing's expiry anyone can press "Return to seller". Selling is in [Credit units and payouts](/docs/getting-started/credit-units#sell-units), and the rules in [Selling credit units](/docs/concepts/selling-units).
 
 ## Your offers
 
-The table under the form lists every offer this wallet has posted:
+The table lists every offer this wallet has posted, on both sets of contracts. Its columns are Offer, Due, Rate, Posted, Left, Earned and Status. An offer from the 20 October contracts carries a "20 Oct" tag and cancels there as before. An offer whose MUSD is in Mezo's vault carries an "sMUSD" tag next to what is left.
 
 | Status | Meaning |
 | --- | --- |
@@ -48,10 +67,16 @@ The table under the form lists every offer this wallet has posted:
 | Cancelled | You took back what was left. |
 | Expired | The Thursday has passed with MUSD left on the offer. Cancel it to get that MUSD back. |
 
-Any offer with MUSD left has a "Cancel" button. It asks "Cancel offer #7? 20.00 MUSD comes back to you." with "Keep it" and "Yes, cancel". When it lands: "Offer #7 cancelled. 20.00 MUSD is back in your wallet." Cancelling is never paused and refunds exactly the part not taken.
+Any offer with MUSD left has a "Cancel" button. It asks "Cancel offer #7? 20.00 MUSD comes back to you." with "Keep it" and "Yes, cancel". When it lands: "Offer #7 cancelled. 20.00 MUSD is back in your wallet." Cancelling is never paused and refunds exactly the part not taken. For a parked offer it also takes that MUSD back out of Mezo's vault, so it works only while the vault pays out.
+
+## Earnings
+
+For a parked offer, "Earned" shows what the contract's `pendingOfferYield` says its waiting MUSD has earned since its yield was last booked, in MUSD with four decimals. Plain offers and 20 October offers show a dash.
+
+Once the wallet has a parked offer, "Earned in sMUSD" above the table adds those figures up, and "Withdraw earnings" collects them in one transaction. When it lands: "0.0123 MUSD of sMUSD earnings sent to your wallet." If Mezo's vault has not paid out all of it yet, the line adds "... MUSD more arrives once Mezo's vault pays it out." and the rest stays owed to you. Withdrawing earnings is never paused, and it does not touch the offer or its credit units.
 
 <Callout type="info">
-The guardian can pause new offers. The screen then says "New offers are paused right now. Cancelling still works." Nothing can stop a cancel.
+The guardian can pause new offers. The screen then says "New offers are paused right now. Cancelling still works." No pause can stop a cancel. A parked offer's cancel can still wait on Mezo's vault: see [Earn while an offer waits](/docs/concepts/earn-while-waiting#what-can-go-wrong-and-what-doji-does).
 </Callout>
 
-When a borrower takes your offer, your credit units appear under "Your credit units". What to do with them is in [Credit units and payouts](/docs/getting-started/credit-units).
+When a borrower takes your offer, the borrower receives plain MUSD, even from a parked offer, and your credit units appear under "Your credit units". What to do with them, including selling them before the date, is in [Credit units and payouts](/docs/getting-started/credit-units).

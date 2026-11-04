@@ -1,9 +1,9 @@
 ---
 title: Manage a loan
-description: Repay, roll, withdraw and claim on My loans, and read any loan's public page.
+description: Repay, roll, withdraw and claim on My loans, let rewards pay a loan down, and read any loan's public page.
 ---
 
-[My loans](/loans) shows everything Doji holds for the connected wallet: what you owe, by when, how safe each loan is, and the votes and rewards that stay yours.
+[My loans](/loans) shows everything Doji holds for the connected wallet: what you owe, by when, how safe each loan is, and the votes and rewards that stay yours. It lists positions on both sets of contracts, the Wave 2 contracts of 4 November 2026 that take every new loan and the 20 October contracts that keep serving the loans opened on them. Each card has "Open loan page" for the loan's own page.
 
 ## A position card
 
@@ -26,7 +26,7 @@ The rows show "You owe" (the amount and the date), the collateral in BTC and wha
 
 Repaying early still costs the full amount owed, because the lender's return is fixed. Repaying is never paused, and it still works after the date, until the position is sold or settled.
 
-If the loan is overdue or in auction, the card shows "Repay in full" instead. Only the whole debt helps then: it keeps the position before an auction starts, or ends a running auction with the position still yours.
+If the loan is overdue or in auction, the card shows "Repay in full" instead. Only the whole debt helps then: it keeps the position before an auction starts, or ends a running auction with the position still yours. On a Wave 2 loan with pay-down on, a harvest whose rewards cover the debt does the same.
 
 ## Roll to a later date
 
@@ -38,6 +38,10 @@ If the loan is overdue or in auction, the card shows "Repay in full" instead. On
 - The button reads "Roll to Thu 5 Nov" (or the date you picked). A top-up needs an "Approve" first.
 
 A roll works only while the loan is active and on time, at or before its Thursday. It takes that day's settings, like any new loan. Rolling is never paused; while new loans are paused, a roll can refinance or take a top-up but cannot pay out extra MUSD.
+
+A loan rolls only on the contracts it opened on: a Wave 2 loan into Wave 2 offers, a 20 October loan into 20 October offers. The app posts every new offer to Wave 2, so a 20 October loan finds only the 20 October offers still open, and may have to be repaid instead.
+
+If Mezo's sMUSD vault stops paying out, offers parked in it cannot fill a roll. The Roll sheet then says "Mezo's sMUSD vault is not paying out right now, so offers earning in it cannot be rolled into. The roll uses the other offers until it recovers." A Wave 2 loan due within two weeks also gets a warning on its card: "Mezo's sMUSD vault is not paying out right now. Until it recovers, offers earning in it cannot fill a roll, so plan to repay or roll into the other offers before Thu 19 Nov." (with its own date).
 
 <Callout type="info">
 A lock made on the Borrow screen ends on the loan's due date, so rolling to a later Thursday also moves the lock's end. The Roll sheet marks those dates "extends your lock" and adds the step itself: "Extend lock to" the new date, then the top-up approval if one is needed, then "Roll". Your BTC stays locked until the new date. The lock can reach at most 28 days from today, so the latest Thursday on offer is the last one inside that window.
@@ -51,11 +55,11 @@ Withdrawing hands back the veBTC position, not loose BTC. The BTC stays locked i
 
 ## Claim
 
-If an auction or a settlement left something for you, a strip appears at the top: "Waiting for you: ... MUSD and ... BTC from auctions or settlements." "Claim" pays all of it to your wallet in one transaction.
+If an auction or a settlement left something for you, a strip appears at the top: "Waiting for you: ... MUSD and ... BTC from auctions or settlements." "Claim" pays all of it to your wallet in one transaction. Each set of contracts keeps its own, so a wallet owed on both sees two strips, each with its own "Claim".
 
 ## The loan page
 
-Every loan has a public page at `/loans/` followed by the veBTC number, for example [/loans/389](/loans/389), an example loan. Anyone can read it without a wallet. It shows the borrower, the transaction that opened it, what is owed, the collateral, the limit bar, the lock end, the votes, the rewards and the loan's own terms (limit, auction line, floor, auction length, penalty) as they were fixed when it opened or last rolled.
+Every loan has a public page at `/loans/` followed by the veBTC number, for example [/loans/389](/loans/389), an example loan on the 20 October contracts, or [/loans/411](/loans/411), a Wave 2 loan with pay-down on. Anyone can read it without a wallet. It shows the borrower, the transaction that opened it, what is owed, the collateral, the limit bar, the lock end, the votes, the rewards and the loan's own terms (limit, auction line, floor, auction length, penalty) as they were fixed when it opened or last rolled. While the loan is open it also shows the pay-down panel.
 
 When the loan is in auction, the page shows "Buy this position" with the price now, the floor, the time to the floor, the curve, and how the price would split: "Lenders get ... · protocol ... · borrower keeps ...". The button reads "Buy veBTC #389 for up to" the price plus 1%, with a 10-minute deadline, because the price can rise a little within a block.
 
@@ -63,4 +67,19 @@ The page also offers the steps anyone may run when the contracts allow them: "St
 
 ## Votes and rewards
 
-While Doji holds the position you keep its votes and its rewards. The card's Votes row has Vote and Reset, the Rewards row has Claim rebase and Claim pool rewards, and the Lock row has Extend; the loan page shows the same in a "Votes and rewards" card. Vote, Reset and Extend appear only while the loan is on time and safe; votes close one week before the lock ends. On testnet the two claims cannot succeed today for reasons on Mezo's side, and the buttons say so. How they work is in [At the same time](/docs/concepts/at-the-same-time).
+While Doji holds the position you keep its votes and its rewards. The card's Votes row has Vote and Reset, the Rewards row has Claim rebase and Claim pool rewards, and the Lock row has Extend; the loan page shows the same in a "Votes and rewards" card. Vote, Reset and Extend appear only while the loan is on time and safe; votes close one week before the lock ends. The claim buttons are hidden while a loan is in auction. How they work is in [At the same time](/docs/concepts/at-the-same-time).
+
+On a Wave 2 loan, "Claim pool rewards" claims every token the pool's own reward contracts list, so MUSD and BTC incentives can be claimed on testnet even though Mezo's testnet whitelist has neither. A 20 October loan claims only whitelisted tokens, so on testnet its loan page says "Mezo's voter lists no reward token for these pools yet, so there is nothing Doji can claim." Mezo's testnet fee distributor has not been funded since 12 November 2025, so "Claim rebase" has nothing to collect there on either set of contracts.
+
+## Let rewards pay the loan
+
+On a Wave 2 loan's page, the panel "Let rewards pay this loan" turns the position's weekly pool rewards into repayments. It reads: "Every week the keeper claims this position's pool fees and incentives. MUSD goes straight to the loan. BTC is sold for MUSD only as far as the debt needs, never below Mezo's oracle price less 1%. Everything else goes to the borrower." The 1% is read live from PayDown.
+
+- "Turn on pay-down" names PayDown as the position's reward operator in one transaction: "Pay-down is on. Rewards now go to loan #411 first." The title becomes "Rewards pay this loan". "Turn off pay-down" clears it: "Pay-down is off. Rewards go to your wallet when you claim them." Only the borrower sees these buttons. Anyone else reads "The borrower has turned pay-down on." or "The borrower has not turned pay-down on."
+- Once pay-down is on, "Pay down now" runs a harvest for anyone with a connected wallet. Rewards become claimable after the week they were earned ends, at Thursday 00:00 UTC, and the panel names the next one. Above the button, "Claiming now would repay about ... MUSD." comes from a dry run of the same harvest. With nothing to claim yet it reads "Nothing to claim for this position yet. Rewards arrive after the week they were earned ends." When a harvest lands: "Harvested: ... MUSD went to loan #411." and the BTC sold, if any.
+- "Repaid by rewards" adds up every harvest, with a bar that splits what has been repaid between "rewards" and "the borrower". "Harvests" lists each one with what it repaid, any BTC it sold and a link to the transaction.
+- With pay-down on, the borrower also sees "Other rewards waiting": reward tokens other than MUSD and BTC, each with "at least ... MUSD" when Mezo's pools can sell it, or "no Mezo pool to MUSD, goes to your wallet". Tick the ones to sell and press "Pay down and sell": the same harvest, plus a sale of each ticked token. "Each sale accepts at most 1% below what Mezo's pools pay now. If the price moves further before the transaction lands, nothing is sold and nothing changes."
+
+Two strips can appear above the buttons: "Harvests are paused by Doji's guardian. Turning pay-down on still works; harvests resume when the pause ends." and, when another address already claims for the position, "Another address, 0x..., can claim this position's rewards. Turning on pay-down replaces it."
+
+A loan on the 20 October contracts shows a note instead: "Rewards pay-down works on loans opened since 4 November. This loan is on Doji's 20 October contracts, so its rewards are claimed by hand above." How a harvest works, and what can stop one, is in [Rewards pay down the loan](/docs/concepts/rewards-pay-down).

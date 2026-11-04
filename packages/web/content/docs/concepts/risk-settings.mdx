@@ -5,7 +5,7 @@ description: The five numbers that decide how much you can borrow and what happe
 
 ## The five numbers
 
-Doji was deployed with these settings. Each loan copies them when it opens or rolls, so a later change never reaches a loan that is already open.
+Both sets of contracts, 20 October and Wave 2, were deployed with these settings. Each loan copies them when it opens or rolls, so a later change never reaches a loan that is already open.
 
 | Setting | Value | What it means |
 | --- | --- | --- |
@@ -54,10 +54,12 @@ The study does not set the penalty. At the 65% line the debt is 65% of the value
 | Highest rate an offer can ask | 50% a year, written into the code |
 | Offers per loan | at most 8 |
 | Pools per vote | at most 30, PoolsVoter's own limit |
+| PayDown slippage allowance (Wave 2) | 1%: a BTC sale in a pay-down harvest must bring at least the oracle value less this |
+| Units market fee (Wave 2) | 0.25% of each sale, paid by the seller |
 
 ## Limits the owner cannot cross
 
-The owner can change settings only inside bounds written into the contracts, and every change touches only new offers and new loans:
+The owner can change settings only inside bounds written into the contracts. A change to the loan and offer settings touches only new offers and new loans, a change to the units fee only new listings, and a change to the PayDown slippage allowance every harvest from then on:
 
 | Setting | Allowed range |
 | --- | --- |
@@ -69,6 +71,8 @@ The owner can change settings only inside bounds written into the contracts, and
 | Minimum loan | 1 to 100,000 MUSD |
 | Minimum offer | 1 to 1,000,000 MUSD |
 | Longest term | 1 to 4 weeks |
+| PayDown slippage allowance | at most 3% |
+| Units market fee | at most 1% |
 
 ## What the study does not cover
 

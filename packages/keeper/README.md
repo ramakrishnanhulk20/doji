@@ -6,7 +6,7 @@ Anyone can run it. Every call it makes is open to any wallet, and the contracts 
 
 ## Two pairs, never mixed
 
-A pair is one LoanManager and its CreditMarkets, plus PayDown and UnitMarket from Wave 2 on. Each pair has its own deployment record, and the keeper reads the list in `DEPLOYMENT_FILES`: by default `31611.json` (20 October) and, once its deploy has written it, `31611-wave2.json`. Old and new pairs share maturities and position ids, so the keeper never identifies a loan, market or harvest by its id alone: every object is read from and written to the contracts of the record it came from, and every line it prints starts with that record's name. The run header lists each record's chain id and contract addresses. Two records that name the same Doji contract stop the run before anything is read.
+A pair is one LoanManager and its CreditMarkets, plus PayDown and UnitMarket from Wave 2 on. Each pair has its own deployment record, and the keeper reads the list in `DEPLOYMENT_FILES`: by default `31611.json` (20 October) and `31611-wave2.json` (Wave 2, deployed 4 November 2026), which is read whenever that file exists. Old and new pairs share maturities and position ids, so the keeper never identifies a loan, market or harvest by its id alone: every object is read from and written to the contracts of the record it came from, and every line it prints starts with that record's name. The run header lists each record's chain id and contract addresses. Two records that name the same Doji contract stop the run before anything is read.
 
 ## What one pass does
 
@@ -108,7 +108,7 @@ Measured on a fork of Mezo testnet, priced at the 172 wei per gas testnet charge
 | `settle` | 410,000 to 614,000 | about 0.0000000001 |
 | `finalize` | about 76,000 | about 0.00000000001 |
 
-The vault check is a simulation, not a transaction, so it costs no gas. A harvest has not been measured from the keeper yet, because no PayDown is deployed on testnet. PayDown's own fork test logs it (`test/fork/PayDownFork.t.sol`), and its code comment gives the two big parts: a claim of the most a harvest can list, 16 tokens, is about 1.0 million gas, and the one BTC sale on the real pool is 276,000 to 321,000. A usual keeper harvest lists 4 tokens (MUSD and BTC on both sides of one gauge), so it claims far less than the 16-token figure. Even 1.4 million gas would be about 0.0000000002 test BTC at 172 wei per gas.
+The vault check is a simulation, not a transaction, so it costs no gas. A harvest has not been measured from the keeper yet. PayDown went live on testnet on 4 November 2026 (`31611-wave2.json`), and the first rewards it can claim, for loan 411, are paid only once their epoch ends on Thursday 5 November 00:00 UTC. PayDown's own fork test logs it (`test/fork/PayDownFork.t.sol`), and its code comment gives the two big parts: a claim of the most a harvest can list, 16 tokens, is about 1.0 million gas, and the one BTC sale on the real pool is 276,000 to 321,000. A usual keeper harvest lists 4 tokens (MUSD and BTC on both sides of one gauge), so it claims far less than the 16-token figure. Even 1.4 million gas would be about 0.0000000002 test BTC at 172 wei per gas.
 
 ## What it does not do
 

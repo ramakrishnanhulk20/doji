@@ -1,0 +1,60 @@
+---
+title: Earn while an offer waits
+description: How an offer's MUSD earns Mezo's sMUSD savings rate until a borrower takes it, how the yield is paid, and what happens if the vault stops paying out.
+---
+
+An offer can wait days for a borrower, and a loan's interest only counts from the moment it is taken. Since 4 November 2026 a lender can park that waiting MUSD in sMUSD, Mezo's MUSD savings vault, where it earns the vault's rate until it is lent. The borrower still receives plain MUSD, the loan's fixed rate does not change, and Doji takes no share of the yield.
+
+## Why a lender wants it
+
+- Money that would sit idle until a borrower arrives earns from the first block.
+- The choice is made per offer. A lender who wants a cancel that nothing outside Doji can delay posts a plain offer instead.
+- What the offer earns while it waits is paid on its own, apart from the credit units the loan later issues.
+
+## How to choose it
+
+On [Lend](/lend), step "04 While it waits" holds the switch "Earn in sMUSD while it waits", on by default. With it on, the switch reads "Your MUSD sits in Mezo's sMUSD savings vault and earns its rate until a borrower takes it. The borrower still receives plain MUSD." and shows the vault's address. Switched off, it reads "Your MUSD sits in the Doji contract until a borrower takes it. It earns nothing while it waits." The full walk-through is in [Lend MUSD](/docs/getting-started/lend#04-while-it-waits).
+
+## How it works on chain
+
+Everything runs through CreditMarkets on the Wave 2 contracts and Mezo's sMUSD vault (MUSDSavingsRate, `0x6f461c68B2c5492C0F5CCEc5a264d692aA7A8e16` on testnet).
+
+| Moment | CreditMarkets call | What happens with the vault |
+| --- | --- | --- |
+| Post | `postParkedOffer(maturity, aprBps, amount)` | Pulls exactly the MUSD from the lender, approves the vault for exactly that amount, calls `deposit`, and checks the sMUSD it holds rose by exactly the amount. Then it records the vault's `yieldIndex` as the offer's starting point. |
+| A borrower takes it | `fill`, which only LoanManager can call, inside a borrow or a roll | Books each parked offer's yield, cuts what is left on it, then makes one `withdraw` for all the parked MUSD that borrow takes and pays the borrower from it. |
+| Cancel | `cancelOffer(offerId)` | Books the yield, then calls `withdraw` for exactly the part not taken and sends it to the lender. |
+| Collect the yield | `withdrawOfferYield(offerIds)`, up to 8 offers a call | Books those offers' yield, then pays the lender all the yield booked to them so far. If the yield already delivered is not enough, it first calls the vault's `claimYield`. |
+
+An offer earns the MUSD still waiting on it times the rise in the vault's yield index while that MUSD sits in the vault, rounded down. Every fill and cancel books what was earned so far before the amount changes, so the yield booked to a lender stays theirs after the offer is taken.
+
+Two rules keep this from ever touching other people's money:
+
+- A deposit or withdraw is judged by the change it measures in CreditMarkets' own balances, never by what the vault says it did. A withdraw that burns one wei of sMUSD too many, or returns one wei of MUSD too few, reverts.
+- Yield is paid only out of yield the vault actually delivered. It never comes out of another offer's escrow or a date's collected repayments. If Doji's books ever run a few wei ahead of the vault, the last lender to withdraw is short by those wei, and nobody else is touched.
+
+## What you see on Lend
+
+Under "Your offers", a parked offer still in the vault carries an "sMUSD" tag next to its amount left. The "Earned" column is the contract's own `pendingOfferYield` for that offer: what its waiting MUSD has earned since its yield was last booked. A plain offer, or one from the 20 October contracts, shows a dash.
+
+Above the table, "Earned in sMUSD" adds those figures up, and "Withdraw earnings" sends one `withdrawOfferYield` for every offer with something earned. When it lands the app says, for example, "0.0123 MUSD of sMUSD earnings sent to your wallet." If Mezo's vault has not paid out all of it yet, it adds "... MUSD more arrives once Mezo's vault pays it out." and the rest stays booked to you.
+
+## What can go wrong, and what Doji does
+
+| What happens | What Doji does |
+| --- | --- |
+| Doji's guardian stops earning (`stopParking`) | New offers wait in the contract. Offers already parked keep earning. The switch reads "Doji's guardian has paused earning in sMUSD. New offers wait in the contract, as before." Only the owner can turn earning back on (`resumeParking`). |
+| The guardian pulls everything out (`pullOut`) | One vault withdraw of the whole parked total, with no loop over offers. Every parked offer stops earning at that moment and is a plain offer from then on. Its booked yield stays withdrawable. This needs the vault to pay the whole total back. |
+| Mezo's vault stops paying out | The keeper simulates, every pass, a vault withdraw of everything parked, sent from CreditMarkets' address, and fails loudly with a `VAULT ALERT` when it would be refused. The site runs the same check. New offers then wait in the contract ("Mezo's sMUSD vault is not paying out right now, so new offers wait in the contract. Offers already earning stay in the vault."), Borrow and Roll use plain offers only and say so, and My loans warns any Wave 2 loan due within two weeks. |
+| A parked offer during that outage | It cannot be taken or cancelled until the vault pays again, because both calls withdraw from it. If the guardian's `pullOut` also fails, the guardian stops parking and lenders cancel parked offers one by one, each as far as the vault pays. |
+| The vault cannot be read at all | The switch reads "The sMUSD vault could not be read. New offers wait in the contract for now." |
+
+A vault fault stays inside parked money. It can never stop a plain offer being taken or cancelled, a repayment, a roll into plain offers, an early payout, closing a date, redeeming units, an auction or a settle. Collected MUSD and BTC are never parked.
+
+<Callout type="warn">
+This is the trade a lender makes. A plain offer's cancel can never be blocked. A parked offer's cancel depends on Mezo's vault paying out, and Mezo's vault trusts a meta-transaction forwarder: a flaw there would reach every parked dollar at once. That is why parking is each lender's choice, offer by offer. See [What Doji does not defend against](/docs/security#what-doji-does-not-defend-against).
+</Callout>
+
+## Proven live
+
+On 4 November 2026 two offers of 40 MUSD were parked on testnet and a third of 30 MUSD was posted plain. A borrow then took 10 MUSD from one parked offer: the borrower received plain MUSD, and the chain read 70 MUSD of parked principal against exactly 70 sMUSD held by CreditMarkets. Every transaction is in [docs/proof/wave2-live-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md).

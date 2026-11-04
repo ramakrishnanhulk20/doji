@@ -5,6 +5,8 @@ description: Every field, number and button on the Borrow screen, in the order y
 
 [Borrow](/borrow) turns locked Bitcoin into MUSD at a fixed rate until a Thursday you choose. The offers, rates and limits on the screen are read live from the contracts, and you can see them before you connect a wallet.
 
+Every new loan opens on the Wave 2 contracts deployed on 4 November 2026, against Wave 2 offers. Loans opened on the 20 October contracts keep running there and are managed the same way from [My loans](/docs/getting-started/manage-a-loan).
+
 ## 01 Your collateral
 
 Two tabs choose where the collateral comes from.
@@ -12,7 +14,7 @@ Two tabs choose where the collateral comes from.
 | Tab | What you do | What your wallet signs |
 | --- | --- | --- |
 | Lock BTC now | Type the test BTC to lock. "Max" keeps 0.0002 BTC back for gas. The note shows your balance and its value at the oracle price, and "Locked until" the due date you pick: the new lock ends on the day the loan is due. | "Approve" the exact BTC amount (skipped if an earlier approval covers it), then "Lock and borrow". One transaction mints the veBTC position straight into Doji and opens the loan. |
-| Use a veBTC position | Pick one of your positions. Each row shows its id, its BTC, its lock end (or "permanent lock") and its value in MUSD. A position Doji already holds for you is tagged "in Doji". | "Approve veBTC #id" for that one position (skipped if already approved), "Hand it to Doji", then "Borrow". A position already in Doji with no loan needs only "Borrow". |
+| Use a veBTC position | Pick one of your positions. Each row shows its id, its BTC, its lock end (or "permanent lock") and its value in MUSD. A position the Wave 2 contracts already hold for you, with no loan, is tagged "in Doji". One resting in the 20 October contracts is withdrawn from My loans first. | "Approve veBTC #id" for that one position (skipped if already approved), "Hand it to Doji", then "Borrow". A position already in Doji with no loan needs only "Borrow". |
 
 Doji accepts only ordinary veBTC positions that nobody else can revoke. A grant-backed position shows "grant-backed, can't be used" and cannot be picked. Doji never asks for approval of all your positions, only of the one you pick.
 
@@ -25,6 +27,8 @@ For a normal lock, only Thursdays on or before the lock's end are shown, because
 ## 03 Amount
 
 Type the MUSD to borrow, or drag the slider, or press "Max". The note says "You can borrow up to" the most this collateral allows on that date. Doji takes the cheapest offers first, then the oldest, using part of the last one if needed, and at most 8 offers per loan. The contract is told the highest rate among them as the most you accept, so no offer can fill you at a worse rate than the screen showed.
+
+Some offers earn in Mezo's sMUSD savings vault while they wait. Taking one changes nothing for you: CreditMarkets withdraws that MUSD from the vault in the same transaction, and you receive plain MUSD. See [Earn while an offer waits](/docs/concepts/earn-while-waiting).
 
 ## Your loan
 
@@ -61,7 +65,7 @@ The steps appear above the button and tick off as each transaction confirms.
 The card turns into "10.00 MUSD is in your wallet." with what you owe on the date and a reminder that the veBTC position is still locked and its votes and rewards are still yours. "See your loan" opens the loan's own page, "View transaction" opens Mezo's explorer, and "Borrow again" resets the form.
 
 <Callout type="info">
-If the guardian has paused new loans, the screen shows "New loans are paused right now. Repaying and rolling still work." If Mezo's price feed is more than 60 seconds old, the button says so and borrowing waits until it is fresh again.
+If the guardian has paused new loans, the screen shows "New loans are paused right now. Repaying and rolling still work." If Mezo's price feed is more than 60 seconds old, the button says so and borrowing waits until it is fresh again. If Mezo's sMUSD vault stops paying out, the screen shows "Mezo's sMUSD vault is not paying out right now, so offers earning in it cannot be borrowed. Borrow uses the other offers until it recovers." and the dates, rates and amounts on offer leave out every offer posted to earn in sMUSD.
 </Callout>
 
 Next: [Manage a loan](/docs/getting-started/manage-a-loan), or how the numbers are made in [How a loan works](/docs/concepts/how-a-loan-works).

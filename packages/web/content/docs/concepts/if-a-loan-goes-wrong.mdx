@@ -21,6 +21,8 @@ There are two kinds of auction, and the difference matters if Bitcoin recovers:
 
 The borrower can end any auction by repaying the debt in full. The auction is deleted and the position stays theirs.
 
+On a Wave 2 loan the position's pool rewards can still be claimed during the auction, by the borrower or by PayDown, because rewards are not collateral and a buyer should never collect the borrower's last week of them. A [pay-down harvest](/docs/concepts/rewards-pay-down) whose rewards cover the debt repays it in full and ends the auction the same way. On the website the claim buttons are hidden during an auction, while "Pay down now" stays on the loan page.
+
 ## The curve
 
 When the auction starts, the contract writes down its start value: the locked BTC times the oracle price at that moment. The price then falls in a straight line to a floor over 72 hours and stays there.
@@ -59,7 +61,7 @@ The penalty waits as a claimable for the treasury, so a treasury address that re
 
 ## Settle in BTC when nobody buys
 
-If the auction reaches its floor time unsold, nothing is dumped on a thin market. Doji never swaps on a DEX. Instead, once the lock has ended, anyone can settle:
+If the auction reaches its floor time unsold, nothing is dumped on a thin market. Doji never sells collateral on a DEX. Instead, once the lock has ended, anyone can settle:
 
 1. `prepareSettle` clears every live vote the position has (on PoolsVoter, and on ValidatorsVoter where veBTC counts one) and turns a permanent lock into a normal one. Mezo allows a reset only after the epoch of the last vote has turned and outside an epoch's first hour, so this can take up to one epoch.
 2. `settle` withdraws the lock. The BTC split is the BTC that actually arrived, measured around the withdrawal.
@@ -90,6 +92,7 @@ None of these needs a role. The contracts check every condition again, so a call
 | `settle` | Past the floor time, unsold, overdue or unsafe, the lock ended, no vote left. | Yes |
 | `writeOff` | The position has left LoanManager's custody. | No |
 | `finalize` | The Thursday has passed, the date had loans, and none is still open. | Yes |
+| `PayDown.harvest` | A Wave 2 loan, active or in auction, whose borrower turned pay-down on, with rewards to claim. | Yes, about once a week |
 
 The [keeper](/docs/developers/keeper) is a script on GitHub that makes these calls. It is scheduled every 30 minutes, and GitHub runs it late on a quiet repository, every two to six hours in practice. Anyone can run the same script, or make the same calls from the loan's own page.
 

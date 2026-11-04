@@ -1,9 +1,9 @@
 ---
 title: Credit units and payouts
-description: Claim your credit units, send them, take early payouts after the date, and close and redeem a date.
+description: Claim your credit units, send them, sell or buy them before the date, take early payouts after it, and close and redeem a date.
 ---
 
-When a borrower takes your offer, you are owed MUSD on that Thursday. Doji records the claim as credit units: 1 unit is 1 MUSD due on that date. Units are ERC-1155 tokens whose token id is the Thursday, so all units for one date are interchangeable. On [Lend](/lend), "Your credit units" has one card per date.
+When a borrower takes your offer, you are owed MUSD on that Thursday. Doji records the claim as credit units: 1 unit is 1 MUSD due on that date. Units are ERC-1155 tokens whose token id is the Thursday, so all units for one date on the same contracts are interchangeable. On [Lend](/lend), "Your credit units" has one card per date and per set of contracts: units from the 20 October contracts and from the Wave 2 contracts of 4 November 2026 are different tokens, even for the same Thursday.
 
 ## A date's card
 
@@ -29,7 +29,29 @@ When a borrower takes your offer, your units are written down in the contract bu
 
 ## Send units
 
-Before the date, "Send units" opens a small form: "Send to" takes an address (a wrong checksum or the zero address is refused) and "Units" takes an amount, with "Max". The button reads "Send 10.00 units". This is a plain ERC-1155 transfer: whoever holds the units is paid. Doji has no market for units; selling them is up to you and the buyer.
+Before the date, "Send units" opens a small form: "Send to" takes an address (a wrong checksum or the zero address is refused) and "Units" takes an amount, with "Max". The button reads "Send 10.00 units". This is a plain ERC-1155 transfer: whoever holds the units is paid. To sell them for MUSD instead, list them.
+
+## Sell units
+
+On a Wave 2 date's card, "Sell units" appears while you hold units for it and more than a day is left before the Thursday. It opens "Sell units of" the date:
+
+- "Units to sell", up to what you hold, with "Max".
+- "Price per unit" in MUSD, above 0 and at most 1.000, because a unit never pays more than 1 MUSD.
+- "Open until": "1 day", "3 days", "1 week", or until the Wednesday before the Thursday, which is the default.
+
+A line under the price shows what the buyer earns and what you receive, for example "At 0.990 a buyer earns 1.01% by Thu 19 Nov, about ...% a year. You receive 0.9875 MUSD a unit after Doji's 0.25% fee." The one step, "List units", sends the units to UnitMarket with your price and expiry, and the app says, for example, "Listed 5.00 units of Thu 19 Nov at 0.990 MUSD each as listing #1."
+
+Your listing then shows under "Credit units for sale" with "Your listing" and "Cancel listing", which brings the units left back at any time. Buyers pay you in the same transaction they buy in. After the expiry nobody can buy, and anyone can press "Return to seller" to send the units left back to you. Units in a listing are not in your wallet, so they cannot be sent, withdrawn early or redeemed until they come back.
+
+A date from the 20 October contracts says "Units from the 20 October contracts can be sent, not listed." The rules are in [Selling credit units](/docs/concepts/selling-units).
+
+## Buy units
+
+"Credit units for sale", above "Your offers" on Lend, lists every open listing, soonest Thursday first and cheapest first, without a wallet. "Buy units" opens "Buy units of" the date: type the "Units to buy" and read "You pay", "You receive" and "You earn". The steps are "Approve" for exactly the cost, skipped if an earlier approval covers it, and "Buy units". When it lands: "Bought 2.00 units of Thu 19 Nov for 1.9800 MUSD. They are in Your credit units." They then work like any units you hold.
+
+<Callout type="info">
+The guardian can pause the units market. The list and both sheets then say "The units market is paused by Doji's guardian. Buying and selling resume when it ends. Cancelling a listing still works." Returning an expired listing works too.
+</Callout>
 
 ## Early payouts, after the date
 

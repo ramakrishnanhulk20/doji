@@ -1,4 +1,13 @@
 {
   "title": "Concepts",
-  "pages": ["how-a-loan-works", "at-the-same-time", "if-a-loan-goes-wrong", "early-payouts", "risk-settings"]
+  "pages": [
+    "how-a-loan-works",
+    "at-the-same-time",
+    "earn-while-waiting",
+    "rewards-pay-down",
+    "selling-units",
+    "if-a-loan-goes-wrong",
+    "early-payouts",
+    "risk-settings"
+  ]
 }

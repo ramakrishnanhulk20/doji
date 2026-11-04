@@ -14,16 +14,20 @@ Doji runs on Mezo testnet (chain 31611). Test BTC and test MUSD have no value. T
 ## Who it is for
 
 - veBTC holders who need MUSD and do not want to end their lock. Bring a position you already hold, or lock BTC and borrow in one step.
-- MUSD holders who want a fixed return to a known date. Post an offer for a Thursday at your rate, and you are paid back on that date.
+- MUSD holders who want a fixed return to a known date. Post an offer for a Thursday at your rate, let it earn Mezo's sMUSD rate until a borrower takes it, and you are paid back on that date.
 
 ## How it works
 
-1. A lender posts an offer: an amount, a Thursday and a fixed rate. The MUSD waits in the contract until a borrower takes it, and whatever is not taken can be cancelled at any time.
+1. A lender posts an offer: an amount, a Thursday and a fixed rate. Until a borrower takes it, the MUSD earns in Mezo's sMUSD savings vault, or waits in the contract if the lender prefers, and whatever is not taken can be cancelled.
 2. A borrower hands Doji a veBTC position, picks a Thursday and takes the cheapest offers. The MUSD arrives at once, and the amount owed on that date is fixed.
-3. The borrower repays and takes the position back, or rolls into a later Thursday in one step. The lock keeps running and the votes and rewards stay with the borrower throughout.
-4. After the date, lenders withdraw their share of what has been collected. Each lender's claim is a credit unit: 1 unit is 1 MUSD due on that Thursday.
+3. The borrower repays and takes the position back, or rolls into a later Thursday in one step. The lock keeps running and the votes and rewards stay with the borrower throughout, unless the borrower chooses to let the weekly rewards pay the loan down.
+4. After the date, lenders withdraw their share of what has been collected. Each lender's claim is a credit unit: 1 unit is 1 MUSD due on that Thursday. A lender who wants out sooner can sell units to another wallet before the date.
 
 If a loan becomes unsafe or the date passes unpaid, the position is sold in a protected auction. If nobody buys, the lenders receive the Bitcoin itself. Each Thursday is its own market, so a bad loan in one week never touches another. The full story is in [How a loan works](/docs/concepts/how-a-loan-works) and [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).
+
+## Wave 2, live since 4 November 2026
+
+Every new offer and loan goes to Doji's Wave 2 contracts, which add three things. Offers [earn in Mezo's sMUSD vault while they wait](/docs/concepts/earn-while-waiting), and the borrower still receives plain MUSD. Borrowers can [let a position's pool rewards pay the loan down](/docs/concepts/rewards-pay-down): MUSD rewards repay it, and BTC rewards are sold on Mezo's own pool only as far as the debt needs, never below the oracle price less 1%. Lenders can [sell credit units before their date](/docs/concepts/selling-units) at up to 1 MUSD a unit. Everything opened on the 20 October contracts keeps working there, and a loan rolls only within its own set of contracts.
 
 ## The name
 

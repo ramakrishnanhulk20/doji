@@ -1,0 +1,60 @@
+---
+title: Selling credit units
+description: How a lender sells credit units before their Thursday on UnitMarket, how a buyer prices them, and what protects both sides.
+---
+
+A lender's credit units pay out from their Thursday on. Since 4 November 2026 a lender who wants MUSD sooner can list units on UnitMarket at a price of at most 1 MUSD a unit. A buyer pays that price now and is paid what the unit pays on the date.
+
+## Why each side wants it
+
+- The seller gets out before the date, at a price they set.
+- The buyer gets a fixed-date claim below what it pays. A unit pays 1 MUSD once its Thursday's loans are repaid, so a unit bought at 0.990 earns 1.01% by its date.
+- Doji takes a small fee from the seller, 0.25% of the sale today, and nothing from the buyer.
+
+## Listing units
+
+On [Lend](/lend), each Wave 2 date under "Your credit units" has a "Sell units" button while the wallet holds units for it and more than a day is left before the Thursday. Units still waiting to be claimed must be claimed first.
+
+"Sell units" opens "Sell units of" the date, with three fields:
+
+| Field | What it takes |
+| --- | --- |
+| Units to sell | Any amount up to what you hold, or "Max". |
+| Price per unit | MUSD with three decimals, above 0 and at most 1.000. Above that the sheet says "A unit pays 1 MUSD at most, so the price cannot be above 1.000." |
+| Open until | "1 day", "3 days" or "1 week", each counted from the next midnight UTC, or "Until" the Wednesday before the Thursday, 00:00 UTC, which is the default. |
+
+Under the price, a line works out both sides, for example: "At 0.990 a buyer earns 1.01% by Thu 19 Nov, about ...% a year. You receive 0.9875 MUSD a unit after Doji's 0.25% fee."
+
+The one step, "List units", is a plain ERC-1155 `safeTransferFrom` of the units from your wallet to UnitMarket, with the price and the expiry in the transfer's data. UnitMarket's `onERC1155Received` creates the listing in the same transaction. Doji never asks for approval of all your units. The fee rate is fixed into the listing when it is created, so a later change never reaches it, and it can never be above 1% in the code. The contract itself only asks that the expiry is in the future; the app's longest choice ends exactly one day before the Thursday.
+
+## Buying units
+
+"Credit units for sale" on Lend lists every listing with units left, soonest Thursday first and cheapest first inside a Thursday. Anyone can read it without a wallet. Each card shows the price per unit, what it earns by the date and over a year, the units left, the listing number and its expiry.
+
+"Buy units" opens "Buy units of" the date. Type the "Units to buy", and the sheet shows "You pay" (UnitMarket's own `quoteBuy`), "You receive" and "You earn". The steps are "Approve" for exactly the cost (skipped if an earlier approval covers it) and "Buy units", which calls `UnitMarket.buy(listingId, units, maxPricePerUnit)` with the listed price as the most it will pay.
+
+A buy fills exactly the units asked for, before the expiry, or reverts. The cost is units times price, rounded up; the fee is taken out of that cost, rounded down; the seller is paid in the same transaction, and the units go to the buyer last. Bought units land in "Your credit units" and behave like any others: early payouts after the date, closing and redeeming, sending, and listing again.
+
+## Cancel and expiry
+
+- The seller can press "Cancel listing" at any time, paused or not, and the units left come straight back.
+- After the expiry nobody can buy. Anyone can then press "Return to seller" (`returnExpired`), which sends the units left back to the seller.
+- Units in a listing sit in UnitMarket, not in your wallet, so they cannot be sent, moved into an early payout or redeemed until the listing is cancelled or returned.
+
+## What protects whom
+
+| Rule | Why it matters |
+| --- | --- |
+| The price is never above 1 MUSD | A unit pays 1 MUSD at most, so the contract refuses any higher price. |
+| A buyer never pays above the listed price | The buy names its highest price per unit and reverts if the listing's price is above it. |
+| Exits are never paused | The guardian can pause listing and buying ("The units market is paused by Doji's guardian. Buying and selling resume when it ends. Cancelling a listing still works."), never a cancel or a return. Only the owner can end the pause. |
+| Only Wave 2 units | UnitMarket accepts units only from the Wave 2 CreditMarkets. A 20 October date's card says "Units from the 20 October contracts can be sent, not listed." |
+| A listing price is never a value | No Doji contract, keeper decision or screen uses a listing or sale price as the worth of a unit or of collateral. |
+
+## What a buyer takes on
+
+Buying units is buying the same claim the lender had. A unit pays 1 MUSD only if its Thursday's loans are repaid in full. If a loan at that date falls short, every unit at the date shares the loss pro rata, and after a settle part of the payout can be BTC. See [Early payouts](/docs/concepts/early-payouts) and [If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong).
+
+## Proven live
+
+On 4 November 2026 a lender listed 5 units for Thursday 19 November at 0.99 MUSD each, open until Wednesday 18 November, and a second wallet bought 2 of them for exactly 1.98 MUSD after approving exactly that amount. Every transaction is in [docs/proof/wave2-live-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md).
