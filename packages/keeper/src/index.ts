@@ -11,8 +11,10 @@ if (unknown.length > 0) {
 } else {
   try {
     const summary = await runPass(loadConfig(args.includes("--dry")));
-    // A refused simulation is normal (the chain moved on); a transaction that was sent and failed is not.
-    if (summary.failedSends > 0) process.exitCode = 1;
+    // A refused simulation is normal (the chain moved on); a transaction that was sent and failed is not, and
+    // neither is a pair whose jobs stopped. A vault alert (C35) outranks the completeness warning's exit code 2.
+    if (summary.failedSends > 0 || summary.pairFailures > 0) process.exitCode = 1;
+    else if (summary.vaultAlerts > 0) process.exitCode = 3;
   } catch (err) {
     const message = err instanceof ConfigError ? err.message : describeError(err);
     console.error(`keeper stopped: ${message}`);

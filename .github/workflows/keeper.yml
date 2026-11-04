@@ -1,6 +1,10 @@
-# Runs one Doji keeper pass on Mezo testnet: start auctions on overdue or unsafe loans, cancel recovered ones,
-# prepare and settle unsold ones, and finalize matured markets. The contracts re-check every condition, so this
-# is a convenience anyone can replace by running the same command.
+# Runs one Doji keeper pass on Mezo testnet for both contract pairs, each from its own deployment record: check
+# that Mezo's sMUSD vault would return the parked lender money, start auctions on overdue or unsafe loans, cancel
+# recovered ones, prepare and settle unsold ones, finalize matured markets, and then harvest pool rewards into
+# loan repayments for positions that opted into PayDown. The contracts re-check every condition, so this is a
+# convenience anyone can replace by running the same command.
+#
+# A VAULT ALERT exits non-zero, so the run fails and GitHub emails the workflow's owner (threat model C35).
 #
 # Triggers are a schedule and a manual run only. It never runs on pull_request or pull_request_target, so code
 # from a fork or an unmerged branch never sees KEEPER_PRIVATE_KEY (threat model C20).
@@ -47,6 +51,7 @@ jobs:
 
       - run: npm run keeper
         env:
+          DEPLOYMENT_FILES: ../contracts/deployments/31611.json,../contracts/deployments/31611-wave2.json
           KEEPER_PRIVATE_KEY: ${{ secrets.KEEPER_PRIVATE_KEY }}
           MEZO_TESTNET_RPC: ${{ secrets.MEZO_TESTNET_RPC || 'https://rpc.test.mezo.org' }}
           MEZO_TESTNET_EXPLORER_API: ${{ secrets.MEZO_TESTNET_EXPLORER_API || 'https://api.explorer.test.mezo.org/api' }}

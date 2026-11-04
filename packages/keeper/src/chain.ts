@@ -8,6 +8,7 @@ import {
   createWalletClient,
   decodeEventLog,
   getAbiItem,
+  getAddress,
   hexToBigInt,
   hexToNumber,
   http,
@@ -44,7 +45,10 @@ const MAX_TEXT = 240;
 
 // Copied from the forge-compiled ABIs of src/interfaces/ILoanManager.sol (plus LockReader's two errors, which
 // lockOf and isUnsafe can revert with), src/interfaces/ICreditMarkets.sol and src/interfaces/IVeBTC.sol, trimmed
-// to what the keeper calls. Every custom error is kept so a failed simulation prints its name.
+// to what the keeper calls. Every custom error is kept so a failed simulation prints its name. The Wave 2 entries
+// (positionOf, RewardOperatorSet, savingsVault, parkedPrincipal and the ABIs after veBtcAbi) are written by hand
+// from the same interfaces, because the compiled out/ folder predates them; each read was checked live on
+// 2026-11-04.
 export const loanManagerAbi = [
   {"type": "function", "name": "auctionOf", "inputs": [{"name": "tokenId", "type": "uint256"}], "outputs": [{"name": "auction", "type": "tuple", "components": [{"name": "startTime", "type": "uint64"}, {"name": "duration", "type": "uint32"}, {"name": "penaltyBps", "type": "uint16"}, {"name": "startValue", "type": "uint128"}, {"name": "floorPrice", "type": "uint128"}]}], "stateMutability": "view"},
   {"type": "function", "name": "cancelAuction", "inputs": [{"name": "tokenId", "type": "uint256"}], "outputs": [], "stateMutability": "nonpayable"},
@@ -56,12 +60,15 @@ export const loanManagerAbi = [
   {"type": "function", "name": "lockOf", "inputs": [{"name": "tokenId", "type": "uint256"}], "outputs": [{"name": "amount", "type": "uint256"}, {"name": "end", "type": "uint256"}, {"name": "isPermanent", "type": "bool"}], "stateMutability": "view"},
   {"type": "function", "name": "owner", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
   {"type": "function", "name": "pendingOwner", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "poolsVoter", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "positionOf", "inputs": [{"name": "tokenId", "type": "uint256"}], "outputs": [{"name": "position", "type": "tuple", "components": [{"name": "borrower", "type": "address"}, {"name": "rewardOperator", "type": "address"}]}], "stateMutability": "view"},
   {"type": "function", "name": "prepareSettle", "inputs": [{"name": "tokenId", "type": "uint256"}], "outputs": [], "stateMutability": "nonpayable"},
   {"type": "function", "name": "settle", "inputs": [{"name": "tokenId", "type": "uint256"}], "outputs": [], "stateMutability": "nonpayable"},
   {"type": "function", "name": "startAuction", "inputs": [{"name": "tokenId", "type": "uint256"}], "outputs": [], "stateMutability": "nonpayable"},
   {"type": "function", "name": "veBTC", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
   {"type": "event", "name": "Borrowed", "inputs": [{"name": "tokenId", "type": "uint256", "indexed": true}, {"name": "borrower", "type": "address", "indexed": true}, {"name": "maturity", "type": "uint64", "indexed": true}, {"name": "principal", "type": "uint256", "indexed": false}, {"name": "face", "type": "uint256", "indexed": false}], "anonymous": false},
   {"type": "event", "name": "LoanClosed", "inputs": [{"name": "tokenId", "type": "uint256", "indexed": true}, {"name": "maturity", "type": "uint64", "indexed": true}], "anonymous": false},
+  {"type": "event", "name": "RewardOperatorSet", "inputs": [{"name": "tokenId", "type": "uint256", "indexed": true}, {"name": "operator", "type": "address", "indexed": true}], "anonymous": false},
   {"type": "error", "name": "AuctionParamsOutOfBounds", "inputs": [{"name": "penaltyBps", "type": "uint16"}, {"name": "auctionFloorBps", "type": "uint16"}, {"name": "auctionDuration", "type": "uint32"}]},
   {"type": "error", "name": "BadLockLayout", "inputs": [{"name": "layoutWords", "type": "uint256"}]},
   {"type": "error", "name": "BadRewardTokenCount", "inputs": [{"name": "count", "type": "uint256"}]},
@@ -128,8 +135,15 @@ export const creditMarketsAbi = [
   {"type": "function", "name": "marketOf", "inputs": [{"name": "maturity", "type": "uint64"}], "outputs": [{"name": "", "type": "tuple", "components": [{"name": "faceTotal", "type": "uint128"}, {"name": "collectedMusd", "type": "uint128"}, {"name": "openLoans", "type": "uint64"}, {"name": "isFinal", "type": "bool"}, {"name": "unitsAtFinal", "type": "uint128"}, {"name": "musdAtFinal", "type": "uint128"}, {"name": "collectedBtc", "type": "uint128"}, {"name": "btcAtFinal", "type": "uint128"}]}], "stateMutability": "view"},
   {"type": "function", "name": "maxTermSeconds", "inputs": [], "outputs": [{"name": "", "type": "uint32"}], "stateMutability": "view"},
   {"type": "function", "name": "owner", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "parkedPrincipal", "inputs": [], "outputs": [{"name": "", "type": "uint256"}], "stateMutability": "view"},
   {"type": "function", "name": "pendingOwner", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "savingsVault", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
   {"type": "function", "name": "treasury", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "error", "name": "NothingParked", "inputs": []},
+  {"type": "error", "name": "ParkingOff", "inputs": []},
+  {"type": "error", "name": "RenounceDisabled", "inputs": []},
+  {"type": "error", "name": "VaultShortfall", "inputs": [{"name": "expected", "type": "uint256"}, {"name": "actual", "type": "uint256"}]},
+  {"type": "error", "name": "VaultTokenMismatch", "inputs": [{"name": "vaultToken", "type": "address"}]},
   {"type": "error", "name": "AprAboveMax", "inputs": [{"name": "offerId", "type": "uint256"}, {"name": "aprBps", "type": "uint16"}, {"name": "maxAprBps", "type": "uint16"}]},
   {"type": "error", "name": "AprTooHigh", "inputs": [{"name": "aprBps", "type": "uint16"}]},
   {"type": "error", "name": "BadFillCount", "inputs": [{"name": "count", "type": "uint256"}]},
@@ -164,6 +178,83 @@ export const veBtcAbi = [
   {"type": "function", "name": "voted", "inputs": [{"name": "tokenId", "type": "uint256"}], "outputs": [{"name": "", "type": "bool"}], "stateMutability": "view"},
 ] as const;
 
+// src/interfaces/IPayDown.sol, plus the LoanManager errors its claim and repay can bubble up, so a refused
+// harvest prints its reason.
+export const payDownAbi = [
+  {"type": "function", "name": "btc", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "guardian", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "harvest", "inputs": [{"name": "tokenId", "type": "uint256"}, {"name": "gauges", "type": "address[]"}, {"name": "feeTokens", "type": "address[][]"}, {"name": "bribeTokens", "type": "address[][]"}], "outputs": [{"name": "repaid", "type": "uint256"}], "stateMutability": "nonpayable"},
+  {"type": "function", "name": "loanManager", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "musd", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "owner", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "paused", "inputs": [], "outputs": [{"name": "", "type": "bool"}], "stateMutability": "view"},
+  {"type": "function", "name": "pendingOwner", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "priceFeed", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "error", "name": "BadRoute", "inputs": [{"name": "token", "type": "address"}]},
+  {"type": "error", "name": "BadSwapToken", "inputs": [{"name": "token", "type": "address"}]},
+  {"type": "error", "name": "BelowFloor", "inputs": [{"name": "received", "type": "uint256"}, {"name": "floor", "type": "uint256"}]},
+  {"type": "error", "name": "DuplicateToken", "inputs": [{"name": "token", "type": "address"}]},
+  {"type": "error", "name": "HarvestsPaused", "inputs": []},
+  {"type": "error", "name": "LengthMismatch", "inputs": []},
+  {"type": "error", "name": "NotBorrower", "inputs": [{"name": "tokenId", "type": "uint256"}]},
+  {"type": "error", "name": "NotGuardianOrOwner", "inputs": []},
+  {"type": "error", "name": "PriceUnavailable", "inputs": []},
+  {"type": "error", "name": "RenounceDisabled", "inputs": []},
+  {"type": "error", "name": "SlippageTooHigh", "inputs": [{"name": "slippageBps", "type": "uint16"}]},
+  {"type": "error", "name": "TooManySwaps", "inputs": [{"name": "count", "type": "uint256"}]},
+  {"type": "error", "name": "TooManyTokens", "inputs": [{"name": "count", "type": "uint256"}]},
+  {"type": "error", "name": "ZeroAddress", "inputs": []},
+  {"type": "error", "name": "ZeroAmount", "inputs": []},
+  {"type": "error", "name": "ZeroMinimum", "inputs": [{"name": "token", "type": "address"}]},
+  {"type": "error", "name": "BadRewardTokenCount", "inputs": [{"name": "count", "type": "uint256"}]},
+  {"type": "error", "name": "LoanInAuction", "inputs": [{"name": "tokenId", "type": "uint256"}]},
+  {"type": "error", "name": "NoActiveLoan", "inputs": [{"name": "tokenId", "type": "uint256"}]},
+  {"type": "error", "name": "NotInCustody", "inputs": [{"name": "tokenId", "type": "uint256"}]},
+  {"type": "error", "name": "TokenNotReward", "inputs": [{"name": "rewardContract", "type": "address"}, {"name": "token", "type": "address"}]},
+  {"type": "error", "name": "TransferShortfall", "inputs": [{"name": "expected", "type": "uint256"}, {"name": "received", "type": "uint256"}]},
+  {"type": "error", "name": "UnknownGauge", "inputs": [{"name": "gauge", "type": "address"}]},
+] as const;
+
+// src/interfaces/IUnitMarket.sol, the reads the role and record checks make.
+export const unitMarketAbi = [
+  {"type": "function", "name": "creditMarkets", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "guardian", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "owner", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "pendingOwner", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "treasury", "inputs": [], "outputs": [{"name": "", "type": "address"}], "stateMutability": "view"},
+] as const;
+
+// src/interfaces/IMUSDSavingsRate.sol, with the vault's own errors from reference/briefs/smusd-brief.md so a VAULT
+// ALERT names the reason (InsufficientBalance() is 0xf4d678b8).
+export const savingsVaultAbi = [
+  {"type": "function", "name": "withdraw", "inputs": [{"name": "amount", "type": "uint256"}], "outputs": [], "stateMutability": "nonpayable"},
+  {"type": "error", "name": "AmountTooSmall", "inputs": []},
+  {"type": "error", "name": "InsufficientBalance", "inputs": []},
+  {"type": "error", "name": "SameStrategy", "inputs": []},
+  {"type": "error", "name": "ZeroAddress", "inputs": []},
+  {"type": "error", "name": "ZeroAmount", "inputs": []},
+] as const;
+
+// PoolsVoter's public poolVote array and gauges mapping, and the two lookups in src/interfaces/IPoolsVoter.sol.
+// poolVote reverts past the end of a position's list, which is how the list's length is found.
+export const poolsVoterAbi = [
+  {"type": "function", "name": "gaugeToBribe", "inputs": [{"name": "gauge", "type": "address"}], "outputs": [{"name": "bribe", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "gaugeToFees", "inputs": [{"name": "gauge", "type": "address"}], "outputs": [{"name": "fees", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "gauges", "inputs": [{"name": "pool", "type": "address"}], "outputs": [{"name": "gauge", "type": "address"}], "stateMutability": "view"},
+  {"type": "function", "name": "poolVote", "inputs": [{"name": "tokenId", "type": "uint256"}, {"name": "index", "type": "uint256"}], "outputs": [{"name": "pool", "type": "address"}], "stateMutability": "view"},
+] as const;
+
+// src/interfaces/IVotingReward.sol, plus earned from Mezo's Reward base: what a claim would pay this tokenId now.
+export const votingRewardAbi = [
+  {"type": "function", "name": "earned", "inputs": [{"name": "token", "type": "address"}, {"name": "tokenId", "type": "uint256"}], "outputs": [{"name": "", "type": "uint256"}], "stateMutability": "view"},
+  {"type": "function", "name": "isReward", "inputs": [{"name": "token", "type": "address"}], "outputs": [{"name": "listed", "type": "bool"}], "stateMutability": "view"},
+] as const;
+
+// src/interfaces/IPriceFeed.sol. USD per BTC with 18 decimals; reverts when the oracle is over 60 seconds old.
+export const priceFeedAbi = [
+  {"type": "function", "name": "fetchPrice", "inputs": [], "outputs": [{"name": "", "type": "uint256"}], "stateMutability": "view"},
+] as const;
+
 const borrowedEvent = getAbiItem({ abi: loanManagerAbi, name: "Borrowed" });
 const loanClosedEvent = getAbiItem({ abi: loanManagerAbi, name: "LoanClosed" });
 const loanEvents = [borrowedEvent, loanClosedEvent] as const;
@@ -172,6 +263,8 @@ const eventTopics: Record<LoanEventName, string> = {
   Borrowed: toEventSelector(borrowedEvent).toLowerCase(),
   LoanClosed: toEventSelector(loanClosedEvent).toLowerCase(),
 };
+const operatorEvent = getAbiItem({ abi: loanManagerAbi, name: "RewardOperatorSet" });
+const operatorTopic = toEventSelector(operatorEvent).toLowerCase();
 
 export type Reader = PublicClient<HttpTransport, typeof mezoTestnet>;
 export type Writer = WalletClient<HttpTransport, typeof mezoTestnet, PrivateKeyAccount>;
@@ -206,6 +299,21 @@ export interface LoanLog {
   logIndex: number;
 }
 
+// One RewardOperatorSet event: a borrower named `operator` (zero for none) as the position's reward operator.
+export interface OperatorLog {
+  tokenId: bigint;
+  operator: Address;
+  blockNumber: bigint;
+  logIndex: number;
+}
+
+// True when the node ran the call and the contract reverted, as opposed to the request failing. Only that case
+// may be read as an answer (the end of a list, a function the contract does not have); any other failure is a
+// failed read.
+export function isRevert(err: unknown): boolean {
+  return err instanceof BaseError && err.walk((e) => e instanceof ContractFunctionRevertedError) !== null;
+}
+
 function isRateLimitOrTimeout(err: unknown): boolean {
   if (!(err instanceof BaseError)) return false;
   return (
@@ -218,7 +326,7 @@ function isRateLimitOrTimeout(err: unknown): boolean {
   );
 }
 
-async function withOneRetry<T>(label: string, run: () => Promise<T>): Promise<T> {
+export async function withOneRetry<T>(label: string, run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (err) {
@@ -257,6 +365,31 @@ export async function fetchLoanLogs(
   return found;
 }
 
+// Every RewardOperatorSet event LoanManager emitted in [fromBlock, toBlock], paged and retried like the loan events.
+export async function fetchOperatorLogs(
+  reader: Reader,
+  loanManager: Address,
+  fromBlock: bigint,
+  toBlock: bigint,
+): Promise<OperatorLog[]> {
+  const found: OperatorLog[] = [];
+  for (let start = fromBlock; start <= toBlock; start += LOG_PAGE_BLOCKS) {
+    const end = start + LOG_PAGE_BLOCKS - 1n < toBlock ? start + LOG_PAGE_BLOCKS - 1n : toBlock;
+    const logs = await withOneRetry(`operator events for blocks ${start} to ${end}`, () =>
+      reader.getLogs({ address: loanManager, event: operatorEvent, fromBlock: start, toBlock: end, strict: true }),
+    );
+    for (const log of logs) {
+      found.push({
+        tokenId: log.args.tokenId,
+        operator: getAddress(log.args.operator),
+        blockNumber: log.blockNumber,
+        logIndex: log.logIndex,
+      });
+    }
+  }
+  return found;
+}
+
 const isHexString = (v: unknown): v is Hex => typeof v === "string" && isHex(v, { strict: true });
 const isQuantity = (v: unknown): v is Hex => isHexString(v) && v.length > 2;
 const isWord = (v: unknown): v is Hex => isHexString(v) && v.length === 66;
@@ -270,28 +403,70 @@ function explorerTopics(raw: unknown): Hex[] | undefined {
   return topics.length > 0 && topics.every(isWord) ? topics : undefined;
 }
 
-// One explorer log, checked like any other input: it must come from LoanManager, carry the topic of the event
-// being listed and decode strictly against that event's ABI item. Anything else is dropped.
-function parseExplorerLog(raw: unknown, loanManager: Address, event: LoanEventName): (LoanLog & { key: string }) | undefined {
+interface ExplorerLog {
+  topics: [Hex, ...Hex[]];
+  data: Hex;
+  blockNumber: bigint;
+  logIndex: number;
+  key: string;
+}
+
+// One explorer log's envelope, checked like any other input: it must come from `address` and carry the topic of
+// the event being listed. The caller then decodes it strictly against that event's ABI item. Anything else is
+// dropped.
+function explorerLog(raw: unknown, address: Address, topic0: string): ExplorerLog | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
-  const { address, topics: rawTopics, data, blockNumber, logIndex, transactionHash } = raw as Record<string, unknown>;
-  if (typeof address !== "string" || !isAddress(address, { strict: false })) return undefined;
-  if (!isAddressEqual(address, loanManager)) return undefined;
+  const { address: emitter, topics: rawTopics, data, blockNumber, logIndex, transactionHash } = raw as Record<string, unknown>;
+  if (typeof emitter !== "string" || !isAddress(emitter, { strict: false })) return undefined;
+  if (!isAddressEqual(emitter, address)) return undefined;
   const topics = explorerTopics(rawTopics);
-  if (topics === undefined || topics[0]?.toLowerCase() !== eventTopics[event]) return undefined;
+  if (topics === undefined || topics[0]?.toLowerCase() !== topic0) return undefined;
   if (!isHexString(data) || !isQuantity(blockNumber) || !isQuantity(logIndex) || !isWord(transactionHash)) return undefined;
   try {
-    const decoded = decodeEventLog({ abi: loanEvents, data, topics: topics as [Hex, ...Hex[]], strict: true });
-    if (decoded.eventName !== event) return undefined;
     const index = hexToNumber(logIndex);
     return {
-      event,
-      tokenId: decoded.args.tokenId,
-      maturity: decoded.args.maturity,
+      topics: topics as [Hex, ...Hex[]],
+      data,
       blockNumber: hexToBigInt(blockNumber),
       logIndex: index,
       key: `${transactionHash.toLowerCase()}:${index}`,
     };
+  } catch {
+    return undefined;
+  }
+}
+
+function parseLoanLog(raw: unknown, loanManager: Address, event: LoanEventName): ExplorerItem<LoanLog> | undefined {
+  const log = explorerLog(raw, loanManager, eventTopics[event]);
+  if (log === undefined) return undefined;
+  try {
+    const decoded = decodeEventLog({ abi: loanEvents, data: log.data, topics: log.topics, strict: true });
+    if (decoded.eventName !== event) return undefined;
+    const value = {
+      event,
+      tokenId: decoded.args.tokenId,
+      maturity: decoded.args.maturity,
+      blockNumber: log.blockNumber,
+      logIndex: log.logIndex,
+    };
+    return { value, blockNumber: log.blockNumber, key: log.key };
+  } catch {
+    return undefined;
+  }
+}
+
+function parseOperatorLog(raw: unknown, loanManager: Address): ExplorerItem<OperatorLog> | undefined {
+  const log = explorerLog(raw, loanManager, operatorTopic);
+  if (log === undefined) return undefined;
+  try {
+    const decoded = decodeEventLog({ abi: [operatorEvent], data: log.data, topics: log.topics, strict: true });
+    const value = {
+      tokenId: decoded.args.tokenId,
+      operator: getAddress(decoded.args.operator),
+      blockNumber: log.blockNumber,
+      logIndex: log.logIndex,
+    };
+    return { value, blockNumber: log.blockNumber, key: log.key };
   } catch {
     return undefined;
   }
@@ -321,8 +496,8 @@ async function explorerGet(url: URL): Promise<Record<string, unknown> | null> {
 
 async function explorerLogsPage(
   explorerApi: string,
-  loanManager: Address,
-  event: LoanEventName,
+  address: Address,
+  topic0: string,
   fromBlock: bigint,
 ): Promise<unknown[] | null> {
   const url = new URL(explorerApi);
@@ -330,8 +505,8 @@ async function explorerLogsPage(
   url.searchParams.set("action", "getLogs");
   url.searchParams.set("fromBlock", fromBlock.toString());
   url.searchParams.set("toBlock", "latest");
-  url.searchParams.set("address", loanManager);
-  url.searchParams.set("topic0", eventTopics[event]);
+  url.searchParams.set("address", address);
+  url.searchParams.set("topic0", topic0);
   const body = await explorerGet(url);
   if (body === null) return null;
   const { status, message, result } = body;
@@ -354,35 +529,43 @@ export async function fetchExplorerHeight(explorerApi: string): Promise<bigint |
   return BigInt(height);
 }
 
-export interface ExplorerListing {
-  logs: LoanLog[];
+interface ExplorerItem<T> {
+  value: T;
+  blockNumber: bigint;
+  key: string;
+}
+
+export interface ExplorerListing<T> {
+  logs: T[];
   // Set when MAX_EXPLORER_CALLS ran out: the listing is complete only below this block.
   cappedAt: bigint | undefined;
 }
 
-// Every event of one kind LoanManager emitted from fromBlock on, as the block explorer has indexed it. A full page
+// Every event of one kind `address` emitted from fromBlock on, as the block explorer has indexed it. A full page
 // of 1,000 logs means there may be more, so the next call starts at the last block seen and repeats are dropped.
 // The explorer is a hint source only: null on any failed call sends the caller to the RPC rather than acting on
-// a partial list, and every loan it names is still read from the RPC before anything is decided.
-export async function fetchLoanEventsFromExplorer(
+// a partial list, and every object it names is still read from the RPC before anything is decided.
+async function listFromExplorer<T>(
   explorerApi: string,
-  loanManager: Address,
-  event: LoanEventName,
+  address: Address,
+  topic0: string,
+  label: string,
   fromBlock: bigint,
-): Promise<ExplorerListing | null> {
+  parse: (raw: unknown) => ExplorerItem<T> | undefined,
+): Promise<ExplorerListing<T> | null> {
   const seen = new Set<string>();
-  const logs: LoanLog[] = [];
+  const logs: T[] = [];
   let dropped = 0;
   let cappedAt: bigint | undefined;
   let calls = 0;
   let start = fromBlock;
   for (;;) {
     calls += 1;
-    const page = await explorerLogsPage(explorerApi, loanManager, event, start);
+    const page = await explorerLogsPage(explorerApi, address, topic0, start);
     if (page === null) return null;
     let added = 0;
     for (const raw of page) {
-      const log = parseExplorerLog(raw, loanManager, event);
+      const log = parse(raw);
       if (log === undefined) {
         dropped += 1;
         continue;
@@ -390,7 +573,7 @@ export async function fetchLoanEventsFromExplorer(
       if (log.blockNumber > start) start = log.blockNumber;
       if (seen.has(log.key)) continue;
       seen.add(log.key);
-      logs.push({ event, tokenId: log.tokenId, maturity: log.maturity, blockNumber: log.blockNumber, logIndex: log.logIndex });
+      logs.push(log.value);
       added += 1;
     }
     if (page.length < EXPLORER_PAGE_LOGS) break;
@@ -399,11 +582,32 @@ export async function fetchLoanEventsFromExplorer(
       break;
     }
   }
-  if (dropped > 0) console.log(`warning: dropped ${dropped} explorer ${event} logs that failed validation`);
+  if (dropped > 0) console.log(`warning: dropped ${dropped} explorer ${label} logs that failed validation`);
   if (cappedAt !== undefined) {
-    console.log(`warning: explorer ${event} listing capped after ${calls} calls at block ${cappedAt}; the RPC reads from there`);
+    console.log(`warning: explorer ${label} listing capped after ${calls} calls at block ${cappedAt}; the RPC reads from there`);
   }
   return { logs, cappedAt };
+}
+
+export function fetchLoanEventsFromExplorer(
+  explorerApi: string,
+  loanManager: Address,
+  event: LoanEventName,
+  fromBlock: bigint,
+): Promise<ExplorerListing<LoanLog> | null> {
+  return listFromExplorer(explorerApi, loanManager, eventTopics[event], event, fromBlock, (raw) =>
+    parseLoanLog(raw, loanManager, event),
+  );
+}
+
+export function fetchOperatorEventsFromExplorer(
+  explorerApi: string,
+  loanManager: Address,
+  fromBlock: bigint,
+): Promise<ExplorerListing<OperatorLog> | null> {
+  return listFromExplorer(explorerApi, loanManager, operatorTopic, "RewardOperatorSet", fromBlock, (raw) =>
+    parseOperatorLog(raw, loanManager),
+  );
 }
 
 // Revert reasons and node messages can carry text a stranger chose. Control characters and line breaks are
