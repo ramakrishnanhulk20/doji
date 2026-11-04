@@ -39,6 +39,8 @@ type PositionCardProps = {
   onVote: () => void;
   onExtend: () => void;
   voteActions: VoteActions;
+  /** A warning shown inside the card, just above its actions. */
+  notice?: ReactNode;
 };
 
 function Row({ label, actions, children }: { label: string; actions?: ReactNode; children: ReactNode }) {
@@ -72,6 +74,7 @@ export function PositionCard({
   onVote,
   onExtend,
   voteActions,
+  notice,
 }: PositionCardProps) {
   const reduced = useReducedMotion();
   const standing = standingOf(view);
@@ -154,6 +157,7 @@ export function PositionCard({
         />
       </dl>
 
+      {notice}
       <div className="loan-actions">
         {(standing === "safe" || standing === "close" || standing === "unknown") && (
           <>

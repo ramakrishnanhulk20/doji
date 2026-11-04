@@ -1,13 +1,15 @@
 "use client";
 
+import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PublicClient } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import type { PairKey } from "../lib/addresses";
 import { readBorrowSettings } from "../lib/borrow-reads";
 import { readClaimables, readMusdWallet, readPositionViews, readWalletPositionIds } from "../lib/loans";
-import { scanOpenOffers, scanPairOffers } from "../lib/stats";
+import { scanOpenOffers, scanPairOffers, usableOffers, type OpenOffer } from "../lib/stats";
 import { APP_CHAIN_ID } from "../lib/wagmi";
+import { useVaultHealth } from "./useVaultHealth";
 
 const POLL_MS = 15_000;
 // Finding the ids reads the explorer's logs, so it runs less often than the reads of the loans themselves.
@@ -52,7 +54,7 @@ export function useMyLoans() {
     retry: false,
   });
 
-  // Same keys as the Borrow screen, so the two screens share one read of the limits and the offers.
+  // Same keys as the Borrow screen, so the two screens share one read of the limits, the offers and the vault.
   const settings = useQuery({
     queryKey: ["borrow-settings"],
     queryFn: () => readBorrowSettings(client as PublicClient),
@@ -61,9 +63,15 @@ export function useMyLoans() {
     retry: false,
   });
 
+  const vault = useVaultHealth();
+  // C52 runs in select, before a roll's dates, selection or quote see an offer. The 20 October pair is filtered the
+  // same way, and stays whole, because none of its offers is parked.
+  const keepUsable = useCallback((list: OpenOffer[]) => usableOffers(list, vault.down), [vault.down]);
+
   const offers = useQuery({
     queryKey: ["open-offers"],
     queryFn: () => scanOpenOffers(),
+    select: keepUsable,
     refetchInterval: POLL_MS,
     retry: false,
   });
@@ -91,6 +99,7 @@ export function useMyLoans() {
   const legacyOffers = useQuery({
     queryKey: ["open-offers", "legacy"],
     queryFn: () => scanPairOffers("legacy"),
+    select: keepUsable,
     enabled: hasLegacy,
     refetchInterval: POLL_MS,
     retry: false,
@@ -102,5 +111,5 @@ export function useMyLoans() {
       ? { wallet: musd.data, settings: settings.data, offers: offers.data }
       : { wallet: legacyMusd.data, settings: legacySettings.data, offers: legacyOffers.data };
 
-  return { client, address, ids, views, claimables, musd, settings, offers, forPair };
+  return { client, address, ids, views, claimables, musd, settings, offers, vault, forPair };
 }

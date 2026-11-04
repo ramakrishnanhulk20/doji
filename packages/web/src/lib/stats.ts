@@ -76,7 +76,15 @@ export async function readMezoLocked(): Promise<MezoLocked> {
 }
 
 /** An offer id is only unique inside its pair, so every open offer carries the pair it can be filled from. */
-export type OpenOffer = { id: bigint; maturity: number; aprBps: number; remaining: bigint; pair: PairKey };
+export type OpenOffer = {
+  id: bigint;
+  maturity: number;
+  aprBps: number;
+  remaining: bigint;
+  pair: PairKey;
+  /** Its unfilled MUSD waits in Mezo's sMUSD vault, so a fill calls the vault. Always false on the 20 October pair. */
+  parked: boolean;
+};
 
 // The hero and the Thursday board both read the offers every 15 seconds, so one scan per pair serves both inside two
 // seconds.
@@ -129,7 +137,7 @@ async function readOpenOffers(pair: Pair): Promise<OpenOffer[]> {
             functionName: "offerOf",
             args: [id],
           })),
-        })) as { maturity: bigint; aprBps: number; remaining: bigint }[]);
+        })) as { maturity: bigint; aprBps: number; remaining: bigint; parked?: boolean }[]);
 
   const now = BigInt(Math.floor(Date.now() / 1000));
   return offers
@@ -141,7 +149,17 @@ async function readOpenOffers(pair: Pair): Promise<OpenOffer[]> {
       aprBps: offer.aprBps,
       remaining: offer.remaining,
       pair: pair.key,
+      // The four-field 20 October shape decodes no parked field, so its offers read as plain.
+      parked: offer.parked === true,
     }));
+}
+
+/**
+ * The offers a borrow or a roll may fill (threat model C52). While Mezo's vault is down a fill of a parked offer
+ * reverts inside the vault, so every parked offer is dropped and only plain ones are left; otherwise all pass.
+ */
+export function usableOffers<T extends { parked: boolean }>(offers: readonly T[], vaultDown: boolean): T[] {
+  return offers.filter((offer) => !(vaultDown && offer.parked));
 }
 
 export async function readOffers(): Promise<OfferStats> {

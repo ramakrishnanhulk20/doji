@@ -372,6 +372,11 @@ export function BorrowScreen() {
           {settings?.borrowsPaused && (
             <p className="paused-strip">New loans are paused right now. Repaying and rolling still work.</p>
           )}
+          {data.vault.down && (
+            <p className="paused-strip">
+              {"Mezo's sMUSD vault is not paying out right now, so offers earning in it cannot be borrowed. Borrow uses the other offers until it recovers."}
+            </p>
+          )}
 
           {result ? (
             <SuccessCard

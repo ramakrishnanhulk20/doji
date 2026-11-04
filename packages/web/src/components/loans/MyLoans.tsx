@@ -7,8 +7,9 @@ import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanWrite } from "../../hooks/useLoanWrite";
 import { useMyLoans } from "../../hooks/useLoans";
 import { useVoteActions } from "../../hooks/useVotes";
-import { btcText, claimCall, musdText, withdrawCall } from "../../lib/loans";
+import { STATE_ACTIVE, btcText, claimCall, musdText, withdrawCall, type PositionView } from "../../lib/loans";
 import { useReducedMotion } from "../../lib/motion-mode";
+import { formatDate } from "../../lib/stats";
 import { Button } from "../Button";
 import "../borrow/borrow.css";
 import "./loans.css";
@@ -24,6 +25,23 @@ type OpenSheet =
   | { kind: "roll"; id: bigint }
   | { kind: "vote"; id: bigint }
   | { kind: "extend"; id: bigint };
+
+const OUTAGE_WARNING_SECONDS = 14 * 86_400;
+
+/**
+ * C52: a Wave 2 loan due within two weeks may need a roll while parked offers cannot fill one. A 20 October loan
+ * rolls on offers that are never parked, so it gets no warning.
+ */
+function outageNotice(view: PositionView, vaultDown: boolean, now: number) {
+  const due = view.loan.maturity;
+  if (!vaultDown || view.pair !== "wave2" || view.loan.state !== STATE_ACTIVE) return null;
+  if (due <= now || due - now > OUTAGE_WARNING_SECONDS) return null;
+  return (
+    <p className="paused-strip">
+      {`Mezo's sMUSD vault is not paying out right now. Until it recovers, offers earning in it cannot fill a roll, so plan to repay or roll into the other offers before ${formatDate(due)}.`}
+    </p>
+  );
+}
 
 export function MyLoans() {
   const reduced = useReducedMotion();
@@ -127,6 +145,7 @@ export function MyLoans() {
                     acting={acting}
                     busy={busy}
                     voteActions={voteActions}
+                    notice={outageNotice(view, data.vault.down, now)}
                     onVote={() => setSheet({ kind: "vote", id: view.id })}
                     onExtend={() => setSheet({ kind: "extend", id: view.id })}
                     onRepay={(fullOnly) => setSheet({ kind: "repay", id: view.id, fullOnly })}
@@ -160,6 +179,7 @@ export function MyLoans() {
           client={data.client}
           settings={sheetPair?.settings}
           offers={sheetPair?.offers}
+          vaultDown={data.vault.down}
           wallet={sheetPair?.wallet}
           send={send}
           busy={busy}

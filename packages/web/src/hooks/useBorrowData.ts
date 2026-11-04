@@ -1,12 +1,14 @@
 "use client";
 
+import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PublicClient } from "viem";
 import { useAccount, useBalance, usePublicClient } from "wagmi";
 import { readBorrowSettings, readBtcAllowance, readPositions, readPrice, type Position } from "../lib/borrow-reads";
 import { STATE_NONE, readPositionViews, readWalletPositionIds } from "../lib/loans";
-import { scanOpenOffers } from "../lib/stats";
+import { scanOpenOffers, usableOffers, type OpenOffer } from "../lib/stats";
 import { APP_CHAIN_ID } from "../lib/wagmi";
+import { useVaultHealth } from "./useVaultHealth";
 
 const POLL_MS = 15_000;
 
@@ -15,10 +17,15 @@ export function useBorrowData() {
   const client = usePublicClient({ chainId: APP_CHAIN_ID }) as PublicClient | undefined;
   const { address, chainId, isConnected } = useAccount();
   const walletReady = isConnected && chainId === APP_CHAIN_ID && address !== undefined;
+  const vault = useVaultHealth();
 
+  // C52 runs in select, before the dates, Max, the selection or the quote see an offer. A select is per screen, so the
+  // Break page, which shares this cache key, still reads every offer.
+  const keepUsable = useCallback((list: OpenOffer[]) => usableOffers(list, vault.down), [vault.down]);
   const offers = useQuery({
     queryKey: ["open-offers"],
     queryFn: scanOpenOffers,
+    select: keepUsable,
     refetchInterval: POLL_MS,
     retry: false,
   });
@@ -104,6 +111,7 @@ export function useBorrowData() {
     walletReady,
     isConnected,
     chainId,
+    vault,
     offers,
     settings,
     price,

@@ -35,7 +35,10 @@ type RollSheetProps = {
   view: PositionView;
   client: PublicClient | undefined;
   settings: BorrowSettings | undefined;
+  /** Already through usableOffers: while the vault is down, no parked offer is in it. */
   offers: readonly OpenOffer[] | undefined;
+  /** Mezo's sMUSD vault is down. Only a Wave 2 roll says so: the 20 October pair has no parked offers to lose. */
+  vaultDown: boolean;
   wallet: MusdWallet | undefined;
   send: SendCall;
   busy: boolean;
@@ -47,7 +50,7 @@ const dash = <span className="summary-empty">-</span>;
 /** A top-up under a cent would read as zero, so it says so. */
 const smallMusd = (wei: bigint): string => (wei > 0n && wei < 10n ** 16n ? "under 0.01" : fmtMusd(wei));
 
-export function RollSheet({ view, client, settings, offers, wallet, send, busy, onClose }: RollSheetProps) {
+export function RollSheet({ view, client, settings, offers, vaultDown, wallet, send, busy, onClose }: RollSheetProps) {
   const gate = useLoanGate();
   const flow = useLoanSteps();
   const now = useLoanClock(30_000);
@@ -149,6 +152,11 @@ export function RollSheet({ view, client, settings, offers, wallet, send, busy, 
 
   return (
     <Sheet title={`Roll veBTC #${id}`} locked={running} onClose={onClose}>
+      {vaultDown && view.pair === "wave2" && (
+        <p className="paused-strip">
+          {"Mezo's sMUSD vault is not paying out right now, so offers earning in it cannot be rolled into. The roll uses the other offers until it recovers."}
+        </p>
+      )}
       <p className="loan-sheet-lead">
         You owe {musdText(owed)} MUSD on {formatDate(view.loan.maturity)}.
       </p>
