@@ -77,19 +77,22 @@ interface IPayDown {
     /// @notice Claims a position's pool rewards through LoanManager and uses them to pay its loan down. Anyone
     ///         may call; the keeper does weekly.
     /// @dev PayDown must be the position's reward operator, and LoanManager's own claim rules apply: position in
-    ///      custody, never in auction. Not paused, under the reentrancy lock. Reads the borrower from LoanManager
-    ///      and the oracle price before any other outside call. Records PayDown's balance of MUSD and of every
-    ///      listed token, claims, and uses only each measured increase, so tokens PayDown already held are never
-    ///      touched. With an open loan: MUSD gained counts toward the repay; BTC gained is sold only as far as
-    ///      the debt still needs after that MUSD, on the fixed BTC to MUSD volatile route of this contract's
-    ///      factory, with the oracle floor (BTC sold x price x (10,000 - slippageBps) / 10,000) handed to the
-    ///      Router as its minimum and checked again against the MUSD measured arriving; then
-    ///      min(MUSD gained, owedOf read just before the repay) is repaid through LoanManager. Every approval is
-    ///      exact and set back to zero. With no open loan nothing is sold. Every other part of the gains, MUSD
-    ///      over the debt, unsold BTC and every other token, goes to the borrower read at the start, in this
-    ///      call. Any failing step reverts the whole harvest. Reverts HarvestsPaused, PriceUnavailable,
-    ///      LengthMismatch, TooManyTokens, BelowFloor, any LoanManager claim or repay revert (NotBorrower when
-    ///      PayDown is not the operator, LoanInAuction), or any Router or token revert. A token listed on both
+    ///      custody, at any loan state. An auction included: a harvest then repays like any other, and one that
+    ///      clears the debt closes the loan and ends the auction (C9). Not paused, under the reentrancy lock.
+    ///      Reads the borrower from LoanManager before any other outside call. Records PayDown's balance of MUSD
+    ///      and of every listed token, claims, and uses only each measured increase, so tokens PayDown already
+    ///      held are never touched. With an open loan: MUSD gained counts toward the repay; BTC gained is sold
+    ///      only as far as the debt still needs after that MUSD, on the fixed BTC to MUSD volatile route of this
+    ///      contract's factory, with the oracle floor (BTC sold x price x (10,000 - slippageBps) / 10,000) handed
+    ///      to the Router as its minimum and checked again against the MUSD measured arriving; then
+    ///      min(MUSD gained, owedOf read just before the repay) is repaid through LoanManager. The oracle price
+    ///      is read once, and only when BTC is listed, BTC arrived and a loan is open, so a harvest that repays
+    ///      with MUSD alone, or has no open loan, never reads it. Every approval is exact and set back to zero.
+    ///      With no open loan nothing is sold. Every other part of the gains, MUSD over the debt, unsold BTC and
+    ///      every other token, goes to the borrower read at the start, in this call. Any failing step reverts the
+    ///      whole harvest. Reverts HarvestsPaused, PriceUnavailable (a stale or zero price, only when BTC arrived
+    ///      for an open loan), LengthMismatch, TooManyTokens, BelowFloor, any LoanManager claim or repay revert
+    ///      (NotBorrower when PayDown is not the operator), or any Router or token revert. A token listed on both
     ///      sides, or for two gauges, is measured once. Emits Harvested.
     /// @param tokenId Position to harvest.
     /// @param gauges Gauges to claim from, as registered on PoolsVoter.

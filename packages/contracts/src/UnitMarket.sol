@@ -214,9 +214,18 @@ contract UnitMarket is IUnitMarket, ERC1155Holder, Ownable2Step, ReentrancyGuard
 
     /// @inheritdoc IUnitMarket
     function rescueToken(address token, address to, uint256 amount) external nonReentrant onlyOwner {
-        if (token == musd || token == creditMarkets) revert TokenNotRescuable(token);
+        if (token == creditMarkets) revert TokenNotRescuable(token);
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
+        // The treasury's fees are the only MUSD anyone is owed here, so MUSD above them arrived unasked (C46).
+        if (token == musd) {
+            uint256 balance = IERC20(token).balanceOf(address(this));
+            uint256 owed = treasuryOwed;
+            uint256 surplus = balance > owed ? balance - owed : 0;
+            if (amount > surplus) revert RescueExceedsSurplus(token, amount, surplus);
+        }
+        // The only call above is a balance read of the fixed MUSD.
+        // forge-lint: disable-next-line(reentrancy-events)
         emit Rescued(token, to, amount);
 
         IERC20(token).safeTransfer(to, amount);

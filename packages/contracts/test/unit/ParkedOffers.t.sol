@@ -7,8 +7,8 @@ pragma solidity 0.8.28;
 // the real CreditMarkets and LoanManager with MockSavingsVault standing in for Mezo's MUSDSavingsRate.
 // It does NOT cover: booking or paying yield per offer, the guardian's stop-parking and pull-out controls, or a
 // vault whose yield index falls (all in OfferYield.t.sol); the real vault or a real position
-// (test/fork/SavingsFork.t.sol); or a roll that takes a parked offer, which runs the same fill path but is not
-// exercised here.
+// (test/fork/SavingsFork.t.sol). A roll that takes a parked offer is covered by
+// test_C30_RollTakingAParkedOfferWithAYieldSurplusPaysExactlyThePrincipal.
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CreditMarkets} from "../../src/CreditMarkets.sol";
@@ -212,6 +212,46 @@ contract ParkedOffersTest is LoanFixture {
         assertEq(cm.parkedPrincipal(), 0);
         assertEq(cm.offerOf(offerM2).remaining, OFFER, "no plain offer gained anything");
         assertEq(cm.marketOf(m1).collectedMusd, 0, "no market gained anything");
+    }
+
+    function test_C30_RollTakingAParkedOfferWithAYieldSurplusPaysExactlyThePrincipal() public {
+        uint128 parked = 60_000e18;
+        uint128 taken = 31_000e18;
+        _openLoan();
+        uint256 id = _postParked(m2, parked);
+        // Another holder, so CreditMarkets' share of the lump is a real share and not the whole lump.
+        vm.prank(stranger);
+        vault.deposit(60_000e18);
+        vm.prank(donor);
+        vault.receiveProtocolYield(1_000e18);
+        uint256 surplus = vault.accruedYield(address(cm));
+        assertGt(surplus, 0, "the withdraw will carry a yield surplus");
+        Balances memory before = _balances();
+        uint256 lmMusd = musd.balanceOf(address(lm));
+        uint256 delivered = cm.yieldDelivered();
+        uint256 owed = lm.owedOf(TOKEN);
+        assertLt(owed, taken, "the roll pays out above the old debt");
+
+        (uint256[] memory ids, uint128[] memory amounts) = _one(id, taken);
+        vm.expectCall(address(vault), abi.encodeCall(IMUSDSavingsRate.withdraw, (uint256(taken))), 1);
+        vm.expectCall(address(musd), abi.encodeCall(IERC20.transfer, (address(lm), uint256(taken))), 1);
+        // excessPaid is measured from what reached LoanManager, so this also proves it received exactly `taken`.
+        vm.expectEmit(true, true, true, true, address(lm));
+        emit ILoanManager.Rolled(TOKEN, m1, m2, owed, taken - owed, 0);
+        vm.prank(alice);
+        (uint256 principal,) = lm.roll(TOKEN, m2, ids, amounts, 5_000, 0);
+
+        assertEq(principal, taken);
+        assertEq(musd.balanceOf(address(lm)), lmMusd, "LoanManager keeps nothing");
+        assertEq(musd.balanceOf(alice) - before.alice, taken - owed, "the borrower gets the principal less the old debt");
+        assertEq(before.parked - cm.parkedPrincipal(), taken, "parked principal falls by exactly the amount taken");
+        assertEq(before.cmShares - vault.balanceOf(address(cm)), taken, "sMUSD falls by exactly the amount taken");
+        assertEq(cm.yieldDelivered() - delivered, surplus, "the surplus is booked as delivered yield");
+        assertEq(
+            musd.balanceOf(address(cm)) - before.cmMusd, surplus + owed, "the surplus and the old debt stay in CreditMarkets"
+        );
+        assertEq(cm.marketOf(m1).collectedMusd, owed, "the old market was repaid in full");
+        assertEq(cm.offerOf(id).remaining, parked - taken);
     }
 
     function test_C30_ShortPayRevertsFillAndCancelAndMovesNothing() public {

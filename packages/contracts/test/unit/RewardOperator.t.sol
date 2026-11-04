@@ -7,7 +7,7 @@ pragma solidity 0.8.28;
 // passes the borrower check for claimRewards on its own tokenId only and is refused everywhere else; a claim pays
 // whoever called it and the borrower's own claim still works; and a token is accepted exactly when the reward
 // contract on its side lists it, whether or not PoolsVoter whitelists it.
-// It does NOT cover: PayDown, which is not built yet; Mezo's real reward contracts and their isReward lists
+// It does NOT cover: PayDown's own harvest logic (test/unit/PayDown.t.sol); Mezo's real reward contracts and their isReward lists
 // (test/fork/PassThroughFork.t.sol); a reward token whose own code misbehaves (a stated non-goal); or the
 // operator inside the randomised invariant run.
 
@@ -210,14 +210,45 @@ contract RewardOperatorTest is LoanFixture {
         _claimMixed(operator, TOKEN_B);
     }
 
-    function test_C36_OperatorCannotClaimDuringAnAuction() public {
+    function test_C36_OperatorClaimsDuringAnAuctionAndNothingElse() public {
         _openLoan();
         _name(alice, TOKEN, operator);
         _makeUnsafe(TOKEN);
         lm.startAuction(TOKEN);
+        ILoanManager.Auction memory auction = lm.auctionOf(TOKEN);
         _oweMixed(TOKEN);
-        vm.expectRevert(abi.encodeWithSelector(ILoanManager.LoanInAuction.selector, TOKEN));
+
         _claimMixed(operator, TOKEN);
+        assertEq(musd.balanceOf(operator), 40e18, "C36: the operator's claim runs and pays it during an auction");
+        assertEq(btc.balanceOf(operator), 0.02e18);
+        assertEq(tokenA.balanceOf(operator), 5e18);
+        assertEq(abi.encode(lm.auctionOf(TOKEN)), abi.encode(auction), "the claim changes nothing the auction sells");
+        assertEq(uint8(lm.loanOf(TOKEN).state), uint8(ILoanManager.LoanState.Auction));
+
+        bytes memory refused = abi.encodeWithSelector(ILoanManager.NotBorrower.selector, TOKEN);
+        address[] memory pools = _list(makeAddr("pool"));
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1;
+        (uint256[] memory ids, uint128[] memory amounts) = _one(offerM2, PRINCIPAL);
+        vm.startPrank(operator);
+        vm.expectRevert(refused);
+        lm.claimRebase(TOKEN);
+        vm.expectRevert(refused);
+        lm.vote(TOKEN, pools, weights);
+        vm.expectRevert(refused);
+        lm.resetVotes(TOKEN);
+        vm.expectRevert(refused);
+        lm.extendLock(TOKEN, 28 days);
+        vm.expectRevert(refused);
+        lm.borrow(TOKEN, m2, ids, amounts, 5_000);
+        vm.expectRevert(refused);
+        lm.roll(TOKEN, m2, ids, amounts, 5_000, type(uint256).max);
+        vm.expectRevert(refused);
+        lm.withdrawCollateral(TOKEN);
+        vm.expectRevert(refused);
+        lm.setRewardOperator(TOKEN, address(0));
+        vm.stopPrank();
+        assertEq(lm.positionOf(TOKEN).rewardOperator, operator);
     }
 
     function test_C36_OperatorGoneAfterWithdrawAndNoneOnRedeposit() public {

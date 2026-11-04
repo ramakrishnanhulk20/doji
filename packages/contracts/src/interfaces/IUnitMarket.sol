@@ -47,7 +47,7 @@ interface IUnitMarket {
     event GuardianSet(address indexed guardian);
     /// @notice Listing and buying were paused or resumed.
     event PausedSet(bool paused);
-    /// @notice The owner moved a stray ERC-20 that is not MUSD.
+    /// @notice The owner moved a stray ERC-20: any token but the units, and MUSD only above the fees owed.
     event Rescued(address indexed token, address indexed to, uint256 amount);
 
     /// @notice An address argument, setting or transfer sender was the zero address.
@@ -94,8 +94,10 @@ interface IUnitMarket {
     error NotGuardianOrOwner();
     /// @notice Ownership can never be given up, so the fee, treasury, pause and rescue settings always keep an owner.
     error RenounceDisabled();
-    /// @notice MUSD is owed to the treasury and units are held for listings, so neither is ever rescued.
+    /// @notice Units held here belong to open listings, so the units contract is never rescued.
     error TokenNotRescuable(address token);
+    /// @notice The rescue would dip into the MUSD owed to the treasury; only `surplus` above it may leave.
+    error RescueExceedsSurplus(address token, uint256 amount, uint256 surplus);
 
     /// @notice Buys exactly `units` from a listing and sends them to the caller.
     /// @dev Pulls the cost from the caller with transferFrom, so the caller approves this contract for at least
@@ -154,10 +156,12 @@ interface IUnitMarket {
     /// @param paused_ True to pause.
     function setPaused(bool paused_) external;
 
-    /// @notice Owner only. Sends a stray ERC-20 that is not MUSD.
-    /// @dev MUSD is refused outright because every MUSD held here is owed to the treasury, and the CreditMarkets
-    ///      token is refused because every unit held here belongs to an open listing. Reverts
-    ///      OwnableUnauthorizedAccount, TokenNotRescuable, ZeroAddress or ZeroAmount. Emits Rescued.
+    /// @notice Owner only. Sends a stray ERC-20, including MUSD sent here by mistake, never units or fees owed.
+    /// @dev The CreditMarkets token is refused because every unit held here belongs to an open listing. MUSD may
+    ///      leave only up to this contract's MUSD balance minus treasuryOwed, so the treasury's fees always stay
+    ///      covered; any other token leaves freely, because UnitMarket keeps no record in it. Under the reentrancy
+    ///      lock. Reverts OwnableUnauthorizedAccount, TokenNotRescuable, ZeroAddress, ZeroAmount or
+    ///      RescueExceedsSurplus. Emits Rescued.
     /// @param token ERC-20 to send.
     /// @param to Receiver.
     /// @param amount Amount to send.
@@ -197,6 +201,6 @@ interface IUnitMarket {
     function nextListingId() external view returns (uint256);
 
     /// @notice MUSD fees owed to the treasury and not yet claimed. Always equal to the MUSD this contract holds,
-    ///         apart from MUSD sent here unasked, which is credited to nobody.
+    ///         apart from MUSD sent here unasked, which is credited to nobody and which the owner can rescue.
     function treasuryOwed() external view returns (uint256);
 }

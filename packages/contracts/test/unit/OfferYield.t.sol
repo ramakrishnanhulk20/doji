@@ -8,7 +8,7 @@ pragma solidity 0.8.28;
 // real CreditMarkets and LoanManager with MockSavingsVault standing in for Mezo's MUSDSavingsRate.
 // It does NOT cover: the real vault (test/fork/SavingsFork.t.sol); random sequences of these actions
 // (CreditInvariants.t.sol); rounding drift between Doji's per-offer maths and the vault's per-holder maths beyond
-// what the invariant run reaches; a roll that takes a parked offer; or the keeper's vault health simulation (C35's
+// what the invariant run reaches; or the keeper's vault health simulation (C35's
 // last sentence), which lives in packages/keeper.
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -135,6 +135,30 @@ contract OfferYieldTest is LoanFixture {
         assertEq(cm.pendingOfferYield(id), 0, "its clock stopped for good");
         assertEq(cm.offerOf(id).remaining, PARKED - PRINCIPAL);
         assertEq(cm.parkedPrincipal(), PARKED, "only the new era's offer is in the vault");
+    }
+
+    function test_C32_IsInVaultTrueWhileParked_FalseAfterPullOutAndForPlainOffers() public {
+        uint256 id = _postParked(lender, m1, PARKED);
+        assertTrue(cm.isInVault(id), "a parked offer of the current era is in the vault");
+        assertFalse(cm.isInVault(offerM1), "a plain offer never is");
+        assertFalse(cm.isInVault(999), "nor is an id with no offer");
+
+        vm.prank(guardian);
+        cm.pullOut();
+        assertFalse(cm.isInVault(id), "once its era is pulled out its MUSD is plain again");
+        assertTrue(cm.offerOf(id).parked, "although the offer itself still reads parked");
+
+        vm.prank(owner);
+        cm.resumeParking();
+        uint256 later = _postParked(maker2, m1, PARKED);
+        assertTrue(cm.isInVault(later), "an offer of the new era is in the vault");
+        assertFalse(cm.isInVault(id), "and the earlier era's offer stays out");
+
+        // The view agrees with what a fill actually does: the earlier offer fills without calling the vault.
+        _deposit(alice, TOKEN);
+        vm.expectCall(address(vault), abi.encodeCall(IMUSDSavingsRate.withdraw, (uint256(PRINCIPAL))), 0);
+        _borrow(alice, TOKEN, m1, id, PRINCIPAL);
+        assertEq(cm.parkedPrincipal(), PARKED, "only the new era's principal is in the vault");
     }
 
     function test_C35_IndexOf2Pow200BooksZeroAndPrincipalStillMoves() public {

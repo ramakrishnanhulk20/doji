@@ -56,12 +56,11 @@ contract PayDown is IPayDown, Ownable2Step, ReentrancyGuard {
 
     /// @dev One harvest's working state, in memory because the calldata lists leave no stack room. tokens[0] is
     ///      always MUSD, which every sale pays in; base is each token's balance before the claim and gained the
-    ///      claim's measured increase. The price and the allowance are read once so the BTC sizing and the BTC
-    ///      floor come from the same two numbers.
+    ///      claim's measured increase. The allowance is read once here and the price once in _sellBtc, so the BTC
+    ///      sizing and the BTC floor come from the same two numbers.
     struct Run {
         uint256 tokenId;
         address borrower;
-        uint256 price;
         uint256 slippage;
         bool open;
         uint256 btcIndex;
@@ -169,14 +168,12 @@ contract PayDown is IPayDown, Ownable2Step, ReentrancyGuard {
         revert RenounceDisabled();
     }
 
-    /// @dev C38: the borrower every leftover goes to is fixed here, before any code but LoanManager's and the
-    ///      price feed's views has run. C39 and C7: the price is read once, up front, and a stale or zero price
-    ///      stops the harvest whatever it would have sold.
+    /// @dev C38: the borrower every leftover goes to is fixed here, before any code but LoanManager's view has
+    ///      run.
     function _start(uint256 tokenId) private view returns (Run memory run) {
         if (paused) revert HarvestsPaused();
         run.tokenId = tokenId;
         run.borrower = loanManager.positionOf(tokenId).borrower;
-        run.price = _price();
         run.slippage = slippageBps;
         run.btcIndex = NONE;
     }
@@ -315,17 +312,21 @@ contract PayDown is IPayDown, Ownable2Step, ReentrancyGuard {
     /// @dev C40: sells only the BTC whose oracle floor covers what is still owed after the MUSD already here, and
     ///      nothing when that MUSD covers it. C39: the route is fixed (BTC to MUSD, volatile, this contract's
     ///      factory), so no caller ever chooses a pool, and the floor is computed here from the oracle and handed
-    ///      to the Router as its minimum; a caller has no input that could lower it.
+    ///      to the Router as its minimum; a caller has no input that could lower it. C7: the price is read here
+    ///      and nowhere else, once BTC was listed and arrived and a loan is open, so an oracle outage never blocks
+    ///      a harvest that repays with MUSD alone or has no loan, and a stale or zero price still reverts every
+    ///      harvest that could sell BTC. The sizing and the floor use that one reading.
     function _sellBtc(Run memory run) private {
         if (run.btcIndex == NONE) return;
         uint256 gained = run.gained[run.btcIndex];
         if (gained == 0) return;
+        uint256 price = _price();
         uint256 owed = loanManager.owedOf(run.tokenId);
         uint256 musdIn = _musdIn(run);
         if (owed <= musdIn) return;
 
-        uint256 sold = Math.min(gained, _btcCovering(owed - musdIn, run.price, run.slippage));
-        uint256 floor = _floorOf(sold, run.price, run.slippage);
+        uint256 sold = Math.min(gained, _btcCovering(owed - musdIn, price, run.slippage));
+        uint256 floor = _floorOf(sold, price, run.slippage);
         IMezoRouter.Route[] memory routes = new IMezoRouter.Route[](1);
         routes[0] = IMezoRouter.Route({from: address(btc), to: address(musd), stable: false, factory: factory});
         run.musdFromBtc = _swap(btc, sold, floor == 0 ? 1 : floor, routes);

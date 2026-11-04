@@ -274,15 +274,34 @@ contract PassThroughTest is LoanFixture {
         assertEq(tokenA.balanceOf(alice), 1e18, "rewards are not collateral, so health does not gate them");
     }
 
-    function test_C4_PassThroughsRevertInAuction() public {
+    function test_C4_InAuctionOnlyClaimRewardsRuns() public {
         _openLoan();
         _vote(alice, TOKEN);
         _makeUnsafe(TOKEN);
         lm.startAuction(TOKEN);
-        _expectAllRevert(alice, TOKEN, abi.encodeWithSelector(ILoanManager.LoanInAuction.selector, TOKEN));
+        bytes memory inAuction = abi.encodeWithSelector(ILoanManager.LoanInAuction.selector, TOKEN);
+        uint256[2] memory times = [vm.getBlockTimestamp(), uint256(m1) + 1];
 
-        vm.warp(m1 + 1);
-        _expectAllRevert(alice, TOKEN, abi.encodeWithSelector(ILoanManager.LoanInAuction.selector, TOKEN));
+        for (uint256 i; i < times.length; ++i) {
+            vm.warp(times[i]);
+            vm.startPrank(alice);
+            vm.expectRevert(inAuction);
+            lm.vote(TOKEN, pools, weights);
+            vm.expectRevert(inAuction);
+            lm.resetVotes(TOKEN);
+            vm.expectRevert(inAuction);
+            lm.claimRebase(TOKEN);
+            vm.expectRevert(inAuction);
+            lm.extendLock(TOKEN, 28 days);
+            vm.stopPrank();
+
+            // Rewards are not collateral, so what the position earned stays the borrower's in an auction too.
+            _owe(fees, TOKEN, tokenA, 1e18);
+            _claim(alice, TOKEN, _list(address(tokenA)), _none());
+            assertEq(tokenA.balanceOf(alice), (i + 1) * 1e18, "C4: the borrower claims during the auction");
+        }
+        assertEq(uint8(lm.loanOf(TOKEN).state), uint8(ILoanManager.LoanState.Auction), "the claims left it running");
+        assertTrue(ve.voted(TOKEN), "the vote the auction sells is untouched");
     }
 
     function test_C2_PassThroughsRevertWhenCustodyLost() public {

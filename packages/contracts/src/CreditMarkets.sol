@@ -381,6 +381,11 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     }
 
     /// @inheritdoc ICreditMarkets
+    function isInVault(uint256 offerId) external view returns (bool) {
+        return _inVault(offerId);
+    }
+
+    /// @inheritdoc ICreditMarkets
     function quoteFill(uint128 principal, uint16 aprBps, uint64 maturity)
         external
         view

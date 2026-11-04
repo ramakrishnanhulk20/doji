@@ -246,7 +246,7 @@ interface ILoanManager {
     error NothingToClaim(address account);
     /// @notice The vote cap is outside 1 to 30, PoolsVoter's own per-vote pool limit.
     error MaxVotesOutOfBounds(uint16 maxVotes);
-    /// @notice The loan is in auction, so the borrower's pass-throughs are closed (C4).
+    /// @notice The loan is in auction, so every pass-through but claimRewards is closed (C4).
     error LoanInAuction(uint256 tokenId);
     /// @notice The loan is above its liquidation line at a fresh price (C4).
     error LoanUnsafe(uint256 tokenId);
@@ -395,9 +395,11 @@ interface ILoanManager {
     /// @notice Claims the position's pool fees and incentives from the listed gauges through PoolsVoter and pays
     ///         them to the caller: its borrower, or the reward operator the borrower named.
     /// @dev Borrower or the position's non-zero reward operator, the only call the operator may make (C36);
-    ///      position in custody, loan None or Active at any health, never in auction (C4). Whoever calls is
-    ///      paid, so the borrower's own claim still works while an operator is named (C37). The
-    ///      caller names gauges, never reward contracts: each gauge's fee and incentive contracts are looked up
+    ///      position in custody, at any loan state and health, an auction included: rewards are not collateral
+    ///      and the claim changes nothing the auction sells, so what the position earned stays with its borrower
+    ///      instead of passing to a buyer (C4). Whoever calls is paid, so the borrower's own claim still works
+    ///      while an operator is named (C37). The caller names gauges, never reward contracts: each gauge's fee
+    ///      and incentive contracts are looked up
     ///      from PoolsVoter and both must exist (a registered gauge, live or killed), and every listed token must
     ///      be a reward of the contract on its own side (isReward, F36), so only Mezo's own reward contracts run
     ///      and they pay this tokenId only. A pool's own tokens pass whether or not PoolsVoter whitelists them,
@@ -405,9 +407,8 @@ interface ILoanManager {
     ///      with no tokens is not called. Under the reentrancy lock, measures each distinct listed token's
     ///      balance, claims, measures again, and pays the caller exactly each increase; a token listed twice is
     ///      measured and paid once. Claimables never change during the call (C10, C28). Never paused. Reverts
-    ///      NotBorrower, NotInCustody, LoanInAuction, LengthMismatch, BadRewardTokenCount, UnknownGauge,
-    ///      TokenNotReward, or any PoolsVoter or reward revert. Emits RewardsForwarded for each token whose
-    ///      balance rose.
+    ///      NotBorrower, NotInCustody, LengthMismatch, BadRewardTokenCount, UnknownGauge, TokenNotReward, or
+    ///      any PoolsVoter or reward revert. Emits RewardsForwarded for each token whose balance rose.
     /// @param tokenId Position whose rewards to claim.
     /// @param gauges Gauges to claim from, as registered on PoolsVoter.
     /// @param feeTokens Tokens to claim from each gauge's fee reward contract, one list per gauge.

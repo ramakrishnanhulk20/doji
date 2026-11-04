@@ -6,7 +6,8 @@ pragma solidity 0.8.28;
 // always the transfer's from (C43); a listing's terms and fee rate never change (C44); a buy fills exactly, costs
 // at least 1 wei, splits the cost exactly into seller amount and fee, and a re-entering buyer cannot take more
 // than is left (C45); cancel and returnExpired work whatever the pause, fee or expiry, fees are a claimable, and
-// rescue refuses MUSD and units (C46). Units come from a real borrow on the LoanFixture contracts and claimUnits.
+// rescue refuses units and moves MUSD only above the fees owed (C46). Units come from a real borrow on the
+// LoanFixture contracts and claimUnits.
 // It does NOT cover: real Mezo contracts (test/fork), the old CreditMarkets pair, fee-on-transfer MUSD (MUSD is
 // plain), a seller contract whose own receiver hook refuses its returned units, randomised sequences
 // (UnitMarketInvariants.t.sol), or any price a listing should ask (a non-goal: UnitMarket gives no price).
@@ -492,10 +493,12 @@ contract UnitMarketTest is LoanFixture {
         assertEq(cm.balanceOf(buyer, m1), 1e18);
     }
 
-    function test_C46_RescueRefusesMusdAndUnits() public {
+    function test_C46_RescueRefusesUnitsAndMovesOtherStrays() public {
         _buy(_list(100e18, ASK, _expiry()), 10e18);
         vm.startPrank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IUnitMarket.TokenNotRescuable.selector, address(musd)));
+        vm.expectRevert(
+            abi.encodeWithSelector(IUnitMarket.RescueExceedsSurplus.selector, address(musd), 1, uint256(0))
+        );
         um.rescueToken(address(musd), owner, 1);
         vm.expectRevert(abi.encodeWithSelector(IUnitMarket.TokenNotRescuable.selector, address(cm)));
         um.rescueToken(address(cm), owner, 1);
@@ -517,6 +520,34 @@ contract UnitMarketTest is LoanFixture {
         um.rescueToken(address(stray), guardian, 1);
         assertEq(cm.balanceOf(address(um), m1), 90e18, "units for the open listing are still here");
         assertEq(musd.balanceOf(address(um)), um.treasuryOwed(), "MUSD owed is still here");
+    }
+
+    function test_C46_RescueMovesStrayMusdButNeverTheFeesOwed() public {
+        _buy(_list(100e18, ASK, _expiry()), 10e18);
+        uint256 owed = um.treasuryOwed();
+        assertGt(owed, 0, "a buy left fees owed");
+        uint256 stray = 40e18;
+        musd.mint(address(um), stray);
+        address rescued = makeAddr("rescued");
+
+        vm.startPrank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IUnitMarket.RescueExceedsSurplus.selector, address(musd), stray + 1, stray)
+        );
+        um.rescueToken(address(musd), rescued, stray + 1);
+        vm.expectEmit(true, true, false, true, address(um));
+        emit IUnitMarket.Rescued(address(musd), rescued, stray);
+        um.rescueToken(address(musd), rescued, stray);
+        vm.expectRevert(abi.encodeWithSelector(IUnitMarket.RescueExceedsSurplus.selector, address(musd), 1, uint256(0)));
+        um.rescueToken(address(musd), rescued, 1);
+        vm.stopPrank();
+
+        assertEq(musd.balanceOf(rescued), stray, "the stray MUSD left");
+        assertEq(musd.balanceOf(address(um)), owed, "C46: every fee owed is still held");
+        assertEq(um.treasuryOwed(), owed);
+        vm.prank(treasury);
+        assertEq(um.claimFees(), owed, "the treasury still claims every fee");
+        assertEq(musd.balanceOf(address(um)), 0);
     }
 
     function test_OwnerSettersAndRenounce() public {

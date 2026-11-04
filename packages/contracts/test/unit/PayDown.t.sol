@@ -218,21 +218,51 @@ contract PayDownTest is LoanFixture {
         _assertNoAllowances();
     }
 
-    function test_C7_StaleOrZeroPriceRevertsTheHarvest() public {
+    function test_C7_StaleOrZeroPriceRevertsAHarvestThatWouldSellBtc() public {
         _owe(fees, TOKEN, address(musd), 100e18);
-        address[] memory musdOnly = _list(address(musd));
+        _owe(fees, TOKEN, address(btc), 0.01e18);
+        address[] memory musdAndBtc = _list(address(musd), address(btc));
 
         feed.setStale(true);
         vm.expectRevert(IPayDown.PriceUnavailable.selector);
-        _harvest(keeper, TOKEN, musdOnly, _none());
+        _harvest(keeper, TOKEN, musdAndBtc, _none());
 
         feed.setStale(false);
         feed.setPrice(0);
         vm.expectRevert(IPayDown.PriceUnavailable.selector);
-        _harvest(keeper, TOKEN, musdOnly, _none());
+        _harvest(keeper, TOKEN, musdAndBtc, _none());
+        assertEq(fees.owed(TOKEN, address(btc)), 0.01e18, "C41: the reverted harvests left the BTC with Mezo");
 
         feed.setPrice(PRICE);
-        assertEq(_harvest(keeper, TOKEN, musdOnly, _none()), 100e18, "a fresh price lets it run");
+        assertEq(_harvest(keeper, TOKEN, musdAndBtc, _none()), 900e18, "a fresh price lets the sale run");
+        assertEq(router.swaps(), 1);
+    }
+
+    function test_C7_HarvestThatSellsNoBtcNeverReadsThePrice() public {
+        ve.mint(bob, TOKEN_B, LOCK_BTC, m3, false);
+        _deposit(bob, TOKEN_B);
+        vm.prank(bob);
+        lm.setRewardOperator(TOKEN_B, address(pd));
+        feed.setStale(true);
+        // From here to the end of the test nothing may call the price feed.
+        vm.expectCall(address(feed), bytes(""), 0);
+
+        _owe(fees, TOKEN, address(musd), 100e18);
+        assertEq(_harvest(keeper, TOKEN, _list(address(musd)), _none()), 100e18, "MUSD alone repays with no price");
+        assertEq(lm.owedOf(TOKEN), face - 100e18);
+
+        // BTC listed but owed nothing this week: there is nothing to sell, so nothing to price.
+        _owe(fees, TOKEN, address(musd), 50e18);
+        assertEq(_harvest(keeper, TOKEN, _list(address(musd), address(btc)), _none()), 50e18);
+
+        // No loan to repay: BTC goes to the borrower unsold, so no price is needed either.
+        _owe(fees, TOKEN_B, address(btc), 0.5e18);
+        _owe(fees, TOKEN_B, address(musd), 10e18);
+        uint256 bobMusd = musd.balanceOf(bob);
+        assertEq(_harvest(keeper, TOKEN_B, _list(address(musd), address(btc)), _none()), 0);
+        assertEq(btc.balanceOf(bob), 0.5e18, "C40: no loan, the BTC reached the borrower unsold");
+        assertEq(musd.balanceOf(bob) - bobMusd, 10e18);
+        assertEq(router.swaps(), 0);
     }
 
     function test_C40_NoOpenLoan_NothingSold_EveryGainToTheBorrower() public {
@@ -544,18 +574,31 @@ contract PayDownTest is LoanFixture {
         _assertNoAllowances();
     }
 
-    function test_C41_HarvestDuringAnAuctionReverts() public {
+    function test_C41_HarvestDuringAnAuctionRepays_AFullRepaymentEndsIt() public {
         _makeUnsafe(TOKEN);
         lm.startAuction(TOKEN);
+        uint256 price = feed.price();
+        router.setRate(address(btc), address(musd), price);
         _owe(fees, TOKEN, address(musd), 100e18);
         _owe(fees, TOKEN, address(btc), 0.01e18);
 
-        vm.expectRevert(abi.encodeWithSelector(ILoanManager.LoanInAuction.selector, TOKEN));
-        _harvest(keeper, TOKEN, _list(address(musd), address(btc)), _none());
+        uint256 repaid = _harvest(keeper, TOKEN, _list(address(musd), address(btc)), _none());
+        assertEq(repaid, 100e18 + 0.01e18 * price / 1e18, "C41: the MUSD and the BTC sold went to the loan");
+        assertEq(lm.owedOf(TOKEN), face - repaid);
+        assertEq(uint8(lm.loanOf(TOKEN).state), uint8(ILoanManager.LoanState.Auction), "a part payment leaves it running");
 
-        assertEq(fees.owed(TOKEN, address(musd)), 100e18, "C41: the rewards stay in Mezo's reward contract");
-        assertEq(lm.owedOf(TOKEN), face, "C41: the loan is untouched");
-        assertEq(router.swaps(), 0);
+        _owe(fees, TOKEN, address(musd), face);
+        uint256 aliceMusd = musd.balanceOf(alice);
+        vm.expectEmit(true, true, false, true, address(lm));
+        emit ILoanManager.LoanClosed(TOKEN, m1);
+        assertEq(_harvest(keeper, TOKEN, _list(address(musd)), _none()), face - repaid, "repays exactly what is owed");
+
+        assertEq(uint8(lm.loanOf(TOKEN).state), uint8(ILoanManager.LoanState.None), "C9: the repayment closes the loan");
+        assertEq(lm.auctionOf(TOKEN).startTime, 0, "C9: and ends the auction");
+        assertEq(lm.positionOf(TOKEN).borrower, alice, "the position stays the borrower's");
+        assertEq(musd.balanceOf(alice) - aliceMusd, repaid, "the MUSD over the debt went to the borrower");
+        assertEq(musd.balanceOf(address(pd)) + btc.balanceOf(address(pd)), 0, "PayDown keeps nothing");
+        _assertNoAllowances();
     }
 
     function test_C42_ConstructorFixesItsAddressesFromLoanManagerAndTheRouter() public {

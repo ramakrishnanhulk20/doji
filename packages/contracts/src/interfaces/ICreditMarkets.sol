@@ -362,6 +362,15 @@ interface ICreditMarkets {
     /// @param offerId Offer to price.
     function pendingOfferYield(uint256 offerId) external view returns (uint256);
 
+    /// @notice True when `offerId`'s unfilled MUSD is held as sMUSD in the vault: a parked offer posted in the
+    ///         current parking era. False for a plain offer, for a missing id, and for a parked offer whose era has
+    ///         been pulled out, whose MUSD is back in this contract although offerOf still shows it parked.
+    /// @dev The same test fill and cancel use to decide whether to call the vault, so a fill or cancel of an offer
+    ///      reading true needs the vault to pay. It says where the remainder is kept, not how much is left: an
+    ///      empty parked offer of the current era reads true, so read offerOf(offerId).remaining alongside it.
+    /// @param offerId Offer to check.
+    function isInVault(uint256 offerId) external view returns (bool);
+
     /// @notice Books the yield of the listed offers to the caller and pays the caller as much of its booked
     ///         yield as the vault has delivered and nobody has been paid yet. Never paused.
     /// @dev Every listed id must be an offer the caller made, at most MAX_FILLS of them; an empty list just pays

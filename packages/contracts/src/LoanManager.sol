@@ -677,17 +677,21 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     }
 
     /// @dev The one pass-through check (C4): the recorded borrower (or, with `operatorOk`, the reward operator,
-    ///      C36), the position still in custody (C2) and no auction, where the resolution steps own the
-    ///      position. `strict` adds what vote and extendLock need: an Active loan must be on time and safe at a
-    ///      fresh price, so neither runs on a loan that anyone may already send to auction. Maturities are a
-    ///      week apart, so timestamp drift does not matter.
+    ///      C36), the position still in custody (C2) and, for everything but claimRewards, no auction, where the
+    ///      resolution steps own the position. `strict` adds what vote and extendLock need: an Active loan must be
+    ///      on time and safe at a fresh price, so neither runs on a loan that anyone may already send to auction.
+    ///      Maturities are a week apart, so timestamp drift does not matter.
     // forge-lint: disable-next-item(block-timestamp)
     function _requirePassThrough(uint256 tokenId, bool strict, bool operatorOk) private view {
         _requireBorrower(tokenId, operatorOk);
         _requireCustody(tokenId);
         Loan storage loan = _loans[tokenId];
         LoanState state = loan.state;
-        if (state == LoanState.Auction) revert LoanInAuction(tokenId);
+        // Rewards are not collateral and a claim pays only its caller, so it changes nothing the auction sells,
+        // and closing it would hand earned rewards to the buyer or strand them at a settle. The borrower can still
+        // cure the auction by repaying in full (C9), with those rewards too. Every other pass-through changes the
+        // votes or the lock being sold, so it stays closed. operatorOk is set by claimRewards alone.
+        if (state == LoanState.Auction && !operatorOk) revert LoanInAuction(tokenId);
         if (!strict || state != LoanState.Active) return;
         if (block.timestamp > loan.maturity) revert LoanOverdue(tokenId);
         if (_unsafeNow(tokenId, uint256(loan.face) - loan.repaid, loan.liqLtvBps)) revert LoanUnsafe(tokenId);
