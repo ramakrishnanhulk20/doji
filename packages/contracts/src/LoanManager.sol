@@ -233,7 +233,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
 
     /// @inheritdoc ILoanManager
     function withdrawCollateral(uint256 tokenId) external nonReentrant {
-        _requireBorrower(tokenId);
+        _requireBorrower(tokenId, false);
         if (_loans[tokenId].state != LoanState.None) revert LoanOpen(tokenId);
 
         // Withdrawn on the next line records this change.
@@ -246,7 +246,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
 
     /// @inheritdoc ILoanManager
     function vote(uint256 tokenId, address[] calldata, uint256[] calldata) external nonReentrant {
-        _requirePassThrough(tokenId, true);
+        _requirePassThrough(tokenId, true, false);
         // The pools and weights are decoded inside PassThrough from this call's own arguments, which keeps
         // LoanManager under the size limit; the id it votes with is the `tokenId` checked just above.
         PassThrough.castVote(poolsVoter, address(veBTC), lockLayoutWords, maxVotes, tokenId, msg.data[4:]);
@@ -254,7 +254,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
 
     /// @inheritdoc ILoanManager
     function resetVotes(uint256 tokenId) external nonReentrant {
-        _requirePassThrough(tokenId, false);
+        _requirePassThrough(tokenId, false, false);
         poolsVoter.reset(tokenId);
     }
 
@@ -263,7 +263,9 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         external
         nonReentrant
     {
-        _requirePassThrough(tokenId, false);
+        // The only call the reward operator may make (C36). Whoever passes is paid, so naming an operator never
+        // takes the borrower's own claim away (C37).
+        _requirePassThrough({tokenId: tokenId, strict: false, operatorOk: true});
         // The three lists are decoded inside PassThrough from this call's own arguments, with the same ABI
         // rules, because handing nested calldata arrays over as arguments overflows the stack. The id it claims
         // for is the `tokenId` checked just above.
@@ -271,8 +273,20 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     }
 
     /// @inheritdoc ILoanManager
+    function setRewardOperator(uint256 tokenId, address operator) external nonReentrant {
+        _requireBorrower(tokenId, false);
+        _requireCustody(tokenId);
+        // LoanManager never calls itself, and rewards it paid to itself would be credited to nobody.
+        if (operator == address(this)) revert InvalidOperator(operator);
+        _positions[tokenId].rewardOperator = operator;
+        // The only call above is the veBTC ownerOf read.
+        // forge-lint: disable-next-line(reentrancy-events)
+        emit RewardOperatorSet(tokenId, operator);
+    }
+
+    /// @inheritdoc ILoanManager
     function claimRebase(uint256 tokenId) external nonReentrant {
-        _requirePassThrough(tokenId, false);
+        _requirePassThrough(tokenId, false, false);
         uint256 before = _btcBalance();
         // The distributor's own return figure is ignored on purpose: what is credited is what was measured.
         // slither-disable-next-line unused-return
@@ -290,7 +304,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
 
     /// @inheritdoc ILoanManager
     function extendLock(uint256 tokenId, uint256 lockDuration) external nonReentrant {
-        _requirePassThrough(tokenId, true);
+        _requirePassThrough(tokenId, true, false);
         veBTC.increaseUnlockTime(tokenId, lockDuration);
     }
 
@@ -613,7 +627,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
     ) private returns (uint256 principal, uint256 face) {
         if (!isRoll) {
             if (borrowsPaused) revert BorrowsPaused();
-            _requireBorrower(tokenId);
+            _requireBorrower(tokenId, false);
             if (_loans[tokenId].state != LoanState.None) revert LoanOpen(tokenId);
         }
         uint256 maxFace = _maxFace(tokenId, maturity);
@@ -662,13 +676,14 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         emit Deposited(tokenId, msg.sender);
     }
 
-    /// @dev The one pass-through check (C4): the recorded borrower, the position still in custody (C2) and no
-    ///      auction, where the resolution steps own the position. `strict` adds what vote and extendLock need:
-    ///      an Active loan must be on time and safe at a fresh price, so neither runs on a loan that anyone may
-    ///      already send to auction. Maturities are a week apart, so timestamp drift does not matter.
+    /// @dev The one pass-through check (C4): the recorded borrower (or, with `operatorOk`, the reward operator,
+    ///      C36), the position still in custody (C2) and no auction, where the resolution steps own the
+    ///      position. `strict` adds what vote and extendLock need: an Active loan must be on time and safe at a
+    ///      fresh price, so neither runs on a loan that anyone may already send to auction. Maturities are a
+    ///      week apart, so timestamp drift does not matter.
     // forge-lint: disable-next-item(block-timestamp)
-    function _requirePassThrough(uint256 tokenId, bool strict) private view {
-        _requireBorrower(tokenId);
+    function _requirePassThrough(uint256 tokenId, bool strict, bool operatorOk) private view {
+        _requireBorrower(tokenId, operatorOk);
         _requireCustody(tokenId);
         Loan storage loan = _loans[tokenId];
         LoanState state = loan.state;
@@ -703,7 +718,7 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         view
         returns (uint64 oldMaturity, uint256 owed)
     {
-        _requireBorrower(tokenId);
+        _requireBorrower(tokenId, false);
         Loan storage loan = _loans[tokenId];
         if (loan.state != LoanState.Active) revert LoanNotActive(tokenId);
         oldMaturity = loan.maturity;
@@ -758,9 +773,14 @@ contract LoanManager is ILoanManager, Ownable2Step, ReentrancyGuard {
         if (price == 0) revert PriceUnavailable();
     }
 
-    /// @dev The one borrower check (C4).
-    function _requireBorrower(uint256 tokenId) private view {
-        if (_positions[tokenId].borrower != msg.sender) revert NotBorrower(tokenId);
+    /// @dev The one borrower check (C4) and its one exception (C36): the position's named, non-zero reward
+    ///      operator also passes when `operatorOk`, which only claimRewards sets. Anyone else, and the operator
+    ///      everywhere else, reverts NotBorrower.
+    function _requireBorrower(uint256 tokenId, bool operatorOk) private view {
+        Position storage position = _positions[tokenId];
+        if (position.borrower == msg.sender) return;
+        address operator = position.rewardOperator;
+        if (!operatorOk || operator == address(0) || operator != msg.sender) revert NotBorrower(tokenId);
     }
 
     /// @dev C2: once the position has left this contract, nothing but writeOff runs for its loan.

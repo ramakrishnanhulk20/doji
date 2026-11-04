@@ -4,8 +4,9 @@ pragma solidity 0.8.28;
 // Unit tests for the borrower pass-throughs (vote, resetVotes, claimRewards, claimRebase, extendLock) and the
 // vote clearing settle relies on: the one borrower check (C4), the vote cut-off before a lock ends and
 // prepareSettle resetting every voter with a live vote (C5, C26), reward forwarding through registered gauges
-// and whitelisted tokens only, with MUSD and BTC forwarded and claimables untouched (C10, C28), fee-distributor
-// claims credited to the right claimable (C28), and the pause leaving every pass-through and roll open (C19), on
+// and only tokens their reward contracts list, with MUSD and BTC forwarded and claimables untouched (C10, C28),
+// fee-distributor claims credited to the right claimable (C28), and the pause leaving every pass-through and roll
+// open (C19), on
 // the real CreditMarkets and LoanManager with mocks for veBTC, PoolsVoter, ValidatorsVoter, the fee
 // distributor, reward contracts and tokens.
 // It does NOT cover: Mezo's real voters, reward contracts, fee distributor or veBTC
@@ -43,9 +44,10 @@ contract PassThroughTest is LoanFixture {
         fees = new MockReward(address(voter), ve);
         bribes = new MockReward(address(voter), ve);
         voter.setGauge(gauge, address(fees), address(bribes));
-        address[4] memory whitelisted = [address(tokenA), address(tokenB), address(musd), address(btc)];
-        for (uint256 i; i < whitelisted.length; ++i) {
-            voter.setWhitelisted(whitelisted[i], true);
+        address[4] memory rewards = [address(tokenA), address(tokenB), address(musd), address(btc)];
+        for (uint256 i; i < rewards.length; ++i) {
+            fees.setReward(rewards[i], true);
+            bribes.setReward(rewards[i], true);
         }
         pools.push(makeAddr("poolX"));
         pools.push(makeAddr("poolY"));
@@ -435,11 +437,11 @@ contract PassThroughTest is LoanFixture {
         vm.stopPrank();
     }
 
-    function test_C10_NonWhitelistedTokenReverts() public {
+    function test_C10_TokenTheRewardContractDoesNotListReverts() public {
         _deposit(alice, TOKEN);
         address[3] memory refused = [address(tokenC), address(ve), address(cm)];
         for (uint256 i; i < refused.length; ++i) {
-            vm.expectRevert(abi.encodeWithSelector(ILoanManager.TokenNotWhitelisted.selector, refused[i]));
+            vm.expectRevert(abi.encodeWithSelector(ILoanManager.TokenNotReward.selector, address(bribes), refused[i]));
             _claim(alice, TOKEN, _list(address(tokenA)), _list(refused[i]));
         }
     }
@@ -486,6 +488,8 @@ contract PassThroughTest is LoanFixture {
         donorMusd.setMode(MockReward.Mode.Donate);
         donorMusd.setDonation(address(musd), 1e18);
         musd.mint(address(donorMusd), 1e18);
+        donorC.setReward(address(tokenB), true);
+        donorMusd.setReward(address(tokenB), true);
         address second = _gauge("secondGauge", donorC, donorMusd);
 
         address[] memory gauges = _list(gauge, second);

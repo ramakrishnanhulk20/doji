@@ -12,8 +12,9 @@ interface IRewardContract {
 /// refused in the last hour; a vote records its weight in usedWeights and marks the position voted on veBTC, and
 /// reset zeroes both; poke is open to anyone, re-casts the standing vote and never records a vote time;
 /// claimFees and claimBribes are owner or approved only and call getReward on each listed reward contract, which
-/// pays the position's owner. Tests register gauges (gaugeToFees, gaugeToBribe) and whitelist tokens as Mezo
-/// governance would. vote(tokenId) is a test hook that casts a vote with no checks.
+/// pays the position's owner. Tests register gauges (gaugeToFees, gaugeToBribe) as Mezo governance would. It
+/// keeps no token whitelist: LoanManager asks each reward contract instead (F36), so a call for one here would
+/// revert. vote(tokenId) is a test hook that casts a vote with no checks.
 contract MockPoolsVoter {
     uint256 internal constant WEEK = 604_800;
     uint256 internal constant MAX_VOTING_NUM = 30;
@@ -25,7 +26,6 @@ contract MockPoolsVoter {
     mapping(uint256 tokenId => uint256[]) internal _weights;
     mapping(address gauge => address) public gaugeToFees;
     mapping(address gauge => address) public gaugeToBribe;
-    mapping(address token => bool) public isWhitelistedToken;
     uint256 public pokeCount;
     uint256 public resetCount;
 
@@ -43,10 +43,6 @@ contract MockPoolsVoter {
     function setGauge(address gauge, address fees, address bribe) external {
         gaugeToFees[gauge] = fees;
         gaugeToBribe[gauge] = bribe;
-    }
-
-    function setWhitelisted(address token, bool whitelisted) external {
-        isWhitelistedToken[token] = whitelisted;
     }
 
     function vote(uint256 tokenId) external {

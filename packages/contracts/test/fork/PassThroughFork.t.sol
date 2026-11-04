@@ -29,6 +29,7 @@ import {IVeBTC} from "../../src/interfaces/IVeBTC.sol";
 import {IPriceFeed} from "../../src/interfaces/IPriceFeed.sol";
 import {IFeeDistributor} from "../../src/interfaces/IFeeDistributor.sol";
 import {IPoolsVoter} from "../../src/interfaces/IPoolsVoter.sol";
+import {IVotingReward} from "../../src/interfaces/IVotingReward.sol";
 import {MezoBtcStandIn} from "../utils/MezoBtcStandIn.sol";
 
 interface IVeBTCLive is IVeBTC {
@@ -62,6 +63,8 @@ interface IVeBTCVoterLive {
 interface IRewardLive {
     function earned(address token, uint256 tokenId) external view returns (uint256);
     function notifyRewardAmount(address token, uint256 amount) external;
+    function rewardsListLength() external view returns (uint256);
+    function rewards(uint256 index) external view returns (address);
 }
 
 interface IBoostVoterLive {
@@ -301,7 +304,7 @@ contract PassThroughForkTest is Test {
         address[][] memory feeTokens = new address[][](gauges.length);
         address[][] memory bribeTokens = new address[][](gauges.length);
         for (uint256 i; i < gauges.length; ++i) {
-            feeTokens[i] = _pair(MUSD, BTC);
+            feeTokens[i] = _musdAndBtcPaidBy(voter.gaugeToFees(gauges[i]));
             bribeTokens[i] = new address[](0);
         }
 
@@ -436,28 +439,19 @@ contract PassThroughForkTest is Test {
         assertEq(IERC20(MUSDT).balanceOf(address(lm)), lmT);
         console.log("rewards forwarded (mUSDC wei, mUSDT wei)", dueC, dueT);
 
-        assertFalse(IPoolsVoter(POOLS_VOTER).isWhitelistedToken(VEBTC), "veBTC is not a whitelisted token");
+        assertFalse(IVotingReward(fees).isReward(VEBTC), "veBTC is not a reward of the gauge's fee contract");
         vm.startPrank(pos.holder);
-        vm.expectRevert(abi.encodeWithSelector(ILoanManager.TokenNotWhitelisted.selector, VEBTC));
+        vm.expectRevert(abi.encodeWithSelector(ILoanManager.TokenNotReward.selector, fees, VEBTC));
         lm.claimRewards(pos.tokenId, _list(poolGauge), _nest(_list(VEBTC)), _nest(new address[](0)));
         vm.expectRevert(abi.encodeWithSelector(ILoanManager.UnknownGauge.selector, fees));
         lm.claimRewards(pos.tokenId, _list(fees), _nest(tokens), _nest(new address[](0)));
         vm.stopPrank();
     }
 
-    /// @dev The worst case the cap allows: 8 live gauges, one token on each side, so 16 reward contract calls over
-    ///      8 distinct ordinary tokens.
+    /// @dev The worst case the cap allows: 8 live gauges, one token on each side, so 16 reward contract calls and
+    ///      16 isReward checks. Each side lists a token its own contract really pays (F36), read from the chain:
+    ///      the fee contract's first ordinary reward and the incentive contract's last.
     function _claimSixteenListedTokens() internal {
-        address[8] memory pick = [
-            MUSDC,
-            MUSDT,
-            0x68bBA5ecC126DedFa52C0399671E3A7a514D311C,
-            0x6a7CD8E1384d49f502b4A4CE9aC9eb320835c5d7,
-            0x9d36F8f62347538440a212e9162f534f797542df,
-            0xa10aD2570ea7b93d19fDae6Bd7189fF4929Bc747,
-            0xaaC423eDC4E3ee9ef81517e8093d52737165b71F,
-            0xdF708431162Ba247dDaE362D2c919e0fbAfcf9DE
-        ];
         address[] memory gaugeList = new address[](8);
         address[][] memory feeTokens = new address[][](8);
         address[][] memory bribeTokens = new address[][](8);
@@ -465,9 +459,12 @@ contract PassThroughForkTest is Test {
         for (uint256 i; i < voter.length() && found < 8; ++i) {
             address gauge = voter.gauges(voter.pools(i));
             if (!voter.isAlive(gauge)) continue;
+            address feeToken = _ordinaryReward(IRewardLive(voter.gaugeToFees(gauge)), false);
+            address bribeToken = _ordinaryReward(IRewardLive(voter.gaugeToBribe(gauge)), true);
+            if (feeToken == address(0) || bribeToken == address(0)) continue;
             gaugeList[found] = gauge;
-            feeTokens[found] = _list(pick[found]);
-            bribeTokens[found] = _list(pick[(found + 4) % 8]);
+            feeTokens[found] = _list(feeToken);
+            bribeTokens[found] = _list(bribeToken);
             ++found;
         }
         assertEq(found, 8, "eight live gauges");
@@ -761,9 +758,25 @@ contract PassThroughForkTest is Test {
         }
     }
 
-    function _pair(address a, address b) internal pure returns (address[] memory out) {
-        out = new address[](2);
-        (out[0], out[1]) = (a, b);
+    /// @dev The first (or, with `fromEnd`, the last) reward the contract lists that is an ordinary ERC-20, or zero.
+    ///      BTC and MEZO (0x7b7C...0000 and 0x7b7C...0001) are Mezo precompiles a local EVM cannot run.
+    function _ordinaryReward(IRewardLive reward, bool fromEnd) internal view returns (address) {
+        uint256 count = reward.rewardsListLength();
+        for (uint256 i; i < count; ++i) {
+            address token = reward.rewards(fromEnd ? count - 1 - i : i);
+            if (uint160(token) >> 16 != uint160(BTC) >> 16) return token;
+        }
+        return address(0);
+    }
+
+    /// @dev MUSD and BTC, keeping only those the fee contract lists as rewards (F36): a MUSD/mUSDC pool's fee
+    ///      contract pays MUSD and never BTC.
+    function _musdAndBtcPaidBy(address feeReward) internal view returns (address[] memory out) {
+        bool musdPaid = IVotingReward(feeReward).isReward(MUSD);
+        bool btcPaid = IVotingReward(feeReward).isReward(BTC);
+        out = new address[]((musdPaid ? 1 : 0) + (btcPaid ? 1 : 0));
+        if (musdPaid) out[0] = MUSD;
+        if (btcPaid) out[out.length - 1] = BTC;
     }
 
     function _findBoostedUnvoted(IBoostVoterLive booster) internal view returns (uint256 id, address gauge) {

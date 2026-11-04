@@ -22,8 +22,11 @@ interface ILoanManager {
         Closed
     }
 
+    /// @dev The operator lives inside the record so every path that deletes the record when the NFT leaves also
+    ///      deletes it, and a returning tokenId starts with none (C9, C36).
     struct Position {
         address borrower;
+        address rewardOperator;
     }
 
     /// @dev The LTV limits and the three auction terms are copied from the globals when the loan opens or
@@ -142,7 +145,7 @@ interface ILoanManager {
     /// @notice `account` collected its MUSD and BTC claimables.
     event Claimed(address indexed account, uint256 musdAmount, uint256 btcAmount);
     /// @notice A position's reward claim raised LoanManager's `token` balance by `amount`, all of it paid to
-    ///         the borrower.
+    ///         the caller: the borrower, or the position's reward operator.
     event RewardsForwarded(uint256 indexed tokenId, address indexed token, uint256 amount);
     /// @notice A position's fee-distributor claim ran. `btcCredited` is the BTC that arrived and was added to
     ///         the borrower's BTC claimable; zero when the claim went into the lock instead.
@@ -151,6 +154,9 @@ interface ILoanManager {
     event Rescued(address indexed token, address indexed to, uint256 amount);
     /// @notice The owner moved a veBTC position that arrived without becoming a position.
     event PositionRescued(uint256 indexed tokenId, address indexed to);
+    /// @notice The borrower named `operator` as the one other address that may claim the position's pool
+    ///         rewards; zero means none.
+    event RewardOperatorSet(uint256 indexed tokenId, address indexed operator);
 
     /// @notice An address argument or setting was the zero address.
     error ZeroAddress();
@@ -254,8 +260,9 @@ interface ILoanManager {
     error BadRewardTokenCount(uint256 count);
     /// @notice PoolsVoter has no fee and incentive reward contracts for this address, so it is not a gauge (C10).
     error UnknownGauge(address gauge);
-    /// @notice The token is not on PoolsVoter's whitelist, so no Mezo reward contract pays it (C10).
-    error TokenNotWhitelisted(address token);
+    /// @notice The gauge's reward contract on the side the token was listed on does not list it as a reward, so
+    ///         it cannot pay it (C10, F36).
+    error TokenNotReward(address rewardContract, address token);
     /// @notice ValidatorsVoter and PoolsVoter must be different contracts.
     error DuplicateVoter();
     /// @notice The rescue would dip into what is owed to claimable holders (C28).
@@ -264,6 +271,8 @@ interface ILoanManager {
     error TokenNotRescuable(address token);
     /// @notice Ownership can never be given up, so the rescue paths always keep an owner.
     error RenounceDisabled();
+    /// @notice LoanManager itself can never be a position's reward operator (C36).
+    error InvalidOperator(address operator);
 
     /// @notice Hands a veBTC position to LoanManager and records the caller as its borrower.
     /// @dev The caller must own the position and approve this contract for that single token first.
@@ -384,17 +393,20 @@ interface ILoanManager {
     function resetVotes(uint256 tokenId) external;
 
     /// @notice Claims the position's pool fees and incentives from the listed gauges through PoolsVoter and pays
-    ///         them to its borrower.
-    /// @dev Borrower only, position in custody, loan None or Active at any health, never in auction (C4). The
-    ///      borrower names gauges, never reward contracts: each gauge's fee and incentive contracts are looked up
+    ///         them to the caller: its borrower, or the reward operator the borrower named.
+    /// @dev Borrower or the position's non-zero reward operator, the only call the operator may make (C36);
+    ///      position in custody, loan None or Active at any health, never in auction (C4). Whoever calls is
+    ///      paid, so the borrower's own claim still works while an operator is named (C37). The
+    ///      caller names gauges, never reward contracts: each gauge's fee and incentive contracts are looked up
     ///      from PoolsVoter and both must exist (a registered gauge, live or killed), and every listed token must
-    ///      be on PoolsVoter's whitelist, so only Mezo's own reward contracts run and they pay this tokenId only.
-    ///      MUSD and BTC are allowed. 1 to MAX_REWARD_TOKENS tokens in total and at least one per gauge; a side
+    ///      be a reward of the contract on its own side (isReward, F36), so only Mezo's own reward contracts run
+    ///      and they pay this tokenId only. A pool's own tokens pass whether or not PoolsVoter whitelists them,
+    ///      MUSD and BTC included. 1 to MAX_REWARD_TOKENS tokens in total and at least one per gauge; a side
     ///      with no tokens is not called. Under the reentrancy lock, measures each distinct listed token's
-    ///      balance, claims, measures again, and pays the borrower exactly each increase; a token listed twice is
+    ///      balance, claims, measures again, and pays the caller exactly each increase; a token listed twice is
     ///      measured and paid once. Claimables never change during the call (C10, C28). Never paused. Reverts
     ///      NotBorrower, NotInCustody, LoanInAuction, LengthMismatch, BadRewardTokenCount, UnknownGauge,
-    ///      TokenNotWhitelisted, or any PoolsVoter or reward revert. Emits RewardsForwarded for each token whose
+    ///      TokenNotReward, or any PoolsVoter or reward revert. Emits RewardsForwarded for each token whose
     ///      balance rose.
     /// @param tokenId Position whose rewards to claim.
     /// @param gauges Gauges to claim from, as registered on PoolsVoter.
@@ -406,6 +418,18 @@ interface ILoanManager {
         address[][] calldata feeTokens,
         address[][] calldata bribeTokens
     ) external;
+
+    /// @notice Names the one other address that may claim this position's pool rewards and receive them, or
+    ///         clears it with the zero address.
+    /// @dev Recorded borrower only, position in custody, at any loan state and health. The operator can only
+    ///      call claimRewards for this tokenId, under the borrower's conditions; every other borrower action stays
+    ///      the borrower's alone, and the borrower can still claim, clear and repay (C36, C37). It is part of the
+    ///      position record, so it is deleted whenever the NFT leaves and a returning tokenId has none. Never
+    ///      paused. Reverts NotBorrower, NotInCustody or InvalidOperator (LoanManager itself). Emits
+    ///      RewardOperatorSet.
+    /// @param tokenId Position whose operator to set.
+    /// @param operator Address that may claim the position's rewards, or zero for none.
+    function setRewardOperator(uint256 tokenId, address operator) external;
 
     /// @notice Claims the position's share of veBTC fees from Mezo's fee distributor.
     /// @dev Borrower only, position in custody, loan None or Active at any health, never in auction. The
@@ -552,7 +576,8 @@ interface ILoanManager {
     /// @return owed MUSD still owed.
     function owedOf(uint256 tokenId) external view returns (uint256 owed);
 
-    /// @notice A position's recorded borrower. A zero borrower means LoanManager holds no position for it.
+    /// @notice A position's recorded borrower and reward operator. A zero borrower means LoanManager holds no
+    ///         position for it; a zero operator means none is named.
     /// @param tokenId Position id.
     /// @return position The position record.
     function positionOf(uint256 tokenId) external view returns (Position memory position);

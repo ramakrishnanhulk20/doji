@@ -5,7 +5,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {MockVeBTC} from "./MockVeBTC.sol";
 
 /// @notice Stand-in for a Mezo fee or bribe reward contract. Honest, it pays the position's current owner what
-/// is owed for each listed token, as the live one does, and only the voter may call it. The other modes stand in
+/// is owed for each listed token, as the live one does, and only the voter may call it. Like the live contract it
+/// keeps its own reward list (isReward), which tests set token by token. The other modes stand in
 /// for a registered reward contract that misbehaves, as defence-in-depth checks: Revert fails every claim, Donate
 /// also pushes extra tokens into the owner during the claim, and Reenter tries a call back into LoanManager first
 /// and records whether it was refused. Tokens are minted to this contract by the test before they are owed.
@@ -21,6 +22,7 @@ contract MockReward {
     MockVeBTC public immutable ve;
     Mode public mode;
     mapping(uint256 tokenId => mapping(address token => uint256)) public owed;
+    mapping(address token => bool) public isReward;
     address public donateToken;
     uint256 public donateAmount;
     address public reentryTarget;
@@ -38,6 +40,10 @@ contract MockReward {
 
     function setOwed(uint256 tokenId, address token, uint256 amount) external {
         owed[tokenId][token] = amount;
+    }
+
+    function setReward(address token, bool listed) external {
+        isReward[token] = listed;
     }
 
     function setMode(Mode mode_) external {

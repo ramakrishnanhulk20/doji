@@ -7,6 +7,7 @@ import {ILoanManager} from "../interfaces/ILoanManager.sol";
 import {IPoolsVoter} from "../interfaces/IPoolsVoter.sol";
 import {IVeBTCVoter} from "../interfaces/IVeBTCVoter.sol";
 import {IVeBTC} from "../interfaces/IVeBTC.sol";
+import {IVotingReward} from "../interfaces/IVotingReward.sol";
 import {LockReader} from "./LockReader.sol";
 
 /// @title PassThrough
@@ -21,9 +22,10 @@ import {LockReader} from "./LockReader.sol";
 library PassThrough {
     using SafeERC20 for IERC20;
 
-    /// @dev Each listed token costs two balance reads and at most one transfer, and each reward contract one
-    ///      getReward call inside PoolsVoter. A full claim of 16 reward contracts measured about 1.0M gas on the
-    ///      mainnet fork (test/fork/PassThroughFork.t.sol), a tenth of Mezo's 10M block gas limit.
+    /// @dev Each listed token costs one isReward read, two balance reads and at most one transfer, and each
+    ///      reward contract one getReward call inside PoolsVoter. A full claim of 16 reward contracts measured
+    ///      about 1.0M gas on the mainnet fork (test/fork/PassThroughFork.t.sol), a tenth of Mezo's 10M block gas
+    ///      limit.
     uint256 internal constant MAX_REWARD_TOKENS = 16;
     uint256 private constant WEEK = 604_800;
 
@@ -101,16 +103,18 @@ library PassThrough {
     /// @notice Claims a position's pool fees and incentives from the listed gauges through PoolsVoter and pays the
     ///         caller exactly the measured increase in LoanManager's balance of each distinct listed token (C10).
     /// @dev `args` is claimRewards' own calldata after the selector, decoded here with the standard ABI rules;
-    ///      its first word is ignored in favour of `tokenId`, the id LoanManager has already checked. Each gauge's
-    ///      fee and incentive contracts come from PoolsVoter and both must exist, and every distinct token must be
-    ///      on PoolsVoter's whitelist, so the only code that runs is Mezo's own reward contracts paying this
-    ///      tokenId; MUSD and BTC are forwarded like any other whitelisted token. Every gauge must list at least
-    ///      one token and at most MAX_REWARD_TOKENS are listed in total. Balances are read before the claims and
-    ///      all read again before anything is paid, so no payout runs code inside the measured window. Reverts
-    ///      LengthMismatch, BadRewardTokenCount, UnknownGauge, TokenNotWhitelisted, or any PoolsVoter, reward or
-    ///      token revert. Emits RewardsForwarded per token whose balance rose.
+    ///      its first word is ignored in favour of `tokenId`, the id LoanManager has already checked. The caller
+    ///      is the borrower or the position's reward operator, already checked by LoanManager (C36), and is paid
+    ///      either way (C37). Each gauge's fee and incentive contracts come from PoolsVoter and both must exist,
+    ///      and every listed token must be a reward of the contract on its own side (isReward, F36), so the only
+    ///      code that runs is Mezo's own reward contracts paying this tokenId and the tokens they pay; MUSD and
+    ///      BTC are forwarded like any other reward. Every gauge must list at least one token and at most
+    ///      MAX_REWARD_TOKENS are listed in total. Balances are read before the claims and all read again before
+    ///      anything is paid, so no payout runs code inside the measured window. Reverts LengthMismatch,
+    ///      BadRewardTokenCount, UnknownGauge, TokenNotReward, or any PoolsVoter, reward or token revert. Emits
+    ///      RewardsForwarded per token whose balance rose.
     /// @param voter Mezo's PoolsVoter.
-    /// @param tokenId Position the borrower is claiming for, already checked by LoanManager.
+    /// @param tokenId Position being claimed for, already checked by LoanManager.
     /// @param args ABI encoding of (tokenId, gauges, feeTokens, bribeTokens).
     function forwardRewards(IPoolsVoter voter, uint256 tokenId, bytes calldata args) external {
         (, address[] memory gauges, address[][] memory feeTokens, address[][] memory bribeTokens) =
@@ -118,8 +122,8 @@ library PassThrough {
         if (feeTokens.length != gauges.length || bribeTokens.length != gauges.length) {
             revert ILoanManager.LengthMismatch();
         }
-        address[] memory tokens = _distinctTokens(voter, feeTokens, bribeTokens);
-        (address[] memory feeRewards, address[] memory bribeRewards) = _rewardContracts(voter, gauges);
+        (address[] memory tokens, address[] memory feeRewards, address[] memory bribeRewards) =
+            _checkedLists(voter, gauges, feeTokens, bribeTokens);
         uint256[] memory before = _balancesOf(tokens);
 
         _claimSide(voter, feeRewards, feeTokens, tokenId, true);
@@ -128,24 +132,14 @@ library PassThrough {
         _payGains(tokenId, tokens, before);
     }
 
-    /// @dev Each gauge's fee and incentive reward contracts as PoolsVoter registered them. An address PoolsVoter
-    ///      never registered has neither, so only gauges PoolsVoter created, live or killed, pass.
+    /// @dev A gauge's fee and incentive reward contracts as PoolsVoter registered them. An address PoolsVoter
+    ///      never registered has neither, so only gauges PoolsVoter created, live or killed, pass. Called once per
+    ///      gauge from _checkedLists, after the running token total, so at most MAX_REWARD_TOKENS times.
     // forge-lint: disable-next-item(calls-loop,require-revert-in-loop)
-    function _rewardContracts(IPoolsVoter voter, address[] memory gauges)
-        private
-        view
-        returns (address[] memory feeRewards, address[] memory bribeRewards)
-    {
-        uint256 count = gauges.length;
-        feeRewards = new address[](count);
-        bribeRewards = new address[](count);
-        for (uint256 i; i < count; ++i) {
-            feeRewards[i] = voter.gaugeToFees(gauges[i]);
-            bribeRewards[i] = voter.gaugeToBribe(gauges[i]);
-            if (feeRewards[i] == address(0) || bribeRewards[i] == address(0)) {
-                revert ILoanManager.UnknownGauge(gauges[i]);
-            }
-        }
+    function _rewardContracts(IPoolsVoter voter, address gauge) private view returns (address fees, address bribe) {
+        fees = voter.gaugeToFees(gauge);
+        bribe = voter.gaugeToBribe(gauge);
+        if (fees == address(0) || bribe == address(0)) revert ILoanManager.UnknownGauge(gauge);
     }
 
     /// @dev One side's claim through PoolsVoter, leaving out gauges that list no token on this side and skipped
@@ -176,25 +170,30 @@ library PassThrough {
         else voter.claimBribes(calledRewards, calledLists, tokenId);
     }
 
-    /// @dev The distinct tokens across every gauge and both sides; a token listed twice is kept once, so its
-    ///      increase is measured and paid once. The running total is checked before each gauge's lists are walked,
-    ///      so every loop here stops within MAX_REWARD_TOKENS steps whatever the caller sends.
-    // forge-lint: disable-next-item(require-revert-in-loop)
-    function _distinctTokens(IPoolsVoter voter, address[][] memory feeTokens, address[][] memory bribeTokens)
-        private
-        view
-        returns (address[] memory tokens)
-    {
+    /// @dev Walks the gauges in order, each gauge's reward contracts looked up before its tokens are checked. The
+    ///      running total is checked before each gauge's lookups and lists, so every loop here stops within
+    ///      MAX_REWARD_TOKENS steps whatever the caller sends. Returns the distinct tokens across every gauge and
+    ///      both sides, a token listed twice kept once so its increase is measured and paid once, and each gauge's
+    ///      fee and incentive contracts.
+    // forge-lint: disable-next-item(calls-loop,require-revert-in-loop)
+    function _checkedLists(
+        IPoolsVoter voter,
+        address[] memory gauges,
+        address[][] memory feeTokens,
+        address[][] memory bribeTokens
+    ) private view returns (address[] memory tokens, address[] memory feeRewards, address[] memory bribeRewards) {
+        feeRewards = new address[](gauges.length);
+        bribeRewards = new address[](gauges.length);
         address[] memory found = new address[](MAX_REWARD_TOKENS);
         uint256 listed = 0;
         uint256 count = 0;
-        uint256 gaugeCount = feeTokens.length;
-        for (uint256 i; i < gaugeCount; ++i) {
+        for (uint256 i; i < gauges.length; ++i) {
             uint256 n = feeTokens[i].length + bribeTokens[i].length;
             listed += n;
             if (n == 0 || listed > MAX_REWARD_TOKENS) revert ILoanManager.BadRewardTokenCount(listed);
-            count = _addTokens(voter, feeTokens[i], found, count);
-            count = _addTokens(voter, bribeTokens[i], found, count);
+            (feeRewards[i], bribeRewards[i]) = _rewardContracts(voter, gauges[i]);
+            count = _addTokens(feeRewards[i], feeTokens[i], found, count);
+            count = _addTokens(bribeRewards[i], bribeTokens[i], found, count);
         }
         if (listed == 0) revert ILoanManager.BadRewardTokenCount(0);
         tokens = new address[](count);
@@ -203,11 +202,14 @@ library PassThrough {
         }
     }
 
-    /// @dev Appends a list's new tokens to `found`, each checked once against PoolsVoter's whitelist: one
-    ///      predicate Mezo governance maintains, which covers every token a Mezo reward contract can pay and
-    ///      refuses anything else (veBTC, CreditMarkets units, an attacker's token). Returns the new count.
+    /// @dev Checks every token of one side's list against that side's own reward contract (F36), then appends the
+    ///      ones not yet in `found`; a token on both sides is checked on both. isReward is the one predicate that
+    ///      says what Mezo's contract pays: it covers every token that contract can pay this tokenId, including a
+    ///      pool's own tokens that PoolsVoter does not whitelist, and refuses anything else (veBTC, CreditMarkets
+    ///      units, an attacker's token). It trusts the contract PoolsVoter registered for the gauge, and it does
+    ///      not cover a listed token's own code (a stated non-goal). Returns the new count.
     // forge-lint: disable-next-item(calls-loop,require-revert-in-loop)
-    function _addTokens(IPoolsVoter voter, address[] memory list, address[] memory found, uint256 count)
+    function _addTokens(address reward, address[] memory list, address[] memory found, uint256 count)
         private
         view
         returns (uint256)
@@ -215,11 +217,10 @@ library PassThrough {
         uint256 n = list.length;
         for (uint256 j; j < n; ++j) {
             address token = list[j];
+            if (!IVotingReward(reward).isReward(token)) revert ILoanManager.TokenNotReward(reward, token);
             uint256 k = 0;
             while (k < count && found[k] != token) ++k;
-            if (k < count) continue;
-            if (!voter.isWhitelistedToken(token)) revert ILoanManager.TokenNotWhitelisted(token);
-            found[count++] = token;
+            if (k == count) found[count++] = token;
         }
         return count;
     }
