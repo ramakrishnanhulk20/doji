@@ -368,7 +368,17 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
       }
       return <p className="paydown-note">{on ? "The borrower has turned pay-down on." : "The borrower has not turned pay-down on."}</p>;
     }
-    if (gate.wrongChain) return null;
+    if (gate.wrongChain) {
+      // C50 holds on any network: the borrower still learns about another claimer, only the buttons wait for Mezo.
+      if (current.operator !== null && !on) {
+        return (
+          <div className="paused-strip paydown-strip">
+            Another address, {shortAddress(current.operator)}, can claim this position&apos;s rewards.
+          </div>
+        );
+      }
+      return null;
+    }
     return (
       <div className="paydown-controls">
         {current.operator !== null && !on && (

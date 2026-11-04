@@ -84,6 +84,11 @@ export type Position = {
   approved: boolean;
   /** Doji already holds this position for the wallet and it has no loan, so it needs no approval or deposit. */
   inDoji: boolean;
+  /**
+   * The address the borrower named to claim this position's rewards, from Wave 2's position record. Only a position
+   * Doji holds carries one: a withdraw deletes the record, so a wallet's own positions leave it out.
+   */
+  rewardOperator?: Address | null;
   /** amount times the oracle price, MUSD, 18 decimals. */
   value: bigint;
 };

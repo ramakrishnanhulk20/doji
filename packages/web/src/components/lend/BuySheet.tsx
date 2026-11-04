@@ -7,7 +7,7 @@ import { usePublicClient } from "wagmi";
 import { useLoanGate } from "../../hooks/useLoanGate";
 import { useStepFlow, type FlowStep } from "../../hooks/useStepFlow";
 import { useUnitWallet } from "../../hooks/useUnitMarket";
-import { useWrite } from "../../hooks/useWrite";
+import { useWrite, type WriteResult } from "../../hooks/useWrite";
 import { formatDate } from "../../lib/stats";
 import {
   MARKET_PAUSED_LINE,
@@ -26,6 +26,7 @@ import {
 import { APP_CHAIN_ID } from "../../lib/wagmi";
 import { Button } from "../Button";
 import { Stepper } from "../app/Stepper";
+import { showToast } from "../app/toast-store";
 import { parseAmount } from "../borrow/format";
 import { AmountField } from "../borrow/Steps";
 import { Sheet } from "../loans/Sheet";
@@ -46,17 +47,26 @@ type BuySheetProps = {
 
 const dash = <span className="summary-empty">-</span>;
 
-/** Opens only while the listing is open: past its Thursday a unit is no longer worth 1 MUSD, so no buy is offered. */
+const DATE_PASSED_LINE = "This date has passed, so the buy was not sent.";
+
+let noteCounter = 0;
+
+/**
+ * Opens only while the listing is open: past its Thursday a unit is no longer worth 1 MUSD, so no buy is offered. A run
+ * that began while it was open keeps the sheet until the run ends, so a wallet prompt or a confirmation in progress is
+ * never cut off by the clock; the buy step itself refuses a date that has passed.
+ */
 export function BuySheet(props: BuySheetProps) {
   const open = listingStage(props.listing, props.now) === "open";
+  const [running, setRunning] = useState(false);
   const { onClose } = props;
   useEffect(() => {
-    if (!open) onClose();
-  }, [open, onClose]);
-  return open ? <BuyForm {...props} /> : null;
+    if (!open && !running) onClose();
+  }, [open, running, onClose]);
+  return open || running ? <BuyForm {...props} onRunning={setRunning} /> : null;
 }
 
-function BuyForm({ listing, now, paused, onClose }: BuySheetProps) {
+function BuyForm({ listing, now, paused, onClose, onRunning }: BuySheetProps & { onRunning: (running: boolean) => void }) {
   const gate = useLoanGate();
   const engine = useStepFlow<RunStep>();
   const { write, busy } = useWrite();
@@ -98,11 +108,29 @@ function BuyForm({ listing, now, paused, onClose }: BuySheetProps) {
   const plan = quoted === undefined ? [] : buildBuySteps({ cost: quoted.cost, allowanceCovers });
 
   const run = async (steps: RunStep[], from: number) => {
-    const { ok, last } = await engine.start(steps, from);
-    if (ok && last?.ok) {
-      engine.reset();
-      onClose();
+    onRunning(true);
+    try {
+      const { ok, last } = await engine.start(steps, from);
+      if (ok && last?.ok) {
+        engine.reset();
+        onClose();
+      }
+    } finally {
+      onRunning(false);
     }
+  };
+
+  // The sheet was opened before the date, but the approve before this step can take minutes to confirm, and a unit
+  // bought after its Thursday is no longer worth 1 MUSD.
+  const buyIfOpen = async (units: bigint, cost: bigint): Promise<WriteResult> => {
+    if (listingStage(listing, Math.floor(Date.now() / 1000)) !== "open") {
+      showToast({ id: `buy-note-${(noteCounter += 1)}`, kind: "problem", title: "Not sent", detail: DATE_PASSED_LINE });
+      return { ok: false, refresh: false };
+    }
+    return write({
+      ...buyCall(listing.id, units, listing.pricePerUnit),
+      successLine: `Bought ${fmtUnitsAmount(units)} units of ${date} for ${fmtFourDecimals(cost)} MUSD. They are in Your credit units.`,
+    });
   };
 
   const onConfirm = () => {
@@ -119,10 +147,7 @@ function BuyForm({ listing, now, paused, onClose }: BuySheetProps) {
       run: () =>
         step.id === "approve-musd"
           ? write({ ...approveUnitBuyCall(cost), successLine: `Approved ${fmtFourDecimals(cost)} MUSD for Doji.` })
-          : write({
-              ...buyCall(listing.id, units, listing.pricePerUnit),
-              successLine: `Bought ${fmtUnitsAmount(units)} units of ${date} for ${fmtFourDecimals(cost)} MUSD. They are in Your credit units.`,
-            }),
+          : buyIfOpen(units, cost),
     }));
     void run(runnable, 0);
   };

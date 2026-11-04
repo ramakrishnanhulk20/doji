@@ -120,7 +120,7 @@ const REVERTS: Record<string, (args: Args) => string> = {
   NotLoanManager: () => "Only Doji's LoanManager can do that.",
   NotGuardianOrOwner: () => "Only the guardian or the owner can do that.",
   InsufficientOutputAmount: () =>
-    "Mezo's pool now pays less than the minimum you saw, so nothing was sold. Check the new figures and try again.",
+    "Mezo's pool pays less than this sale's minimum right now, so nothing was sold. Try again in a moment.",
   ERC20InsufficientAllowance: () => "Doji is not approved to move that much of your token yet. Approve the amount first, then try again.",
   ERC20InsufficientBalance: () => "Your wallet does not hold enough of that token for this step.",
   ERC1155InsufficientBalance: () => "You don't hold that many credit units.",

@@ -91,6 +91,7 @@ export function useBorrowData() {
             accepted: true,
             approved: true,
             inDoji: true,
+            rewardOperator: view.rewardOperator,
             value: view.value ?? (lock.amount * (price.data as bigint)) / 10n ** 18n,
           };
         });

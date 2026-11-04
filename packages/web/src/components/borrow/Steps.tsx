@@ -1,10 +1,22 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import Link from "next/link";
+import type { Address } from "viem";
+import { addressBook } from "../../lib/addresses";
 import type { Position } from "../../lib/borrow-reads";
 import type { DateGroup } from "../../lib/borrow";
+import { shortAddress } from "../../lib/loans";
 import { formatApr, formatDate } from "../../lib/stats";
 import { fmtBtc, fmtMusd, sanitizeAmount } from "./format";
+
+const payDown = addressBook[31611].payDown;
+
+/** C50: a held Wave 2 position whose reward claimer is anyone but PayDown, or null when there is none to warn about. */
+function otherOperator(position: Position): Address | null {
+  const operator = position.rewardOperator ?? null;
+  return operator === null || operator.toLowerCase() === payDown.toLowerCase() ? null : operator;
+}
 
 type StepHeaderProps = { number: string; title: string };
 
@@ -158,36 +170,45 @@ export function CollateralStep(props: CollateralStepProps) {
             </p>
           ) : (
             <div className="position-list" role="radiogroup" aria-label="veBTC positions">
-              {(positions.list ?? []).map((position) => (
-                <label
-                  key={String(position.id)}
-                  className="position-row"
-                  data-disabled={!position.accepted}
-                  data-selected={props.selectedId === position.id}
-                >
-                  <input
-                    type="radio"
-                    name="position"
-                    className="sr-only"
-                    disabled={!position.accepted}
-                    checked={props.selectedId === position.id}
-                    onChange={() => props.onSelectPosition(position.id)}
-                  />
-                  <span className="position-id">
-                    veBTC #{String(position.id)}
-                    {position.inDoji && <span className="position-tag">in Doji</span>}
-                  </span>
-                  <span className="position-amount">{fmtBtc(position.amount, 4)} BTC</span>
-                  <span className="position-lock">
-                    {position.isPermanent ? "permanent lock" : `locked until ${formatDate(position.end)}`}
-                  </span>
-                  {position.accepted ? (
-                    <span className="position-value">{fmtMusd(position.value)} MUSD</span>
-                  ) : (
-                    <span className="position-reason">grant-backed, can&apos;t be used</span>
-                  )}
-                </label>
-              ))}
+              {(positions.list ?? []).map((position) => {
+                const operator = otherOperator(position);
+                return (
+                  <div key={String(position.id)}>
+                    <label className="position-row" data-disabled={!position.accepted} data-selected={props.selectedId === position.id}>
+                      <input
+                        type="radio"
+                        name="position"
+                        className="sr-only"
+                        disabled={!position.accepted}
+                        checked={props.selectedId === position.id}
+                        onChange={() => props.onSelectPosition(position.id)}
+                      />
+                      <span className="position-id">
+                        veBTC #{String(position.id)}
+                        {position.inDoji && <span className="position-tag">in Doji</span>}
+                      </span>
+                      <span className="position-amount">{fmtBtc(position.amount, 4)} BTC</span>
+                      <span className="position-lock">
+                        {position.isPermanent ? "permanent lock" : `locked until ${formatDate(position.end)}`}
+                      </span>
+                      {position.accepted ? (
+                        <span className="position-value">{fmtMusd(position.value)} MUSD</span>
+                      ) : (
+                        <span className="position-reason">grant-backed, can&apos;t be used</span>
+                      )}
+                    </label>
+                    {operator !== null && (
+                      <p className="field-note" style={{ marginTop: 6 }}>
+                        Another address, {shortAddress(operator)}, can claim this position&apos;s rewards. Remove it on{" "}
+                        <Link className="link-draw" href={`/loans/${position.id}`}>
+                          its loan page
+                        </Link>
+                        .
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
