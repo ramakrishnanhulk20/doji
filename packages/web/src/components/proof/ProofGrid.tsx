@@ -61,10 +61,10 @@ const CARDS = [
     href: `${REPO}/blob/main/docs/proof/wave2-live-2026-11-04.md`,
   },
   {
-    title: "Proven live, 8 of 8",
-    body: "One command locks test Bitcoin, borrows, tries three attacks as a stranger, repays and takes the position back on Mezo testnet.",
+    title: "Proven live, 12 of 12",
+    body: "One command locks test Bitcoin, borrows from an offer earning in sMUSD, names PayDown, tries the attacks a stranger would, repays and takes the position back on Mezo testnet.",
     link: "Read the run",
-    href: `${REPO}/blob/main/docs/proof/prove-it-2026-10-20.md`,
+    href: `${REPO}/blob/main/docs/proof/prove-it-2026-11-04.md`,
   },
   {
     title: "Reviewed and fixed",
