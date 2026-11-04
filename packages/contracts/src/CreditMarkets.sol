@@ -585,7 +585,9 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     /// @dev The vault's code can change behind its proxy, so its deposit is judged by the sMUSD it actually minted,
     ///      never trusted. The approval covers exactly this deposit and is cleared in the same call, so no standing
     ///      allowance ever reaches the MUSD held here (C34). That exact approval also caps what the deposit can
-    ///      take at `amount`, so if MUSD fell by less, the difference is yield the vault paid out (C31).
+    ///      take at `amount`, so if MUSD fell by less, the difference is yield the vault paid out (C31). That holds
+    ///      for an honest vault; one that minted sMUSD without pulling the MUSD would have its unpulled principal
+    ///      counted as delivered yield, which C30's exact-mint check cannot see, and is a vault fault (non-goal).
     function _parkInVault(uint256 amount) private {
         IMUSDSavingsRate vault = IMUSDSavingsRate(savingsVault);
         IERC20 token = IERC20(musd);

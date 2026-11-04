@@ -214,8 +214,8 @@ contract PayDown is IPayDown, Ownable2Step, ReentrancyGuard {
         run.base = _balancesOf(tokens);
     }
 
-    /// @dev Appends one gauge side's tokens, reverting on a token already listed or past the cap. The cap is
-    ///      checked before each write, so this stops within MAX_REWARD_TOKENS steps whatever the caller sends.
+    /// @dev Appends one gauge side's tokens, skipping a token already listed and reverting past the cap. The cap
+    ///      bounds the distinct tokens; the walk covers the whole calldata list, whose length only its caller pays for.
     // forge-lint: disable-next-item(require-revert-in-loop)
     function _append(address[] memory listed, uint256 count, address[] calldata list)
         private

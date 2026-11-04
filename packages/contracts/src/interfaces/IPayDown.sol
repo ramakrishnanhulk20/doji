@@ -51,7 +51,7 @@ interface IPayDown {
     error HarvestsPaused();
     /// @notice Only the position's recorded borrower may run harvestAndSwap.
     error NotBorrower(uint256 tokenId);
-    /// @notice A token appears twice in the reward lists, or twice in the swap list.
+    /// @notice A token appears twice in the borrower's swap list (reward lists are deduplicated, not refused).
     error DuplicateToken(address token);
     /// @notice The reward lists name more than MAX_REWARD_TOKENS tokens or gauges.
     error TooManyTokens(uint256 count);
