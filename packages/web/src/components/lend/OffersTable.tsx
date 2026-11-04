@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { offerStatus, type MyOffer, type OfferStatus } from "../../lib/lend";
+import { earnedNumber, formatEarned, offerStatus, type MyOffer, type OfferStatus, type OfferYield } from "../../lib/lend";
+import { useReducedMotion } from "../../lib/motion-mode";
 import { formatApr, formatDate } from "../../lib/stats";
 import { Button } from "../Button";
+import { CountValue } from "../CountValue";
 import { fmtMusd } from "../borrow/format";
 import { StatusChip, type Tone } from "./StatusChip";
 
@@ -25,7 +27,38 @@ type OffersTableProps = {
   runningKey: string | null;
   busy: boolean;
   onCancel: (offer: MyOffer) => void;
+  /** What each parked Wave 2 offer has earned, by offer id. Missing while the read is loading or has failed. */
+  yields: ReadonlyMap<bigint, OfferYield>;
 };
+
+type EarnedTotalProps = {
+  /** Null while the yields are loading or could not be read. */
+  total: bigint | null;
+  disabled: boolean;
+  loading: boolean;
+  onWithdraw: () => void;
+};
+
+/** The sum of what the wallet's parked offers have earned, with the button that pays it out. */
+export function EarnedTotal({ total, disabled, loading, onWithdraw }: EarnedTotalProps) {
+  const reduced = useReducedMotion();
+  return (
+    <div className="lend-earned-total">
+      <p>
+        Earned in sMUSD{" "}
+        {total === null ? (
+          <span>-</span>
+        ) : (
+          <CountValue value={earnedNumber(total)} format={formatEarned} reduced={reduced} />
+        )}{" "}
+        MUSD
+      </p>
+      <Button variant="secondary" disabled={disabled || total === null || total === 0n} loading={loading} onClick={onWithdraw}>
+        Withdraw earnings
+      </Button>
+    </div>
+  );
+}
 
 type PopoverProps = {
   offer: MyOffer;
@@ -81,8 +114,9 @@ const rowKey = (offer: MyOffer): string => `${offer.pair}:${offer.id}`;
 const focusCancelButton = (key: string) =>
   document.querySelector<HTMLButtonElement>(`[data-cancel="${key}"] button`)?.focus();
 
-export function OffersTable({ state, offers, now, runningKey, busy, onCancel }: OffersTableProps) {
+export function OffersTable({ state, offers, now, runningKey, busy, onCancel, yields }: OffersTableProps) {
   const [askingKey, setAskingKey] = useState<string | null>(null);
+  const reduced = useReducedMotion();
 
   if (state === "connect") return <p className="lend-empty">Connect a wallet to see your offers and units.</p>;
   if (state === "loading") {
@@ -106,6 +140,7 @@ export function OffersTable({ state, offers, now, runningKey, busy, onCancel }: 
           <th scope="col">Rate</th>
           <th scope="col">Posted</th>
           <th scope="col">Left</th>
+          <th scope="col">Earned</th>
           <th scope="col">Status</th>
           <th scope="col">
             <span className="sr-only">Action</span>
@@ -117,13 +152,45 @@ export function OffersTable({ state, offers, now, runningKey, busy, onCancel }: 
           const status = STATUS[offerStatus(offer, now)];
           const row = rowKey(offer);
           const key = `cancel:${row}`;
+          const earned = offer.pair === "wave2" && offer.parked ? yields.get(offer.id) : undefined;
           return (
             <tr key={row}>
-              <td data-label="Offer">#{String(offer.id)}</td>
+              <td data-label="Offer">
+                <span>
+                  #{String(offer.id)}
+                  {offer.pair === "legacy" && (
+                    <span
+                      className="lend-tag"
+                      data-kind="legacy"
+                      title="Posted on Doji's 20 October contracts. Cancel works as before."
+                    >
+                      20 Oct
+                    </span>
+                  )}
+                </span>
+              </td>
               <td data-label="Due">{formatDate(offer.maturity)}</td>
               <td data-label="Rate">{formatApr(offer.aprBps / 100)}</td>
               <td data-label="Posted">{fmtMusd(offer.posted)} MUSD</td>
-              <td data-label="Left">{fmtMusd(offer.remaining)} MUSD</td>
+              <td data-label="Left">
+                <span>
+                  {fmtMusd(offer.remaining)} MUSD
+                  {earned?.inVault && (
+                    <span className="lend-tag" title="This MUSD is earning in Mezo's sMUSD vault">
+                      sMUSD
+                    </span>
+                  )}
+                </span>
+              </td>
+              <td data-label="Earned">
+                {earned === undefined ? (
+                  <span className="lend-earned-none">-</span>
+                ) : (
+                  <span>
+                    <CountValue value={earnedNumber(earned.pending)} format={formatEarned} reduced={reduced} /> MUSD
+                  </span>
+                )}
+              </td>
               <td data-label="Status">
                 <StatusChip tone={status.tone}>{status.label}</StatusChip>
               </td>

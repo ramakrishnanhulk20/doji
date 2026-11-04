@@ -8,16 +8,21 @@ import {
   approveMusdCall,
   claimUnitsCall,
   dateState,
+  earnedNumber,
   fmtBtcAmount,
   fmtPerUnit,
+  formatEarned,
   offerStatus,
   quoteOffer,
   readCreditUnits,
   readLendSettings,
   readMusdWallet,
   readMyOffers,
+  readOfferYields,
+  readParking,
   redeemAmounts,
   unitValue,
+  withdrawOfferYieldCall,
   withdrawalAmounts,
   type LendCall,
 } from "../src/lib/lend";
@@ -59,6 +64,16 @@ for (const offer of offers) {
   console.log(
     `  [${offer.pair}] #${offer.id}${offer.parked ? " parked" : ""} due ${formatDate(offer.maturity)} at ${formatApr(offer.aprBps / 100)}: posted ${musd(offer.posted)}, left ${musd(offer.remaining)}, ${offerStatus(offer, now)}${offer.cancelled ? " (cancel log found)" : ""}`,
   );
+}
+
+const parking = await readParking(client);
+console.log(`readParking: on ${parking.on}, vault ${parking.vault}`);
+
+const parkedIds = offers.filter((offer) => offer.pair === "wave2" && offer.parked).map((offer) => offer.id);
+const yields = await readOfferYields(client, parkedIds);
+console.log(`readOfferYields for ${parkedIds.length} parked Wave 2 offers`);
+for (const entry of yields) {
+  console.log(`  #${entry.id}: inVault ${entry.inVault}, pending ${formatUnits(entry.pending, 18)} MUSD (${entry.pending} wei, shown as ${formatEarned(earnedNumber(entry.pending))})`);
 }
 
 const unitRows = await readCreditUnits(client, account, now, settings.maxTermSeconds);
@@ -118,5 +133,11 @@ for (const pair of ["wave2", "legacy"] as const) {
   } else {
     console.log(`claimUnits [${pair}]: this wallet has no pending units on that pair, so there is nothing to simulate`);
   }
+}
+const withYield = yields.filter((entry) => entry.pending > 0n).map((entry) => entry.id);
+if (withYield.length > 0) {
+  await simulate(`withdrawOfferYield([${withYield.join(", ")}]) from ${account}`, withdrawOfferYieldCall(withYield));
+} else {
+  console.log("withdrawOfferYield: no parked offer of this wallet has anything pending, so there is nothing to simulate");
 }
 console.log(`CreditMarkets: Wave 2 ${addressBook[31611].creditMarkets}, 20 October ${addressBook[31611].legacyCreditMarkets}`);

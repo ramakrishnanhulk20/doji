@@ -11,6 +11,8 @@ export type Posted = {
   aprBps: number;
   maturity: number;
   hash: `0x${string}`;
+  /** The offer was posted so its MUSD earns in sMUSD until a borrower takes it. */
+  parked: boolean;
 };
 
 type PostedCardProps = {
@@ -29,6 +31,11 @@ export function PostedCard({ result, onAgain }: PostedCardProps) {
         Offer #{String(result.offerId)} · {fmtMusd(result.amount)} MUSD at {formatApr(result.aprBps / 100)} until{" "}
         {formatDate(result.maturity)}
       </p>
+      {result.parked && (
+        <p className="lend-posted-line">
+          Earning in sMUSD until a borrower takes it. Withdraw what it earns from Your offers below.
+        </p>
+      )}
 
       <div className="success-actions">
         <a

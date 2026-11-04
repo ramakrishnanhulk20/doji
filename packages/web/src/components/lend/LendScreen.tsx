@@ -3,35 +3,43 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { parseEventLogs, type Abi, type PublicClient } from "viem";
+import type { PublicClient } from "viem";
 import { useSwitchChain } from "wagmi";
-import { creditMarketsAbi } from "../../abi/creditMarkets";
 import { useLendData, useLendNow } from "../../hooks/useLendData";
 import { useLendWrite } from "../../hooks/useLendWrite";
 import { useStepFlow, type FlowStep } from "../../hooks/useStepFlow";
 import type { WriteResult } from "../../hooks/useWrite";
 import { roundDownToCent } from "../../lib/borrow";
+import { addressBook } from "../../lib/addresses";
 import {
   approveMusdCall,
   buildLendSteps,
   cancelOfferCall,
+  earnedNumber,
   fitsOffer,
+  formatEarned,
   lendProblemText,
   parseRateBps,
   postOfferCall,
+  postParkedOfferCall,
+  postedOfferId,
   quoteOffer,
+  withdrawOfferYieldCall,
+  withdrawnYield,
   type LendStep,
   type MyOffer,
   type OfferQuote,
+  type OfferYield,
 } from "../../lib/lend";
 import { useReducedMotion } from "../../lib/motion-mode";
 import { formatApr, formatDate, type ThursdayCard } from "../../lib/stats";
 import { APP_CHAIN_ID } from "../../lib/wagmi";
 import { openConnectModal } from "../app/connect-modal-store";
 import { fmtMusd, musdFieldText, parseAmount } from "../borrow/format";
-import { LendAmountStep, LendDateStep, RateStep } from "./OfferSteps";
+import type { EarnSwitchState } from "./EarnSwitch";
+import { LendAmountStep, LendDateStep, LendEarnStep, RateStep } from "./OfferSteps";
 import { OfferSummary, type ConfirmButton, type OfferSummaryData } from "./OfferSummary";
-import { OffersTable, type ListState } from "./OffersTable";
+import { EarnedTotal, OffersTable, type ListState } from "./OffersTable";
 import { PostedCard, type Posted } from "./PostedCard";
 import { UnitsCards, type Act } from "./UnitsCards";
 import "../borrow/borrow.css";
@@ -40,6 +48,7 @@ import "./lend.css";
 type RunStep = LendStep & FlowStep;
 
 const NO_DATES: ThursdayCard[] = [];
+const NO_YIELDS: OfferYield[] = [];
 
 export function LendScreen({ initialDate }: { initialDate: number | null }) {
   const data = useLendData();
@@ -51,6 +60,7 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
   const [maturityPick, setMaturityPick] = useState<number | null>(initialDate);
   const [rateText, setRateText] = useState("");
   const [amountText, setAmountText] = useState("");
+  const [earnChoice, setEarnChoice] = useState(true);
   const engine = useStepFlow<RunStep>();
   const [result, setResult] = useState<Posted | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -92,19 +102,31 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
   const allowanceWei = data.musd.data?.allowance;
   const connected = data.walletReady;
 
+  const parkingState: EarnSwitchState = data.parking.isError
+    ? "error"
+    : data.parking.data === undefined
+      ? "loading"
+      : !data.parking.data.on
+        ? "paused"
+        : data.parking.data.vault === "down"
+          ? "vaultDown"
+          : "ready";
+  const parked = parkingState === "ready" && earnChoice;
+
   const plannedSteps = useMemo<LendStep[]>(
     () =>
       buildLendSteps({
         amountText: fmtMusd(amountWei),
         allowanceCovers: allowanceWei !== undefined && allowanceWei >= amountWei,
+        parked,
       }),
-    [amountWei, allowanceWei],
+    [amountWei, allowanceWei, parked],
   );
 
   // A new choice of any input clears a failed run, so "Try again" never repeats stale numbers.
   useEffect(() => {
     if (!engine.running) engine.reset();
-  }, [maturity, rateText, amountText]);
+  }, [maturity, rateText, amountText, parked]);
 
   const paused = settings?.offersPaused === true;
 
@@ -126,10 +148,16 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
     return null;
   })();
 
-  const executeStep = (step: LendStep): Promise<WriteResult> =>
-    step.id === "approve-musd"
-      ? send(approveMusdCall(amountWei), `Approved ${fmtMusd(amountWei)} MUSD for Doji.`)
-      : send(postOfferCall(maturity ?? 0, aprBps ?? 0, amountWei), "Your offer is live.");
+  const executeStep = (step: LendStep): Promise<WriteResult> => {
+    if (step.id === "approve-musd") return send(approveMusdCall(amountWei), `Approved ${fmtMusd(amountWei)} MUSD for Doji.`);
+    if (!parked) return send(postOfferCall(maturity ?? 0, aprBps ?? 0, amountWei), "Your offer is live.");
+    return send(postParkedOfferCall(maturity ?? 0, aprBps ?? 0, amountWei), (receipt) => {
+      const offerId = postedOfferId(receipt.logs);
+      return offerId === null
+        ? "Your offer is live."
+        : `Offer #${offerId} posted. Its MUSD earns in sMUSD until a borrower takes it.`;
+    });
+  };
 
   const runSteps = async (steps: readonly LendStep[], from: number) => {
     if (maturity === null || aprBps === null) return;
@@ -138,9 +166,7 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
     const { ok, last } = await engine.start(runnable, from);
 
     if (ok && last?.ok) {
-      const [log] = parseEventLogs({ abi: creditMarketsAbi as Abi, eventName: "OfferPosted", logs: last.receipt.logs });
-      const args = (log?.args ?? {}) as { offerId?: bigint };
-      setResult({ offerId: args.offerId ?? 0n, amount: amountWei, aprBps, maturity, hash: last.hash });
+      setResult({ offerId: postedOfferId(last.receipt.logs) ?? 0n, amount: amountWei, aprBps, maturity, hash: last.hash, parked });
       engine.reset();
       setSheetOpen(false);
     }
@@ -183,6 +209,7 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
     makerUnits: shownQuote?.makerUnits ?? null,
     treasuryUnits: shownQuote?.treasuryUnits ?? null,
     feeShareBps: settings?.feeShareBps ?? null,
+    earning: parked,
   };
 
   const act: Act = async (key, call, successLine) => {
@@ -198,6 +225,26 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
       cancelOfferCall(offer),
       `Offer #${offer.id} cancelled. ${fmtMusd(offer.remaining)} MUSD is back in your wallet.`,
     );
+
+  const earnings = data.yields.data ?? NO_YIELDS;
+  const yieldById = useMemo(() => new Map(earnings.map((entry) => [entry.id, entry])), [earnings]);
+  const earnedTotal = data.yields.data ? earnings.reduce((sum, entry) => sum + entry.pending, 0n) : null;
+  const hasParkedOffer = (data.offers.data ?? []).some((offer) => offer.pair === "wave2" && offer.parked);
+
+  const withdrawEarnings = async () => {
+    const ids = earnings.filter((entry) => entry.pending > 0n).map((entry) => entry.id);
+    if (ids.length === 0) return;
+    setRunningKey("withdraw-earnings");
+    await send(withdrawOfferYieldCall(ids), (receipt) => {
+      const paid = withdrawnYield(receipt.logs);
+      if (paid === null) throw new Error("Wave 2 emitted no OfferYieldWithdrawn event");
+      const line = `${formatEarned(earnedNumber(paid.paid))} MUSD of sMUSD earnings sent to your wallet.`;
+      return paid.stillOwed > 0n
+        ? `${line} ${formatEarned(earnedNumber(paid.stillOwed))} MUSD more arrives once Mezo's vault pays it out.`
+        : line;
+    });
+    setRunningKey(null);
+  };
 
   const datesStatus = data.dates.isError ? "error" : data.dates.data ? "ready" : "loading";
   const balanceView = !connected
@@ -223,8 +270,8 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
       <motion.div {...rise} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}>
         <h1 className="app-page-title display-face">Lend MUSD</h1>
         <p className="app-page-subtitle">
-          Post an offer for a Thursday at your rate. Your MUSD waits in the contract until a borrower takes it, you can
-          cancel whatever is not taken, and you are paid back on that date.
+          Post an offer for a Thursday at your rate. Until a borrower takes it, your MUSD can earn Mezo&apos;s sMUSD
+          savings rate. Cancel whatever is not taken, and you are paid back on that date.
         </p>
       </motion.div>
 
@@ -240,6 +287,7 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
                 setRateText("");
                 setAmountText("");
                 setMaturityPick(null);
+                setEarnChoice(true);
               }}
             />
           ) : (
@@ -264,6 +312,15 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
                   minOffer={settings?.minOffer}
                 />
               </motion.div>
+              <motion.div {...stepMotion(3)}>
+                <LendEarnStep
+                  choice={earnChoice}
+                  onChange={setEarnChoice}
+                  state={parkingState}
+                  vault={addressBook[APP_CHAIN_ID].savingsVault}
+                  reduced={reduced}
+                />
+              </motion.div>
             </>
           )}
         </div>
@@ -276,10 +333,20 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
       </div>
 
       <div className="lend-lists">
-        <motion.section {...stepMotion(3)} aria-labelledby="your-offers-title">
-          <h2 id="your-offers-title" className="lend-list-title display-face">
-            Your offers
-          </h2>
+        <motion.section {...stepMotion(4)} aria-labelledby="your-offers-title">
+          <div className="lend-list-head">
+            <h2 id="your-offers-title" className="lend-list-title display-face">
+              Your offers
+            </h2>
+            {hasParkedOffer && (
+              <EarnedTotal
+                total={earnedTotal}
+                disabled={busy || data.chainId !== APP_CHAIN_ID}
+                loading={runningKey === "withdraw-earnings"}
+                onWithdraw={() => void withdrawEarnings()}
+              />
+            )}
+          </div>
           <OffersTable
             state={offersState}
             offers={data.offers.data ?? []}
@@ -287,10 +354,11 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
             runningKey={runningKey}
             busy={busy}
             onCancel={cancelOffer}
+            yields={yieldById}
           />
         </motion.section>
 
-        <motion.section {...stepMotion(4)} aria-labelledby="your-units-title">
+        <motion.section {...stepMotion(5)} aria-labelledby="your-units-title">
           <h2 id="your-units-title" className="lend-list-title display-face">
             Your credit units
           </h2>

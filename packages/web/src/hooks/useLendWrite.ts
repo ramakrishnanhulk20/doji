@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import type { LendCall } from "../lib/lend";
-import { useWrite, type WriteResult } from "./useWrite";
+import { useWrite, type SuccessLine, type WriteResult } from "./useWrite";
 
 /**
  * Sends one Lend call through the shared write hook, so it is simulated first and shows the usual toasts.
@@ -12,7 +12,7 @@ export function useLendWrite() {
   const { write, busy } = useWrite();
 
   const send = useCallback(
-    (call: LendCall, successLine: string): Promise<WriteResult> =>
+    (call: LendCall, successLine: SuccessLine): Promise<WriteResult> =>
       write({
         target: call.target,
         abi: call.abi,

@@ -5,6 +5,7 @@ import type { ThursdayCard } from "../../lib/stats";
 import { formatApr, formatDate, formatMusd } from "../../lib/stats";
 import { fmtMusd, sanitizeAmount } from "../borrow/format";
 import { AmountField, StepHeader } from "../borrow/Steps";
+import { EarnSwitch, type EarnSwitchProps } from "./EarnSwitch";
 
 type DateStepProps = {
   dates: readonly ThursdayCard[];
@@ -94,6 +95,17 @@ export function RateStep({ rateText, onRateText, date }: RateStepProps) {
               ? ` No offers for ${formatDate(date.maturity)} yet.`
               : ` Best offer for ${formatDate(date.maturity)} now: ${formatApr(date.bestAprBps / 100)}.`)}
         </p>
+      </div>
+    </section>
+  );
+}
+
+export function LendEarnStep(props: EarnSwitchProps) {
+  return (
+    <section className="borrow-step">
+      <StepHeader number="04" title="While it waits" />
+      <div className="step-body">
+        <EarnSwitch {...props} />
       </div>
     </section>
   );

@@ -15,6 +15,8 @@ export type OfferSummaryData = {
   treasuryUnits: bigint | null;
   /** The protocol's share of the interest in basis points, read from the contract. */
   feeShareBps: number | null;
+  /** The offer will be posted so its MUSD earns in sMUSD until a borrower takes it. */
+  earning: boolean;
 };
 
 export type ConfirmButton = {
@@ -64,6 +66,10 @@ export function OfferSummary({ data, steps, confirm }: OfferSummaryProps) {
               </>
             )}
           </dd>
+        </div>
+        <div className="summary-row">
+          <dt>While it waits</dt>
+          <dd>{data.earning ? "Earning in sMUSD" : "In the contract"}</dd>
         </div>
         <div className="summary-row">
           <dt>If taken now, you are owed</dt>

@@ -3,14 +3,18 @@
 // describe one, and the write hook simulates it before the wallet is asked.
 
 import {
+  BaseError,
+  ContractFunctionRevertedError,
   decodeEventLog,
   formatUnits,
   isAddressEqual,
   pad,
   parseAbi,
   parseAbiItem,
+  parseEventLogs,
   toEventSelector,
   toHex,
+  zeroAddress,
   type Abi,
   type Address,
   type Hex,
@@ -38,6 +42,19 @@ const settingsReads = parseAbi([
   "function maxTermSeconds() view returns (uint32)",
   "function feeShareBps() view returns (uint16)",
   "function MAX_APR_BPS() view returns (uint16)",
+]);
+
+const parkingReads = parseAbi([
+  "function parkingOn() view returns (bool)",
+  "function parkedPrincipal() view returns (uint256)",
+  "function savingsVault() view returns (address)",
+]);
+
+const vaultWithdrawRead = parseAbi(["function withdraw(uint256 amount)"]);
+
+const yieldReads = parseAbi([
+  "function pendingOfferYield(uint256 offerId) view returns (uint256 earned)",
+  "function isInVault(uint256 offerId) view returns (bool)",
 ]);
 
 const quoteRead = parseAbi([
@@ -128,6 +145,77 @@ export async function quoteOffer(client: PublicClient, amount: bigint, aprBps: n
 /** True when the amount fits the contract's uint128, so a quote can be asked for without the encoder throwing. */
 export const fitsOffer = (amount: bigint): boolean => amount > 0n && amount <= MAX_UINT128;
 
+export type Parking = {
+  /** Wave 2's parkingOn(): false while the guardian has paused earning in sMUSD for new offers. */
+  on: boolean;
+  /** "down" when Mezo's vault would refuse to hand back everything Doji has parked in it. */
+  vault: "ok" | "down";
+};
+
+/**
+ * The same check the keeper runs every hour (checkVault in packages/keeper/src/keeper.ts, alert C35): ask Mezo's vault,
+ * as CreditMarkets itself, to give back all the parked principal, and change nothing. A revert means "down". A request
+ * that fails any other way throws, so a broken connection never reads as a broken vault.
+ */
+export async function readParking(client: PublicClient): Promise<Parking> {
+  const markets = wave2Pair.creditMarkets;
+  const [on, parked, vault] = await client.multicall({
+    allowFailure: false,
+    contracts: [
+      { address: markets, abi: parkingReads, functionName: "parkingOn" },
+      { address: markets, abi: parkingReads, functionName: "parkedPrincipal" },
+      { address: markets, abi: parkingReads, functionName: "savingsVault" },
+    ],
+  });
+  // The chain decides which vault is checked, and it must be the one the address book shows the lender.
+  if (isAddressEqual(vault, zeroAddress)) return { on, vault: "down" };
+  if (!isAddressEqual(vault, book.savingsVault)) {
+    throw new Error(`CreditMarkets reports savings vault ${vault}, the address book has ${book.savingsVault}`);
+  }
+  if (parked === 0n) return { on, vault: "ok" };
+
+  try {
+    await client.simulateContract({ address: vault, abi: vaultWithdrawRead, functionName: "withdraw", args: [parked], account: markets });
+  } catch (error) {
+    const reverted = error instanceof BaseError && error.walk((cause) => cause instanceof ContractFunctionRevertedError) !== null;
+    if (reverted) return { on, vault: "down" };
+    throw error;
+  }
+  return { on, vault: "ok" };
+}
+
+export type OfferYield = {
+  id: bigint;
+  /** MUSD the offer has earned in sMUSD that its maker has not withdrawn yet. */
+  pending: bigint;
+  /** The offer's unfilled MUSD sits in Mezo's vault now. */
+  inVault: boolean;
+};
+
+/** Wave 2 only: the 20 October CreditMarkets has neither function. One multicall for every id given. */
+export async function readOfferYields(client: PublicClient, ids: readonly bigint[]): Promise<OfferYield[]> {
+  if (ids.length === 0) return [];
+  const markets = wave2Pair.creditMarkets;
+  const reads = await client.multicall({
+    allowFailure: false,
+    batchSize: 16_384,
+    contracts: ids.flatMap((id) => [
+      { address: markets, abi: yieldReads, functionName: "pendingOfferYield" as const, args: [id] as const },
+      { address: markets, abi: yieldReads, functionName: "isInVault" as const, args: [id] as const },
+    ]),
+  });
+  return ids.map((id, index) => ({
+    id,
+    pending: reads[index * 2] as bigint,
+    inVault: reads[index * 2 + 1] as boolean,
+  }));
+}
+
+export const earnedNumber = (wei: bigint): number => Number(formatUnits(wei, 18));
+
+/** MUSD earned in sMUSD, always with 4 decimals. */
+export const formatEarned = (value: number): string => value.toFixed(4);
+
 /** "6.5" to 650 basis points. Null when the text is not a number yet. */
 export function parseRateBps(text: string): number | null {
   if (text === "" || text === ".") return null;
@@ -171,10 +259,10 @@ export type LendStepId = "approve-musd" | "post-offer";
 export type LendStep = { id: LendStepId; label: string };
 
 /** The steps the Post button walks through. The approval is left out when the allowance already covers the amount. */
-export function buildLendSteps(input: { amountText: string; allowanceCovers: boolean }): LendStep[] {
+export function buildLendSteps(input: { amountText: string; allowanceCovers: boolean; parked: boolean }): LendStep[] {
   const steps: LendStep[] = [];
   if (!input.allowanceCovers) steps.push({ id: "approve-musd", label: `Approve ${input.amountText} MUSD` });
-  steps.push({ id: "post-offer", label: "Post offer" });
+  steps.push({ id: "post-offer", label: input.parked ? "Post offer, earning in sMUSD" : "Post offer" });
   return steps;
 }
 
@@ -566,6 +654,13 @@ export const approveMusdCall = (amount: bigint): LendCall => ({
 export const postOfferCall = (maturity: number, aprBps: number, amount: bigint): LendCall =>
   marketsCall("wave2", "postOffer", [BigInt(maturity), aprBps, amount]);
 
+/** Same as postOfferCall, and the offer's unfilled MUSD sits in Mezo's sMUSD vault until a borrower takes it. */
+export const postParkedOfferCall = (maturity: number, aprBps: number, amount: bigint): LendCall =>
+  marketsCall("wave2", "postParkedOffer", [BigInt(maturity), aprBps, amount]);
+
+export const withdrawOfferYieldCall = (offerIds: readonly bigint[]): LendCall =>
+  marketsCall("wave2", "withdrawOfferYield", [offerIds]);
+
 export const cancelOfferCall = (offer: Pick<MyOffer, "id" | "pair">): LendCall =>
   marketsCall(offer.pair, "cancelOffer", [offer.id]);
 
@@ -581,3 +676,27 @@ export const finalizeCall = (pair: PairKey, maturity: number): LendCall => marke
 
 export const redeemCall = (pair: PairKey, maturity: number, units: bigint): LendCall =>
   marketsCall(pair, "redeem", [BigInt(maturity), units]);
+
+type ReceiptLog = { address: Address; topics: readonly Hex[]; data: Hex };
+
+/**
+ * Only the logs Wave 2 CreditMarkets itself emitted. Any contract can emit an event with the same name, so a receipt
+ * is never read for an offer id or a payout without this first (C49).
+ */
+const wave2Logs = (logs: readonly ReceiptLog[]): ReceiptLog[] =>
+  logs.filter((log) => sameAddress(log.address, wave2Pair.creditMarkets));
+
+/** The id from the OfferPosted event Wave 2 emitted in this receipt, or null when it emitted none. */
+export function postedOfferId(logs: readonly ReceiptLog[]): bigint | null {
+  const [log] = parseEventLogs({ abi: creditMarketsAbi as Abi, eventName: "OfferPosted", logs: wave2Logs(logs) as never });
+  const args = (log?.args ?? {}) as { offerId?: bigint };
+  return args.offerId ?? null;
+}
+
+/** What the OfferYieldWithdrawn event Wave 2 emitted in this receipt says was paid, and what Mezo's vault still owes. */
+export function withdrawnYield(logs: readonly ReceiptLog[]): { paid: bigint; stillOwed: bigint } | null {
+  const [log] = parseEventLogs({ abi: creditMarketsAbi as Abi, eventName: "OfferYieldWithdrawn", logs: wave2Logs(logs) as never });
+  const args = log?.args as { paid?: bigint; stillOwed?: bigint } | undefined;
+  if (args?.paid === undefined || args.stillOwed === undefined) return null;
+  return { paid: args.paid, stillOwed: args.stillOwed };
+}
