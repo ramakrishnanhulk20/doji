@@ -151,8 +151,9 @@ done
 run_script() {
   local name="$1"
   local log="$SCRATCH_DIR/$name.log"
-  echo "== forge script script/$name.s.sol --rpc-url $ANVIL_URL --broadcast --skip-simulation --slow"
-  if ! forge script "script/$name.s.sol" --rpc-url "$ANVIL_URL" --broadcast --skip-simulation --slow > "$log" 2>&1; then
+  echo "== forge script script/$name.s.sol --rpc-url $ANVIL_URL --broadcast --skip-simulation --slow --sender $DEPLOYER"
+  # DeployCore refuses a broadcast whose --sender is not the deployer, so forge runs it once, not twice.
+  if ! forge script "script/$name.s.sol" --rpc-url "$ANVIL_URL" --broadcast --skip-simulation --slow --sender "$DEPLOYER" > "$log" 2>&1; then
     tail -60 "$log" >&2
     die "$name failed; full log in $log"
   fi

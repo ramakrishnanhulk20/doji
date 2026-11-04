@@ -28,6 +28,7 @@ import {MockBTC} from "../utils/MockBTC.sol";
 import {MockPoolsVoter} from "../utils/MockPoolsVoter.sol";
 import {MockReward} from "../utils/MockReward.sol";
 import {MockVeBTC} from "../utils/MockVeBTC.sol";
+import {ForkNode} from "../utils/ForkNode.sol";
 
 interface IRouterLive {
     function poolFor(address tokenA, address tokenB, bool stable, address factory) external view returns (address);
@@ -172,7 +173,7 @@ contract PayDownForkTest is Test {
     /// @dev Forks testnet, mocks the oracle at the node's price for this block, fixes BTC for a local EVM when
     ///      `withBtc`, deploys the pair and PayDown on the real Router, and opens alice's loan with PayDown named.
     function _setUpFork(bool withBtc) internal {
-        vm.createSelectFork("mezo_testnet");
+        ForkNode.selectTestnet();
         console.log("testnet block", vm.getBlockNumber());
         price = _fetchPriceOnNode(PRICE_FEED);
         vm.mockCall(PRICE_FEED, abi.encodeWithSelector(IPriceFeed.fetchPrice.selector), abi.encode(price));

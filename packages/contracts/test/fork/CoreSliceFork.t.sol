@@ -17,6 +17,7 @@ import {ICreditMarkets} from "../../src/interfaces/ICreditMarkets.sol";
 import {ILoanManager} from "../../src/interfaces/ILoanManager.sol";
 import {IVeBTC} from "../../src/interfaces/IVeBTC.sol";
 import {IPriceFeed} from "../../src/interfaces/IPriceFeed.sol";
+import {ForkNode} from "../utils/ForkNode.sol";
 
 interface IVeBTCMainnet is IVeBTC {
     function tokenId() external view returns (uint256);
@@ -63,7 +64,7 @@ contract CoreSliceForkTest is Test {
     address internal lender = makeAddr("lender");
 
     function test_CoreSliceOnMainnetFork() public {
-        vm.createSelectFork("mezo_mainnet");
+        ForkNode.selectMainnet();
 
         uint256 price = _fetchPriceOnNode(PRICE_FEED);
         assertGe(price, MIN_BTC_PRICE, "price below sanity floor");

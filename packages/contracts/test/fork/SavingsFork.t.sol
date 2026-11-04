@@ -20,6 +20,7 @@ import {ILoanManager} from "../../src/interfaces/ILoanManager.sol";
 import {IMUSDSavingsRate} from "../../src/interfaces/IMUSDSavingsRate.sol";
 import {IVeBTC} from "../../src/interfaces/IVeBTC.sol";
 import {IPriceFeed} from "../../src/interfaces/IPriceFeed.sol";
+import {ForkNode} from "../utils/ForkNode.sol";
 
 interface IVeBTCMainnet is IVeBTC {
     function tokenId() external view returns (uint256);
@@ -68,7 +69,7 @@ contract SavingsForkTest is Test {
     address internal lender = makeAddr("lender");
 
     function test_ParkedOffersOnTheRealSavingsVault() public {
-        vm.createSelectFork("mezo_mainnet");
+        ForkNode.selectMainnet();
         uint256 price = _fetchPriceOnNode(PRICE_FEED);
         assertGe(price, MIN_BTC_PRICE, "price below sanity floor");
         assertLe(price, MAX_BTC_PRICE, "price above sanity ceiling");

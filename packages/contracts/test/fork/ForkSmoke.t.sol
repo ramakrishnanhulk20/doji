@@ -11,6 +11,7 @@ pragma solidity 0.8.28;
 // EVM recurses until it reverts.
 
 import {Test, console} from "forge-std/Test.sol";
+import {ForkNode} from "../utils/ForkNode.sol";
 
 interface IVeBTCRead {
     function ownerOf(uint256) external view returns (address);
@@ -41,7 +42,7 @@ contract ForkSmokeTest is Test {
     error UnexpectedPriceLength(uint256 length);
 
     function testMainnetVeBTCRead() public {
-        vm.createSelectFork("mezo_mainnet");
+        ForkNode.selectMainnet();
 
         uint256 tokenId = _findLiveToken(MAINNET_VEBTC);
         bytes memory raw = _rawLocked(MAINNET_VEBTC, tokenId);
@@ -66,7 +67,7 @@ contract ForkSmokeTest is Test {
     }
 
     function testTestnetVeBTCRead() public {
-        vm.createSelectFork("mezo_testnet");
+        ForkNode.selectTestnet();
 
         uint256 tokenId = _findLiveToken(TESTNET_VEBTC);
         bytes memory raw = _rawLocked(TESTNET_VEBTC, tokenId);

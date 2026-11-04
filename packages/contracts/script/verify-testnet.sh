@@ -1,28 +1,30 @@
 #!/usr/bin/env bash
-# Verifies CreditMarkets, LoanManager and then PassThrough on Mezo testnet's Blockscout explorer, reading every
-# address from deployments/31611.json. Each contract is tried and reported on its own, so one failure never
-# hides the others; the script exits non-zero if any of them ends unverified. Safe to run again: a contract the
-# explorer already shows as verified is skipped.
+# Verifies CreditMarkets, LoanManager, PayDown and UnitMarket (when the record lists them) and then PassThrough on
+# Mezo testnet's Blockscout explorer, reading every address from one deployment record: deployments/31611.json by
+# default, or the file given as the first argument. Each contract is tried and reported on its own, so one failure
+# never hides the others; the script exits non-zero if any of them ends unverified. Safe to run again: a contract
+# the explorer already shows as verified is skipped.
 #
 # The constructor arguments are encoded from the deployment record plus DeployCore's settings, then compared
 # byte for byte with the tail of each contract's real creation transaction. A setting changed in DeployCore
 # after the deploy fails that contract here with a clear message, instead of as an opaque bytecode mismatch on
 # the explorer.
 #
-# All three are submitted with the same --libraries link the deploy used. Solc writes the library map into every
-# contract's metadata, so leaving it out would change the metadata hash at the end of the code even for
+# Every contract is submitted with the same --libraries link the deploy used. Solc writes the library map into
+# every contract's metadata, so leaving it out would change the metadata hash at the end of the code even for
 # PassThrough itself, which links nothing.
 #
 # If Blockscout rejects a contract, the script retries it once with the compiler version and optimizer runs
 # given explicitly, then reports the explorer's answer and moves on.
 #
-# Usage, from anywhere: bash packages/contracts/script/verify-testnet.sh
+# Usage, from anywhere: bash packages/contracts/script/verify-testnet.sh [record]
+#   bash packages/contracts/script/verify-testnet.sh deployments/31611-wave2.json
+# A record path is tried from the current folder first, then from packages/contracts.
 set -euo pipefail
 
 export PATH="$HOME/.foundry/bin:$PATH"
 
 CONTRACTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RECORD="deployments/31611.json"
 RPC="https://rpc.test.mezo.org"
 VERIFIER_URL="https://api.explorer.test.mezo.org/api/"
 API="https://api.explorer.test.mezo.org/api/v2"
@@ -46,6 +48,20 @@ AUCTION_DURATION=259200
 
 die() { echo "VERIFY FAILED: $*" >&2; exit 1; }
 
+# python is a native Windows program on this machine, so it needs D:/ paths rather than /d/ paths.
+native_path() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+
+# With no argument the 20 Oct record is always the one in packages/contracts, whatever the current folder holds.
+if [ "$#" -eq 0 ]; then
+  RECORD="$CONTRACTS_DIR/deployments/31611.json"
+elif [ -f "$1" ]; then
+  RECORD="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+else
+  RECORD="$CONTRACTS_DIR/$1"
+fi
+
 pick_python() {
   for candidate in python3 python; do
     if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import json" >/dev/null 2>&1; then
@@ -59,8 +75,21 @@ pick_python() {
 cd "$CONTRACTS_DIR"
 [ -f "$RECORD" ] || die "$RECORD is missing; broadcast script/DeployCore.s.sol first"
 PY="$(pick_python)"
+RECORD_NATIVE="$(native_path "$RECORD")"
 
-field() { "$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$RECORD" "$1"; }
+field() {
+  "$PY" -I -c '
+import json, sys
+record = json.load(open(sys.argv[1]))
+if sys.argv[2] not in record:
+    sys.exit("the record has no " + sys.argv[2] + " field")
+print(record[sys.argv[2]])' "$RECORD_NATIVE" "$1" | tr -d '\r' || die "could not read $1 from $RECORD"
+}
+has_field() {
+  [ "$("$PY" -I -c 'import json,sys; print("yes" if sys.argv[2] in json.load(open(sys.argv[1])) else "no")' \
+    "$RECORD_NATIVE" "$1" | tr -d '\r')" = "yes" ]
+}
+echo "== record $RECORD"
 
 [ "$(field broadcast)" = "True" ] || die "$RECORD is a dry run record; there is nothing on chain to verify"
 [ "$(field chainId)" = "$CHAIN_ID" ] || die "$RECORD is not for chain $CHAIN_ID"
@@ -154,10 +183,19 @@ verify_with_args() {
   verify "$name" "$address" "$target" --constructor-args "$args"
 }
 
-CREDIT_MARKETS_ARGS="$(cast abi-encode \
-  "constructor(address,address,address,address,address,address,uint16,uint128,uint32,string)" \
-  "$(field musd)" "$(field btc)" "$LOAN_MANAGER" "$DEPLOYER" "$DEPLOYER" "$DEPLOYER" \
-  "$FEE_SHARE_BPS" "$MIN_OFFER" "$MAX_TERM_SECONDS" "$UNITS_URI" | lower)"
+# The 20 Oct CreditMarkets predates the sMUSD vault, so its record has no savingsVault field and its constructor
+# no vault argument; every later record names the vault it was deployed with.
+if has_field savingsVault; then
+  CREDIT_MARKETS_ARGS="$(cast abi-encode \
+    "constructor(address,address,address,address,address,address,uint16,uint128,uint32,string,address)" \
+    "$(field musd)" "$(field btc)" "$LOAN_MANAGER" "$DEPLOYER" "$DEPLOYER" "$DEPLOYER" \
+    "$FEE_SHARE_BPS" "$MIN_OFFER" "$MAX_TERM_SECONDS" "$UNITS_URI" "$(field savingsVault)" | lower)"
+else
+  CREDIT_MARKETS_ARGS="$(cast abi-encode \
+    "constructor(address,address,address,address,address,address,uint16,uint128,uint32,string)" \
+    "$(field musd)" "$(field btc)" "$LOAN_MANAGER" "$DEPLOYER" "$DEPLOYER" "$DEPLOYER" \
+    "$FEE_SHARE_BPS" "$MIN_OFFER" "$MAX_TERM_SECONDS" "$UNITS_URI" | lower)"
+fi
 
 SETTINGS="($DEPLOYER,$DEPLOYER,$(field feeDistributor),$(field validatorsVoter),$MAX_VOTES,$MAX_LTV_BPS,$LIQ_LTV_BPS,$MIN_LOAN,$PENALTY_BPS,$AUCTION_FLOOR_BPS,$AUCTION_DURATION)"
 LOAN_MANAGER_ARGS="$(cast abi-encode \
@@ -170,10 +208,29 @@ LIBRARY_LINK="src/libraries/PassThrough.sol:PassThrough:$PASS_THROUGH"
 attempt CreditMarkets verify_with_args CreditMarkets "$CREDIT_MARKETS" src/CreditMarkets.sol:CreditMarkets \
   "$CREDIT_MARKETS_ARGS"
 attempt LoanManager verify_with_args LoanManager "$LOAN_MANAGER" src/LoanManager.sol:LoanManager "$LOAN_MANAGER_ARGS"
+STATUS_PAIRS=("CreditMarkets:$CREDIT_MARKETS" "LoanManager:$LOAN_MANAGER")
+
+# PayDown and UnitMarket take the deployer for every role, as the pair does, and their one setting from the record.
+if has_field payDown; then
+  PAY_DOWN="$(field payDown)"
+  PAY_DOWN_ARGS="$(cast abi-encode "constructor(address,address,address,address,uint16)" \
+    "$LOAN_MANAGER" "$(field router)" "$DEPLOYER" "$DEPLOYER" "$(field payDownSlippageBps)" | lower)"
+  attempt PayDown verify_with_args PayDown "$PAY_DOWN" src/PayDown.sol:PayDown "$PAY_DOWN_ARGS"
+  STATUS_PAIRS+=("PayDown:$PAY_DOWN")
+fi
+if has_field unitMarket; then
+  UNIT_MARKET="$(field unitMarket)"
+  UNIT_MARKET_ARGS="$(cast abi-encode "constructor(address,address,address,address,uint16)" \
+    "$CREDIT_MARKETS" "$DEPLOYER" "$DEPLOYER" "$DEPLOYER" "$(field unitFeeBps)" | lower)"
+  attempt UnitMarket verify_with_args UnitMarket "$UNIT_MARKET" src/UnitMarket.sol:UnitMarket "$UNIT_MARKET_ARGS"
+  STATUS_PAIRS+=("UnitMarket:$UNIT_MARKET")
+fi
+
 attempt PassThrough verify PassThrough "$PASS_THROUGH" src/libraries/PassThrough.sol:PassThrough
+STATUS_PAIRS+=("PassThrough:$PASS_THROUGH")
 
 echo "== explorer status"
-for pair in "CreditMarkets:$CREDIT_MARKETS" "LoanManager:$LOAN_MANAGER" "PassThrough:$PASS_THROUGH"; do
+for pair in "${STATUS_PAIRS[@]}"; do
   echo "   ${pair%%:*} is_verified=$(is_verified "${pair#*:}")  $EXPLORER/address/${pair#*:}"
 done
 if [ "${#FAILED[@]}" -gt 0 ]; then

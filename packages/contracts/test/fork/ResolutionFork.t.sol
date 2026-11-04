@@ -23,6 +23,7 @@ import {IVeBTC} from "../../src/interfaces/IVeBTC.sol";
 import {IPriceFeed} from "../../src/interfaces/IPriceFeed.sol";
 import {IPoolsVoter} from "../../src/interfaces/IPoolsVoter.sol";
 import {MezoBtcStandIn} from "../utils/MezoBtcStandIn.sol";
+import {ForkNode} from "../utils/ForkNode.sol";
 
 interface IVeBTCMainnet is IVeBTC {
     function tokenId() external view returns (uint256);
@@ -252,7 +253,7 @@ contract ResolutionForkTest is Test {
     }
 
     function _fork(uint32 auctionDuration) internal {
-        vm.createSelectFork("mezo_mainnet");
+        ForkNode.selectMainnet();
         forkPrice = _fetchPriceOnNode(PRICE_FEED);
         assertGe(forkPrice, MIN_BTC_PRICE, "price below sanity floor");
         assertLe(forkPrice, MAX_BTC_PRICE, "price above sanity ceiling");

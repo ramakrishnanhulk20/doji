@@ -31,6 +31,7 @@ import {IFeeDistributor} from "../../src/interfaces/IFeeDistributor.sol";
 import {IPoolsVoter} from "../../src/interfaces/IPoolsVoter.sol";
 import {IVotingReward} from "../../src/interfaces/IVotingReward.sol";
 import {MezoBtcStandIn} from "../utils/MezoBtcStandIn.sol";
+import {ForkNode} from "../utils/ForkNode.sol";
 
 interface IVeBTCLive is IVeBTC {
     function tokenId() external view returns (uint256);
@@ -324,7 +325,7 @@ contract PassThroughForkTest is Test {
     }
 
     function test_E_LockAndBorrowMintsARealTestnetLockIntoLoanManager() public {
-        vm.createSelectFork("mezo_testnet");
+        ForkNode.selectTestnet();
         uint256 price = _fetchPriceOnNode(T_PRICE_FEED);
         _mockPrice(T_PRICE_FEED, price);
         // The BTC ERC-20 precompile cannot run in a local EVM; the stand-in reads native balances instead.
@@ -505,7 +506,7 @@ contract PassThroughForkTest is Test {
     }
 
     function _forkMainnet() internal {
-        vm.createSelectFork("mezo_mainnet");
+        ForkNode.selectMainnet();
         uint256 price = _fetchPriceOnNode(PRICE_FEED);
         _mockPrice(PRICE_FEED, price);
         assertEq(ve.voter(), POOLS_VOTER, "veBTC's primary voter is the PoolsVoter LoanManager calls");
