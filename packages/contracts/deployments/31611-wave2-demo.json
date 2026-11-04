@@ -1,0 +1,43 @@
+{
+  "block": 16564886,
+  "chainId": 31611,
+  "creditMarkets": "0x89Dc7C4a7Cbfddf3Cb7a00b5f3fEFaB47aC61a1f",
+  "loanManager": "0xdB407A06E5CedF2fd4f8C5C557338908B2776978",
+  "loans": {
+    "payDown": {
+      "borrower": "0x92DcCb70C33300848Da555eDe8597d3F7037AE2b",
+      "face": "10026044170154743785",
+      "hash": "0xbec0ffd154bb4531e6fdc56175e179fda620936e0393ac36a6fb5fade517c210",
+      "lockEnd": 1795651200,
+      "maturity": 1795046400,
+      "offerId": 2,
+      "principal": "10000000000000000000",
+      "rewardOperator": "0xf0dbbD5167F9852234883aD58109dC80692a18DE",
+      "role": "healthy",
+      "tokenId": 411
+    },
+    "swap": {
+      "borrower": "0x92DcCb70C33300848Da555eDe8597d3F7037AE2b",
+      "face": "10012502568493150685",
+      "hash": "0xecf5db27791fc578a06fc81a4fe91516be1b95322a48f93d7ae2f928e7f5713d",
+      "lockEnd": 1795651200,
+      "maturity": 1794441600,
+      "offerId": 1,
+      "principal": "10000000000000000000",
+      "rewardOperator": "0xf0dbbD5167F9852234883aD58109dC80692a18DE",
+      "role": "swap",
+      "tokenId": 412
+    }
+  },
+  "listing": {
+    "id": 1,
+    "maturity": 1795046400,
+    "pricePerUnit": "990000000000000000",
+    "expiry": 1794960000
+  },
+  "offers": {
+    "1": { "maturity": 1794441600, "aprBps": 600, "amount": "40000000000000000000", "parked": true },
+    "2": { "maturity": 1795046400, "aprBps": 650, "amount": "40000000000000000000", "parked": true },
+    "3": { "maturity": 1795651200, "aprBps": 700, "amount": "30000000000000000000", "parked": false }
+  }
+}
