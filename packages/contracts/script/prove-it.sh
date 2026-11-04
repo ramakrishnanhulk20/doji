@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
-# Proves Doji's main promise against the live Mezo testnet deployment in deployments/31611.json, using the BORROWER
-# wallet from packages/contracts/.env: lock 0.0005 test BTC, borrow the 10 MUSD minimum at a fixed rate, check the
-# loan on chain, attack it as a stranger (simulated, never sent), repay in full and take the position back.
-# Prints one PASS or FAIL line per check, an explorer link for every transaction it sends, and a final verdict.
+# Proves Doji's main promise against a live Mezo testnet deployment, by default the Wave 2 pair in
+# deployments/31611-wave2.json, using the BORROWER wallet from packages/contracts/.env: lock 0.0005 test BTC, borrow
+# the 10 MUSD minimum from the cheapest open offer at a fixed rate, check the loan on chain, attack it as a stranger
+# (simulated, never sent), repay in full and take the position back. On the Wave 2 pair it also checks that a loan
+# filled from an offer parked in Mezo's sMUSD vault reaches the borrower as plain MUSD, names PayDown as the
+# position's reward operator, refuses a stranger who tries to name itself, and deletes the operator with the
+# position. Prints one PASS, FAIL or SKIP line per check, an explorer link for every transaction it sends, and a
+# final verdict that counts only the checks that ran.
 #
 # Cost per run: gas, a few cents of MUSD interest, and 0.0005 test BTC that stays locked in the returned veBTC
 # position until the loan date; after that date the borrower can withdraw it from veBTC.
 #
-# What it does NOT prove: auctions, settle and redemption (the keeper and the demo loans cover those), or how the
-# contracts behave while the oracle is stale.
+# What it does NOT prove: auctions, settle and redemption (the keeper and the demo loans cover those), a PayDown
+# harvest, or how the contracts behave while the oracle is stale.
 #
 # Usage, from anywhere:
 #   bash packages/contracts/script/prove-it.sh
+#   DEPLOYMENT_FILE=deployments/31611.json bash packages/contracts/script/prove-it.sh
 #   bash packages/contracts/script/prove-it.sh --resume <positionId> <borrowBlock>
-# The second form re-runs the checks and the repayment for a position a stopped run left open; the first run
-# prints both numbers. PROVE_IT_RPC_URL points the run at another node on chain 31611, such as an anvil fork.
+# The second form runs the original eight checks on the 20 October pair; DEPLOYMENT_FILE is a record under
+# packages/contracts/deployments. The third re-runs the checks and the repayment for a position a stopped run left
+# open; the first run prints both numbers. PROVE_IT_RPC_URL points the run at another node on chain 31611, such as
+# an anvil fork.
 set -euo pipefail
 
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -24,11 +31,12 @@ TESTNET_RPC="https://rpc.test.mezo.org"
 RPC_URL="${PROVE_IT_RPC_URL:-$TESTNET_RPC}"
 EXPLORER="https://explorer.test.mezo.org"
 CHAIN_ID=31611
-RECORD="deployments/$CHAIN_ID.json"
+# Must match DEFAULT_RECORD in ProveIt.s.sol. Exported because ProveIt reads the same variable.
+export DEPLOYMENT_FILE="${DEPLOYMENT_FILE:-deployments/$CHAIN_ID-wave2.json}"
+RECORD="$DEPLOYMENT_FILE"
 SCRIPT="script/ProveIt.s.sol:ProveIt"
 # Must match MIN_BORROWER_BTC in ProveIt.s.sol: 0.0005 to lock plus room for gas.
 MIN_BTC_WEI=800000000000000
-EXPECTED_CHECKS=8
 BROADCAST=(--broadcast --skip-simulation --slow)
 
 die() { echo "PROVE-IT STOPPED: $*" >&2; exit 1; }
@@ -64,10 +72,26 @@ BORROWER="$(env_value BORROWER_ADDRESS)"
 [[ "$BORROWER" =~ ^0x[0-9a-fA-F]{40}$ ]] || die "BORROWER_ADDRESS in packages/contracts/.env is not an address"
 PY="$(pick_python)"
 
+# foundry.toml lets forge read only ./deployments, so any other path would fail later inside forge.
+[[ "$RECORD" =~ ^deployments/[A-Za-z0-9._-]+\.json$ ]] || die "DEPLOYMENT_FILE must be a record in deployments/, such as deployments/31611.json"
 [ -f "$RECORD" ] || die "$RECORD is missing; deploy first"
-IS_BROADCAST="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("broadcast") is True)' "$(native_path "$CONTRACTS_DIR/$RECORD")")"
+# A record that names PayDown is a Wave 2 pair: ProveIt.s.sol applies the same rule to the same key.
+read -r IS_BROADCAST RECORD_CHAIN IS_WAVE2 < <("$PY" -I -c '
+import json, sys
+record = json.load(open(sys.argv[1]))
+print(record.get("broadcast") is True, record.get("chainId"), "payDown" in record)
+' "$(native_path "$CONTRACTS_DIR/$RECORD")" | tr -d '\r')
 [ "$IS_BROADCAST" = "True" ] || die "$RECORD is not a broadcast record, so nothing it names is on chain"
+[ "$RECORD_CHAIN" = "$CHAIN_ID" ] || die "$RECORD is for chain $RECORD_CHAIN, not Mezo testnet ($CHAIN_ID)"
+if [ "$IS_WAVE2" = "True" ]; then
+  PAIR="the Wave 2 pair"
+  TOTAL_CHECKS=12
+else
+  PAIR="the 20 October pair"
+  TOTAL_CHECKS=8
+fi
 [ "$(cast chain-id --rpc-url "$RPC_URL")" = "$CHAIN_ID" ] || die "$RPC_URL is not Mezo testnet (chain $CHAIN_ID)"
+echo "deployment record $RECORD, $PAIR"
 
 BROADCAST_DIR="$(native_path "${FOUNDRY_BROADCAST:-$CONTRACTS_DIR/broadcast}")/ProveIt.s.sol/$CHAIN_ID"
 LOG_DIR="$(mktemp -d)"
@@ -84,7 +108,7 @@ run_step() {
   local log="$LOG_DIR/$name.log"
   rm -f "$BROADCAST_DIR/$name-latest.json"
   if ! forge script "$SCRIPT" "$@" --rpc-url "$RPC_URL" > "$log" 2>&1; then
-    grep -E "^\s*(PASS|FAIL|BORROWER|No open offer)" "$log" || true
+    grep -E "^\s*(PASS|FAIL|SKIP|BORROWER|No open offer)" "$log" || true
     tail -25 "$log" >&2
     die "step $name failed; full forge log in $log"
   fi
@@ -191,6 +215,14 @@ else
 fi
 
 wait_for_block "$BORROW_BLOCK"
+if [ "$IS_WAVE2" = "True" ]; then
+  # A resumed run names PayDown again; naming the same operator twice changes nothing.
+  run_step nameOperator --sig "nameOperator(uint256,uint256)" "$TOKEN_ID" "$BORROW_BLOCK" "${BROADCAST[@]}"
+  print_transactions nameOperator
+  OPERATOR_BLOCK="$(read_broadcast nameOperator setRewardOperator block)"
+  [ -n "$OPERATOR_BLOCK" ] || die "could not read the setRewardOperator block from the receipts"
+  wait_for_block "$OPERATOR_BLOCK"
+fi
 run_step checkAndRepay --sig "checkAndRepay(uint256,uint256)" "$TOKEN_ID" "$BORROW_BLOCK" "${BROADCAST[@]}"
 print_transactions checkAndRepay
 REPAY_BLOCK="$(read_broadcast checkAndRepay repay block)"
@@ -199,11 +231,18 @@ REPAY_BLOCK="$(read_broadcast checkAndRepay repay block)"
 wait_for_block "$REPAY_BLOCK"
 run_step confirmReturned --sig "confirmReturned(uint256,uint256,uint256)" "$TOKEN_ID" "$BORROW_BLOCK" "$REPAY_BLOCK"
 
-PASSED="$(cat "$LOG_DIR"/checkAndRepay.log "$LOG_DIR"/confirmReturned.log | grep -cE '^\s*PASS ' || true)"
-FAILED="$(cat "$LOG_DIR"/checkAndRepay.log "$LOG_DIR"/confirmReturned.log | grep -cE '^\s*FAIL ' || true)"
-if [ "$PASSED" -eq "$EXPECTED_CHECKS" ] && [ "$FAILED" -eq 0 ]; then
-  echo "Doji promise proven: $PASSED of $EXPECTED_CHECKS checks passed"
+CHECK_LOGS=("$LOG_DIR/checkAndRepay.log" "$LOG_DIR/confirmReturned.log")
+PASSED="$(cat "${CHECK_LOGS[@]}" | grep -cE '^\s*PASS ' || true)"
+FAILED="$(cat "${CHECK_LOGS[@]}" | grep -cE '^\s*FAIL ' || true)"
+SKIPPED="$(cat "${CHECK_LOGS[@]}" | grep -cE '^\s*SKIP ' || true)"
+# W1 is the only check allowed to skip, and only on the Wave 2 pair; any other SKIP fails the verdict.
+OTHER_SKIPS="$(cat "${CHECK_LOGS[@]}" | grep -E '^\s*SKIP ' | grep -cvE '^\s*SKIP W1 ' || true)"
+EXPECTED_RAN=$((TOTAL_CHECKS - SKIPPED))
+cat "${CHECK_LOGS[@]}" | sed -nE 's/^\s*SKIP (\S+) (.*)$/skipped: \1 (\2)/p'
+if [ "$FAILED" -eq 0 ] && [ "$OTHER_SKIPS" -eq 0 ] && [ "$PASSED" -eq "$EXPECTED_RAN" ] \
+  && { [ "$SKIPPED" -eq 0 ] || [ "$IS_WAVE2" = "True" ]; }; then
+  echo "Doji promise proven: $PASSED of $PASSED checks passed"
 else
-  echo "Doji promise NOT proven: $PASSED of $EXPECTED_CHECKS checks passed, $FAILED failed (logs in $LOG_DIR)"
+  echo "Doji promise NOT proven: $PASSED of $EXPECTED_RAN checks passed, $FAILED failed, $SKIPPED skipped (logs in $LOG_DIR)"
   exit 1
 fi

@@ -244,7 +244,7 @@ No wallet is needed to follow this path, and nothing in it spends anything.
 
 The Wave 2 contracts' first live transactions, from the deploy to two parked offers, the pay-down loan 411 and a units sale, are in [docs/proof/wave2-live-2026-11-04.md](docs/proof/wave2-live-2026-11-04.md). The same day on the 20 October pair, a veBTC locked directly on Mezo was deposited, borrowed against and taken back, fresh offers were posted and lenders were paid out: [docs/proof/live-paths-2026-11-04.md](docs/proof/live-paths-2026-11-04.md).
 
-Then prove the main promise on the live network yourself. The script acts on the 20 October pair in `deployments/31611.json`. It needs bash, Python 3, Foundry and one testnet wallet of your own:
+Then prove the main promise on the live network yourself. By default the script acts on the Wave 2 pair in `deployments/31611-wave2.json`. It needs bash, Python 3, Foundry and one testnet wallet of your own:
 
 1. Run `cast wallet new` to get a fresh address and private key.
 2. Run `cp packages/contracts/.env.example packages/contracts/.env` and set only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` to that wallet. The other wallets in the file belong to the deploy and seed scripts.
@@ -257,11 +257,13 @@ More detail is in [Run the proof yourself](https://dojis.site/docs/developers/ru
 bash packages/contracts/script/prove-it.sh
 ```
 
-It locks test BTC, borrows 10 MUSD at a fixed rate, checks the loan on chain, attacks it as a stranger, repays and takes the position back. The [23 October 2026 run](docs/proof/prove-it-2026-10-23.md) ended with (the [20 October run](docs/proof/prove-it-2026-10-20.md) did too):
+It locks test BTC, borrows 10 MUSD at a fixed rate from the cheapest open offer, checks the loan on chain, attacks it as a stranger, repays and takes the position back. On the Wave 2 pair it adds four checks: the loan came out of an offer parked in Mezo's sMUSD vault and reached the borrower as plain MUSD (W1, printed as skipped with its reason when the cheapest offer is not parked), a stranger cannot name itself the position's reward operator (W2), the borrower names PayDown (W3), and the operator is deleted with the position when it goes back (W4). The [4 November 2026 run](docs/proof/prove-it-2026-11-04.md) ended with:
 
 ```text
-Doji promise proven: 8 of 8 checks passed
+Doji promise proven: 12 of 12 checks passed
 ```
+
+`DEPLOYMENT_FILE=deployments/31611.json bash packages/contracts/script/prove-it.sh` runs the original eight checks on the 20 October pair. The [23 October 2026 run](docs/proof/prove-it-2026-10-23.md) and the [20 October run](docs/proof/prove-it-2026-10-20.md) on that pair each ended with `Doji promise proven: 8 of 8 checks passed`.
 
 ## Quick start for developers
 

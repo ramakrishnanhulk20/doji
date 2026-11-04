@@ -1,5 +1,6 @@
 {
   "block": 16564886,
+  "broadcast": true,
   "chainId": 31611,
   "creditMarkets": "0x89Dc7C4a7Cbfddf3Cb7a00b5f3fEFaB47aC61a1f",
   "loanManager": "0xdB407A06E5CedF2fd4f8C5C557338908B2776978",

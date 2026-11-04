@@ -10,6 +10,7 @@ Everything Doji claims can be checked with commands in the repository. Each one 
 Each page lists every transaction with an explorer link and the chain reads that check it.
 
 - [Wave 2 live, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md): the Wave 2 deploy, two offers parked in Mezo's sMUSD vault and a borrow paid out of the vault, the pay-down demo loan 411 with PayDown as its reward operator and incentives posted on both its pools, and a sale of credit units on UnitMarket. The pay-down harvest itself can run only after the epoch turns on 5 November, because Mezo pays an epoch's incentives once it ends; the page says so and adds it once it has run.
+- [Prove it on Wave 2, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-11-04.md): the one-command proof on the Wave 2 pair, 12 of 12, including a borrow paid out of an offer parked in sMUSD (the vault's parked MUSD fell from 60.00 to 50.00) and PayDown named as the reward operator.
 - [Live paths, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/live-paths-2026-11-04.md), on the 20 October pair: a veBTC locked directly on Mezo, deposited, borrowed against, repaid and taken back; fresh offers for the next three Thursdays; and a lender paid out after two settles. It also records why `claimRewards` was refused there (F36), the reason the Wave 2 claim checks `isReward` instead.
 
 ## Before you start
@@ -25,35 +26,48 @@ git submodule update --init
 
 ## 1. The prove-it command (live testnet)
 
-One command exercises the main promise against the deployed contracts on Mezo testnet: lock a little test BTC, borrow the 10 MUSD minimum at a fixed rate, check the loan on chain, attack it as a stranger, repay in full and take the position back. It acts on the 20 October pair in `deployments/31611.json`.
+One command exercises the main promise against the deployed contracts on Mezo testnet: lock a little test BTC, borrow the 10 MUSD minimum at a fixed rate from the cheapest open offer, check the loan on chain, attack it as a stranger, repay in full and take the position back. By default it acts on the Wave 2 pair in `deployments/31611-wave2.json`, where it adds four checks labelled W1 to W4:
+
+- W1: when the cheapest offer for the loan's Thursday is parked in Mezo's sMUSD vault, CreditMarkets' `parkedPrincipal()` falls by exactly the amount taken from that offer and the borrower's plain MUSD rises by the principal, both read from the node at the block before the borrow and at the borrow block. When the cheapest offer is not parked, W1 prints SKIP with the reason and the verdict counts only the checks that ran.
+- W2: a stranger's `setRewardOperator(position, itself)` is refused with NotBorrower, simulated and never sent.
+- W3: the borrower's `setRewardOperator(position, PayDown)` is sent and `positionOf(position).rewardOperator` reads PayDown.
+- W4: after the position is taken back, `positionOf(position)` reads borrower zero and reward operator zero.
 
 It sends real testnet transactions from a borrower wallet you control, and needs bash, Python 3 and Foundry. Make a fresh testnet wallet with `cast wallet new`. Copy `packages/contracts/.env.example` to `packages/contracts/.env` and fill in only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` for that wallet; the other wallets in the file belong to the deploy and seed scripts. It needs at least 0.0008 test BTC (0.0005 to lock, the rest for gas) from the [faucet](https://faucet.test.mezo.org), and a few cents of MUSD for the interest. The faucet gives only BTC, so get the MUSD by borrowing 10 MUSD on [Borrow](/borrow) with the same wallet, or by swapping BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). The script checks both balances before it sends anything.
 
 ```bash
 bash packages/contracts/script/prove-it.sh
+DEPLOYMENT_FILE=deployments/31611.json bash packages/contracts/script/prove-it.sh   # the 20 October pair, eight checks
 ```
 
-It prints one PASS or FAIL line per check and an explorer link for every transaction it sends. The [20 October 2026 run](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-20.md) printed, among the rest:
+It prints one PASS, FAIL or SKIP line per check and an explorer link for every transaction it sends. The [4 November 2026 run](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-11-04.md) on the Wave 2 pair printed, among the rest:
 
 ```text
-  == Checks on live position 391, block 16261184
+  == Checks on live position 413, block 16566019
   PASS MUSD arrived: 10.00 MUSD moved from CreditMarkets to the borrower in the borrow transaction (loan principal 10.00)
-  PASS LoanManager holds position 391 for the borrower, loan Active, 10.0116 MUSD due 2026-10-29
-  PASS collateralValue matches the lock times the oracle: 0.0005 BTC x 81441.81 = 40.72 MUSD
+  PASS LoanManager holds position 413 for the borrower, loan Active, 10.0124 MUSD due 2026-11-12
+  PASS collateralValue matches the lock times the oracle: 0.0005 BTC x 78384.23 = 39.19 MUSD
   == Attacks, simulated on the live state as a stranger, never sent
   PASS a stranger's withdrawCollateral is refused: NotBorrower
   PASS startAuction on a healthy, on-time loan is refused: NotLiquidatable
   PASS settle on a healthy, on-time loan is refused: NoAuction
-  == Repaying 10.0116 MUSD in full and taking the position back
-  == After the repayment, block 16261202
-  PASS repaid in full: 10.0116 MUSD paid, nothing left owed, loan closed
-  PASS position 391 is back with the borrower and LoanManager keeps no record of it
-Doji promise proven: 8 of 8 checks passed
+  == Wave 2: the sMUSD vault and the reward operator
+  PASS W1 the loan came out of offer 1, parked in Mezo's sMUSD vault: parkedPrincipal fell from 60.00 to 50.00 MUSD, by the 10.00 taken from the offer, and the borrower's MUSD rose by 10.00 (loan principal 10.00)
+  PASS W2 a stranger's setRewardOperator naming itself is refused, simulated and never sent: NotBorrower
+  PASS W3 the borrower named PayDown 0xf0dbbD5167F9852234883aD58109dC80692a18DE reward operator of position 413 and positionOf reads it back
+  == Repaying 10.0124 MUSD in full and taking the position back
+  == After the repayment, block 16566030
+  PASS repaid in full: 10.0124 MUSD paid, nothing left owed, loan closed
+  PASS position 413 is back with the borrower and LoanManager keeps no record of it
+  PASS W4 position 413's record is deleted with it: positionOf reads borrower zero and reward operator zero
+Doji promise proven: 12 of 12 checks passed
 ```
 
-If a run stops after the borrow, it prints the position and block, and `bash packages/contracts/script/prove-it.sh --resume POSITION BLOCK` finishes the checks and the repayment on that position. That record shows exactly this happening: one of the nodes behind Mezo's public RPC answered null for a receipt, so the script now asks again up to 15 times before it counts a transaction as failed.
+The earlier runs on the 20 October pair, on [20 October](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-20.md) and [23 October](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-23.md), each ended with `Doji promise proven: 8 of 8 checks passed`.
 
-Each run costs gas, a few cents of MUSD interest, and 0.0005 test BTC that stays locked in the returned veBTC position until the loan date. It does not prove auctions, settle or redemption, or behaviour while the oracle is stale. The mainnet fork tests and the example loans cover those.
+If a run stops after the borrow, it prints the position and block, and `bash packages/contracts/script/prove-it.sh --resume POSITION BLOCK` finishes the checks and the repayment on that position. The 20 October record shows exactly this happening: one of the nodes behind Mezo's public RPC answered null for a receipt, so the script now asks again up to 15 times before it counts a transaction as failed.
+
+Each run costs gas, a few cents of MUSD interest, and 0.0005 test BTC that stays locked in the returned veBTC position until the loan date. It does not prove auctions, settle or redemption, a PayDown harvest, or behaviour while the oracle is stale. The fork tests and the example loans cover those.
 
 ## 2. The fork tests (real Mezo state)
 
