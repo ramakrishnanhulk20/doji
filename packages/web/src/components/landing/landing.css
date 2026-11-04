@@ -477,15 +477,32 @@
   color: var(--paper-dim);
 }
 
+/* A card left alone on the last row takes the whole row, with its text kept to a readable measure. */
 @media (min-width: 640px) {
   .proof-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .proof-grid > li:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .proof-grid > li:last-child:nth-child(odd) > * {
+    max-width: 62ch;
   }
 }
 
 @media (min-width: 1024px) {
   .proof-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .proof-grid > li:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+
+  .proof-grid > li:last-child:nth-child(3n + 1) {
+    grid-column: 1 / -1;
   }
 }
 

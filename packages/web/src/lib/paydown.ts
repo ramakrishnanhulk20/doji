@@ -1,15 +1,8 @@
 import {
   decodeEventLog,
-  hexToBigInt,
-  hexToNumber,
-  pad,
   parseAbi,
-  parseAbiItem,
-  toEventSelector,
-  toHex,
   type Abi,
   type Address,
-  type Hex,
   type PublicClient,
   type TransactionReceipt,
 } from "viem";
@@ -21,154 +14,16 @@ import { buildClaimRewardsArgs, readVoterAddresses, readVotes, type ClaimPlan } 
 
 const book = addressBook[31611];
 
-const EXPLORER_API = "https://api.explorer.test.mezo.org/api";
-const EXPLORER_PAGE_LOGS = 1_000;
-const EXPLORER_MAX_CALLS = 20;
-/** The testnet RPC refuses a log window wider than 10,000 blocks, so one block is left spare. */
-const RPC_LOG_WINDOW = 9_999n;
 const WEEK = 604_800;
 const ZERO: Address = "0x0000000000000000000000000000000000000000";
 
-const harvestedEvent = parseAbiItem(
-  "event Harvested(uint256 indexed tokenId, address indexed caller, uint256 musdRepaid, uint256 btcSold, uint256 musdFromBtc)",
-);
-const HARVESTED_TOPIC = toEventSelector(harvestedEvent);
 
 // Wave 2 adds the reward operator to the position record, so this slice reads both words.
 const positionRead = parseAbi(["function positionOf(uint256 tokenId) view returns ((address borrower, address rewardOperator))"]);
 
-const sameAddress = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
-const tokenWord = (tokenId: bigint): Hex => pad(toHex(tokenId), { size: 32 });
+import { HARVESTED_TOPIC, harvestedEvent, sameAddress, tokenWord, type Harvest } from "./harvests";
 
-export type Harvest = {
-  hash: Hex;
-  timestamp: number;
-  caller: Address;
-  musdRepaid: bigint;
-  btcSold: bigint;
-  musdFromBtc: bigint;
-};
-
-type HarvestRow = Harvest & { block: bigint; index: number };
-
-type RawLog = {
-  address: string;
-  blockNumber: Hex;
-  logIndex: Hex;
-  transactionHash: Hex;
-  timeStamp: Hex;
-  data: Hex;
-  topics: (Hex | null)[];
-};
-
-const logKey = (hash: string, index: number) => `${hash.toLowerCase()}:${index}`;
-
-/**
- * Every Harvested log PayDown emitted for one position, from the explorer. The explorer is asked for PayDown's address
- * and this token, and each log it returns is checked against both again, so a wrong answer is dropped, never counted.
- */
-async function fetchExplorerHarvests(tokenId: bigint): Promise<HarvestRow[]> {
-  const word = tokenWord(tokenId);
-  const seen = new Set<string>();
-  const rows: HarvestRow[] = [];
-  let start = wave2Pair.fromBlock;
-
-  for (let call = 0; call < EXPLORER_MAX_CALLS; call++) {
-    const url = new URL(EXPLORER_API);
-    url.searchParams.set("module", "logs");
-    url.searchParams.set("action", "getLogs");
-    url.searchParams.set("fromBlock", start.toString());
-    url.searchParams.set("toBlock", "latest");
-    url.searchParams.set("address", book.payDown);
-    url.searchParams.set("topic0", HARVESTED_TOPIC);
-    url.searchParams.set("topic1", word);
-    url.searchParams.set("topic0_1_opr", "and");
-
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`explorer answered ${response.status}`);
-    const body = (await response.json()) as { message?: string; result?: unknown };
-    if (!Array.isArray(body.result) && body.message !== "No logs found") throw new Error("explorer log listing failed");
-    const page = Array.isArray(body.result) ? (body.result as RawLog[]) : [];
-
-    for (const raw of page) {
-      if (typeof raw.address !== "string" || !sameAddress(raw.address, book.payDown)) continue;
-      const [topic0, topic1] = raw.topics;
-      if (!topic0 || !topic1 || topic0.toLowerCase() !== HARVESTED_TOPIC.toLowerCase() || topic1.toLowerCase() !== word.toLowerCase()) continue;
-
-      const block = hexToBigInt(raw.blockNumber);
-      if (block > start) start = block;
-      const index = hexToNumber(raw.logIndex);
-      const key = logKey(raw.transactionHash, index);
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      const topics = raw.topics.filter((topic): topic is Hex => topic !== null);
-      const event = decodeEventLog({ abi: [harvestedEvent], data: raw.data, topics: topics as [Hex, ...Hex[]] });
-      rows.push({
-        hash: raw.transactionHash,
-        timestamp: hexToNumber(raw.timeStamp),
-        caller: event.args.caller,
-        musdRepaid: event.args.musdRepaid,
-        btcSold: event.args.btcSold,
-        musdFromBtc: event.args.musdFromBtc,
-        block,
-        index,
-      });
-    }
-    if (page.length < EXPLORER_PAGE_LOGS) break;
-  }
-  return rows;
-}
-
-/**
- * Every harvest PayDown ran for this position, newest first. The explorer gives the whole history from the Wave 2
- * deploy block; one node request over the newest blocks adds what the explorer has not indexed yet. A harvest that
- * both return is kept once.
- */
-export async function readHarvests(client: PublicClient, tokenId: bigint): Promise<Harvest[]> {
-  const latest = await client.getBlockNumber();
-  const windowStart = latest > RPC_LOG_WINDOW ? latest - RPC_LOG_WINDOW : 0n;
-  const [indexed, recent] = await Promise.all([
-    fetchExplorerHarvests(tokenId),
-    client.getLogs({
-      address: book.payDown,
-      event: harvestedEvent,
-      args: { tokenId },
-      fromBlock: windowStart > wave2Pair.fromBlock ? windowStart : wave2Pair.fromBlock,
-      toBlock: latest,
-    }),
-  ]);
-
-  const known = new Set(indexed.map((row) => logKey(row.hash, row.index)));
-  const fresh = recent.filter(
-    (log) =>
-      sameAddress(log.address, book.payDown) &&
-      log.transactionHash !== null &&
-      log.blockNumber !== null &&
-      !known.has(logKey(log.transactionHash, log.logIndex ?? 0)),
-  );
-
-  // The node's logs carry no time, so each new block is asked once.
-  const blocks = [...new Set(fresh.map((log) => log.blockNumber as bigint))];
-  const stamps = await Promise.all(blocks.map((blockNumber) => client.getBlock({ blockNumber })));
-  const timeOf = new Map(blocks.map((block, position) => [block, Number(stamps[position]?.timestamp ?? 0n)]));
-
-  const rows: HarvestRow[] = [
-    ...indexed,
-    ...fresh.map((log) => ({
-      hash: log.transactionHash as Hex,
-      timestamp: timeOf.get(log.blockNumber as bigint) ?? 0,
-      caller: log.args.caller as Address,
-      musdRepaid: log.args.musdRepaid as bigint,
-      btcSold: log.args.btcSold as bigint,
-      musdFromBtc: log.args.musdFromBtc as bigint,
-      block: log.blockNumber as bigint,
-      index: log.logIndex ?? 0,
-    })),
-  ];
-  rows.sort((a, b) => (a.block === b.block ? b.index - a.index : a.block > b.block ? -1 : 1));
-  return rows.map(({ block: _block, index: _index, ...harvest }) => harvest);
-}
+export { readHarvests, readRepaidByRewards, slippageText, type Harvest } from "./harvests";
 
 export type PayDownState = {
   /** The one address the borrower named to claim this position's rewards. Null when none is named. */
@@ -300,9 +155,6 @@ export function harvestedLine(tokenId: bigint, amounts: HarvestedAmounts): strin
   if (amounts.btcSold <= 0n) return base;
   return `${base} ${fixedText(amounts.btcSold, 8)} BTC was sold for ${fixedText(amounts.musdFromBtc, 4)} MUSD of it.`;
 }
-
-/** The allowance in percent for the card's sentence: 100 basis points read "1", 125 read "1.25". */
-export const slippageText = (slippageBps: number): string => String(Number((slippageBps / 100).toFixed(2)));
 
 /** Thursday 00:00 UTC strictly after `now`, in unix seconds. The unix epoch began on a Thursday. */
 export const nextThursday = (now: number): number => (Math.floor(now / WEEK) + 1) * WEEK;

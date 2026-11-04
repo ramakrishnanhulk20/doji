@@ -49,9 +49,17 @@ const CONTRACTS = [
   { name: "LoanManager", address: addressBook[31611].loanManager },
   { name: "CreditMarkets", address: addressBook[31611].creditMarkets },
   { name: "PassThrough", address: addressBook[31611].passThrough },
+  { name: "PayDown", address: addressBook[31611].payDown },
+  { name: "UnitMarket", address: addressBook[31611].unitMarket },
 ] as const;
 
 const CARDS = [
+  {
+    title: "Wave 2, live on testnet",
+    body: "Offers earning in sMUSD, a loan whose pool rewards pay it down, and credit units sold before their date, each with its transaction linked.",
+    link: "See every transaction",
+    href: `${REPO}/blob/main/docs/proof/wave2-live-2026-11-04.md`,
+  },
   {
     title: "Proven live, 8 of 8",
     body: "One command locks test Bitcoin, borrows, tries three attacks as a stranger, repays and takes the position back on Mezo testnet.",
@@ -60,9 +68,9 @@ const CARDS = [
   },
   {
     title: "Reviewed and fixed",
-    body: "An independent review found no critical or high issues. Every finding was fixed with a test that failed before the fix.",
+    body: "Two independent reviews, on 20 October and 4 November, found no critical or high issues. Every finding is fixed with a test or answered in writing.",
     link: "Read the findings",
-    href: `${REPO}/blob/main/docs/audit/findings-2026-10-20.md`,
+    href: `${REPO}/blob/main/docs/audit/findings-2026-11-04.md`,
   },
   {
     title: "Tested against Mezo mainnet",
@@ -96,8 +104,7 @@ export function ProofGrid() {
           <li className="proof-card">
             <h3 className="proof-title">Verified contracts</h3>
             <p className="proof-body">
-              LoanManager, CreditMarkets and PassThrough are verified on Mezo&apos;s explorer. The contracts cannot be
-              upgraded.
+              All five Wave 2 contracts are verified on Mezo&apos;s explorer. None of them can be upgraded.
             </p>
             <ul className="proof-addresses">
               {CONTRACTS.map((contract) => (

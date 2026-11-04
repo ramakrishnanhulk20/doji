@@ -4,7 +4,7 @@ import { ThursdayBoard } from "./ThursdayBoard";
 const STEPS = [
   {
     title: "Lenders post offers",
-    body: "A lender sets an amount, a Thursday and a fixed rate. The MUSD waits in the contract until a borrower takes it, and whatever is not taken can be cancelled at any time.",
+    body: "A lender sets an amount, a Thursday and a fixed rate. Until a borrower takes it, the MUSD can earn in Mezo's sMUSD savings vault, and whatever is not taken can be cancelled at any time.",
   },
   {
     title: "Borrowers lock and borrow",
@@ -12,11 +12,11 @@ const STEPS = [
   },
   {
     title: "Repay or roll",
-    body: "Repay any time before the date and the position comes back. Or roll into a later Thursday in one step. The lock keeps running and the votes and rewards stay with the borrower throughout.",
+    body: "Repay any time before the date and the position comes back, or roll into a later Thursday in one step. The lock keeps running, and the borrower can let the position's pool rewards pay the loan down every week.",
   },
   {
     title: "Lenders get paid",
-    body: "After the date, lenders withdraw their share of what has been collected, and the rest as the last loans close. Each lender's claim is a credit unit they can also send to someone else.",
+    body: "After the date, lenders withdraw their share of what has been collected, and the rest as the last loans close. Each lender's claim is a credit unit they can send to someone else, or sell on Doji before the date.",
   },
 ] as const;
 
