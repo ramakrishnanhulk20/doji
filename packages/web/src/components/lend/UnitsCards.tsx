@@ -25,10 +25,12 @@ import { Button } from "../Button";
 import { fmtMusd, parseAmount, sanitizeAmount, toNumber } from "../borrow/format";
 import { TweenText } from "../borrow/TweenText";
 import type { ListState } from "./OffersTable";
+import { SellSheet } from "./SellSheet";
 import { StatusChip } from "./StatusChip";
 import { useDialog } from "./useDialog";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const DAY_SECONDS = 86_400;
 
 /** Runs one write. Resolves true when it went through. */
 export type Act = (key: string, call: LendCall, successLine: string) => Promise<boolean>;
@@ -209,7 +211,7 @@ type CardProps = Shared & {
 
 function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
   const reduced = useReducedMotion();
-  const [panel, setPanel] = useState<"send" | "withdraw" | null>(null);
+  const [panel, setPanel] = useState<"send" | "withdraw" | "sell" | null>(null);
   const { market, claim, maturity } = row;
   const state = dateState(market, maturity, now);
   const date = formatDate(maturity);
@@ -221,6 +223,8 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
   const key = (name: string) => `${name}:${row.pair}:${maturity}`;
   const loading = (name: string) => runningKey === key(name);
   const openLoans = Number(market.openLoans);
+  // A listing must close a day before its Thursday, so units cannot be listed in that last day.
+  const canSell = row.pair === "wave2" && row.balance > 0n && now < maturity - DAY_SECONDS;
 
   const hasActions =
     (state === "open" && row.balance > 0n) ||
@@ -303,6 +307,12 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
                 onClick={() => setPanel((current) => (current === "send" ? null : "send"))}
               >
                 Send units
+              </Button>
+            )}
+
+            {canSell && (
+              <Button variant="secondary" className="lend-small" disabled={busy} onClick={() => setPanel("sell")}>
+                Sell units
               </Button>
             )}
 
@@ -398,6 +408,10 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
           </div>
         )}
 
+        {row.pair === "legacy" && (
+          <p className="lend-action-note units-legacy-note">Units from the 20 October contracts can be sent, not listed.</p>
+        )}
+
         {panel === "send" && (
           <SendForm row={row} address={address} act={act} busy={busy} runningKey={runningKey} onClose={() => setPanel(null)} />
         )}
@@ -405,6 +419,7 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
       {panel === "withdraw" && (
         <WithdrawSheet row={row} act={act} busy={busy} runningKey={runningKey} onClose={() => setPanel(null)} />
       )}
+      {panel === "sell" && <SellSheet row={row} address={address} now={now} onClose={() => setPanel(null)} />}
     </>
   );
 }

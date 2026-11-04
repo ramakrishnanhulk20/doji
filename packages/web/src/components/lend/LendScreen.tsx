@@ -42,6 +42,7 @@ import { OfferSummary, type ConfirmButton, type OfferSummaryData } from "./Offer
 import { EarnedTotal, OffersTable, type ListState } from "./OffersTable";
 import { PostedCard, type Posted } from "./PostedCard";
 import { UnitsCards, type Act } from "./UnitsCards";
+import { UnitsForSale } from "./UnitsForSale";
 import "../borrow/borrow.css";
 import "./lend.css";
 
@@ -333,7 +334,14 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
       </div>
 
       <div className="lend-lists">
-        <motion.section {...stepMotion(4)} aria-labelledby="your-offers-title">
+        <motion.section {...stepMotion(4)} aria-labelledby="units-for-sale-title">
+          <h2 id="units-for-sale-title" className="lend-list-title display-face">
+            Credit units for sale
+          </h2>
+          <UnitsForSale now={now} busy={busy} />
+        </motion.section>
+
+        <motion.section {...stepMotion(5)} aria-labelledby="your-offers-title">
           <div className="lend-list-head">
             <h2 id="your-offers-title" className="lend-list-title display-face">
               Your offers
@@ -358,7 +366,7 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
           />
         </motion.section>
 
-        <motion.section {...stepMotion(5)} aria-labelledby="your-units-title">
+        <motion.section {...stepMotion(6)} aria-labelledby="your-units-title">
           <h2 id="your-units-title" className="lend-list-title display-face">
             Your credit units
           </h2>
