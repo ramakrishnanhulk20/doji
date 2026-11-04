@@ -7,7 +7,8 @@ libs = ["lib"]
 solc_version = "0.8.28"
 evm_version = "cancun"
 optimizer = true
-# 10, not 200: with the M2b pass-throughs LoanManager must stay 1,000 bytes under the 24,576-byte limit.
+# 10, not 200: LoanManager runs close to the 24,576-byte limit (24,193 after the reward operator); any later fix that
+# would cross it moves code into the PassThrough library rather than dropping a check.
 optimizer_runs = 10
 fs_permissions = [{ access = "read-write", path = "./deployments" }]
 
