@@ -17,6 +17,7 @@ import "./loans.css";
 import { AnyoneActions } from "./AnyoneActions";
 import { BuyCard } from "./BuyCard";
 import { Facts } from "./Facts";
+import { PayDownPanel } from "./PayDownPanel";
 import { VotesAndRewards } from "./VotesAndRewards";
 
 export function LoanPage({ id }: { id: string }) {
@@ -55,6 +56,8 @@ export function LoanPage({ id }: { id: string }) {
             <Facts view={loan} opened={opened} />
 
             {isBorrower && loan.loan.state !== STATE_AUCTION && <VotesAndRewards view={loan} now={now} send={send} busy={busy} />}
+
+            {loan.borrower !== null && loan.loan.state !== STATE_NONE && <PayDownPanel view={loan} now={now} busy={busy} />}
 
             {boughtHash !== null ? (
               <section className="success-card">

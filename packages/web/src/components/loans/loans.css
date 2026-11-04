@@ -980,3 +980,310 @@
     transition: none;
   }
 }
+
+/* Rewards pay-down on the loan page */
+.paydown-card {
+  min-width: 0;
+  padding: 28px 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-ui);
+  background: var(--ink-2);
+}
+
+.paydown-card[data-on] {
+  border-color: color-mix(in srgb, var(--beni) 45%, var(--line));
+}
+
+.paydown-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.1;
+  color: var(--paper);
+}
+
+.paydown-title-skeleton {
+  display: block;
+  width: min(280px, 70%);
+  height: 28px;
+  border-radius: 4px;
+}
+
+.paydown-sub {
+  margin: 8px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--paper-dim);
+}
+
+.paydown-sub a {
+  text-transform: none;
+}
+
+.paydown-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 40px;
+  margin-top: 24px;
+}
+
+.paydown-left,
+.paydown-right {
+  min-width: 0;
+}
+
+.paydown-text {
+  max-width: 56ch;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--paper-dim);
+}
+
+.paydown-text-next {
+  margin-top: 12px;
+}
+
+.paydown-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 20px;
+}
+
+.paydown-controls .paused-strip {
+  align-self: stretch;
+  margin: 0 0 16px;
+}
+
+.paydown-note {
+  margin: 16px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.paydown-right .paydown-note {
+  margin-top: 20px;
+}
+
+.paydown-button-skeleton {
+  display: block;
+  width: 180px;
+  height: 48px;
+  margin-top: 20px;
+  border-radius: var(--radius-ui);
+}
+
+.paydown-inline-skeleton {
+  display: inline-block;
+  width: 2ch;
+  height: 1em;
+  vertical-align: -0.15em;
+  border-radius: 3px;
+}
+
+.paydown-right .fact-label,
+.paydown-history .fact-label {
+  margin: 0;
+  font-weight: 400;
+}
+
+.paydown-value {
+  margin: 6px 0 0;
+  font-size: 44px;
+  font-weight: var(--display-headline-weight);
+  line-height: 1;
+  color: var(--paper);
+}
+
+.paydown-value-skeleton {
+  display: inline-block;
+  width: 200px;
+  height: 44px;
+  border-radius: 4px;
+}
+
+.paydown-track {
+  display: flex;
+  width: 100%;
+  height: 6px;
+  margin-top: 16px;
+  border-radius: 3px;
+  background: var(--ink-3);
+  overflow: hidden;
+}
+
+.paydown-seg {
+  display: block;
+  flex: none;
+  height: 100%;
+}
+
+.paydown-seg-rewards {
+  background: var(--beni);
+}
+
+.paydown-seg-borrower {
+  background: color-mix(in srgb, var(--paper-dim) 55%, transparent);
+}
+
+.paydown-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--paper-dim);
+}
+
+.paydown-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paydown-swatch {
+  display: block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+}
+
+.paydown-swatch-rewards {
+  background: var(--beni);
+}
+
+.paydown-swatch-borrower {
+  background: color-mix(in srgb, var(--paper-dim) 55%, transparent);
+}
+
+.paydown-next {
+  margin: 18px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.paydown-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.paydown-estimate {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper);
+}
+
+.paydown-estimate.paydown-dim {
+  color: var(--paper-dim);
+}
+
+.paydown-history {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.paydown-history .paydown-note {
+  margin-top: 12px;
+}
+
+.paydown-row-skeleton {
+  display: block;
+  height: 44px;
+  margin-top: 12px;
+  border-radius: 4px;
+}
+
+.paydown-rows {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.paydown-row {
+  display: grid;
+  grid-template-columns: 9rem 1fr auto;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.paydown-row:hover {
+  background: color-mix(in srgb, var(--ink-3) 60%, transparent);
+}
+
+.paydown-date {
+  color: var(--paper-dim);
+}
+
+.paydown-what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--paper);
+}
+
+.paydown-sold {
+  color: var(--paper-dim);
+}
+
+.paydown-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: start;
+  padding-bottom: 2px;
+  color: var(--paper-dim);
+}
+
+@media (max-width: 899px) {
+  .paydown-card {
+    padding: 20px;
+  }
+
+  .paydown-cols {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+}
+
+@media (max-width: 639px) {
+  .paydown-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 16px;
+  }
+
+  .paydown-date {
+    grid-column: 1 / -1;
+  }
+}
+
+.paydown-legacy {
+  padding: 20px 24px;
+}
+
+.paydown-legacy p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paydown-row {
+    transition: none;
+  }
+}
