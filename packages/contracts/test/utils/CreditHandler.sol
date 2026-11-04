@@ -13,12 +13,15 @@ import {MockMUSD} from "./MockMUSD.sol";
 import {MockVeBTC} from "./MockVeBTC.sol";
 import {MockPriceFeed} from "./MockPriceFeed.sol";
 import {MockPoolsVoter} from "./MockPoolsVoter.sol";
+import {MockSavingsVault} from "./MockSavingsVault.sol";
 
-/// @notice Drives random sequences against CreditMarkets and LoanManager for CreditInvariants.t.sol: posts,
-/// cancels, borrows, repays, rolls, auction starts and cancels, purchases, settle and its preparation,
-/// write-offs after a simulated custody loss, time and price moves, finalisation, redemption, early withdrawals
-/// of collected money after a date passes, and claims, across three maturities. Every protocol call is wrapped
-/// so a revert only skips the step, and the ghost totals the invariants compare against move only on success.
+/// @notice Drives random sequences against CreditMarkets and LoanManager for CreditInvariants.t.sol: plain and
+/// parked posts, cancels, borrows, repays, rolls, auction starts and cancels, purchases, settle and its
+/// preparation, write-offs after a simulated custody loss, time and price moves, finalisation, redemption, early
+/// withdrawals of collected money after a date passes, claims, yield lumps paid into the sMUSD vault, a vault
+/// index that jumps (up to 2**200) or falls back without the MUSD to match, the guardian's pull-out, the owner's
+/// resume of parking, and makers withdrawing offer yield, across three maturities. Every protocol call is wrapped so a revert only skips the step, and the ghost totals the
+/// invariants compare against move only on success.
 contract CreditHandler is CommonBase, StdCheats, StdUtils {
     struct Wiring {
         CreditMarkets cm;
@@ -28,12 +31,17 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
         MockPriceFeed feed;
         MockPoolsVoter voter;
         address treasury;
+        MockSavingsVault vault;
+        address owner;
+        address guardian;
     }
 
     uint256 internal constant WEEK = 604_800;
     uint256 internal constant MAX_OFFERS = 40;
     uint256 internal constant MAX_TOKENS = 24;
     uint256 internal constant MIN_LOAN = 10e18;
+    /// @dev CreditMarkets.MAX_FILLS, the most ids withdrawOfferYield takes.
+    uint256 internal constant MAX_YIELD_IDS = 8;
 
     CreditMarkets public immutable cm;
     LoanManager public immutable lm;
@@ -42,12 +50,16 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
     MockPriceFeed public immutable feed;
     MockPoolsVoter public immutable voter;
     address public immutable treasury;
+    MockSavingsVault public immutable vault;
+    address internal immutable owner;
+    address internal immutable guardian;
 
     uint64[3] public maturities;
     address[3] public lenders;
     address[3] public borrowers;
     address public buyer = makeAddr("handlerBuyer");
     address public thief = makeAddr("handlerThief");
+    address internal donor = makeAddr("handlerDonor");
 
     uint256[] public offerIds;
     uint256[] public tokenIds;
@@ -59,6 +71,10 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
     mapping(uint64 maturity => uint256) public withdrawnMusd;
     mapping(uint64 maturity => uint256) public withdrawnBtc;
     bool public paidAboveParMusd;
+    /// @dev The parking era each parked offer was posted in, read from the contract at posting, so the invariants
+    ///      can tell which parked offers are still in the vault without trusting parkedPrincipal.
+    mapping(uint256 offerId => uint32 era) public parkedEra;
+    uint256 public yieldWithdrawn;
 
     mapping(bytes32 action => uint256) public successes;
 
@@ -70,6 +86,9 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
         feed = w.feed;
         voter = w.voter;
         treasury = w.treasury;
+        vault = w.vault;
+        owner = w.owner;
+        guardian = w.guardian;
         maturities = maturities_;
         lenders = [existingLender, makeAddr("handlerLender1"), makeAddr("handlerLender2")];
         borrowers = [makeAddr("handlerBorrower0"), makeAddr("handlerBorrower1"), makeAddr("handlerBorrower2")];
@@ -84,6 +103,12 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
         }
         vm.prank(buyer);
         musd.approve(address(lm), type(uint256).max);
+        vm.startPrank(donor);
+        musd.approve(address(vault), type(uint256).max);
+        // A standing outside holder, so a lump can always land and CreditMarkets' share of it is a real share.
+        musd.mint(donor, 1_000e18);
+        vault.deposit(1_000e18);
+        vm.stopPrank();
     }
 
     function offerCount() external view returns (uint256) {
@@ -95,17 +120,69 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
     }
 
     function postOffer(uint256 lenderSeed, uint256 maturitySeed, uint256 aprSeed, uint256 amountSeed) external {
-        if (offerIds.length >= MAX_OFFERS) return;
-        uint64 maturity = maturities[maturitySeed % 3];
-        if (!cm.isValidMaturity(maturity)) return;
+        _post(false, lenderSeed, maturitySeed, aprSeed, amountSeed);
+    }
+
+    function postParkedOffer(uint256 lenderSeed, uint256 maturitySeed, uint256 aprSeed, uint256 amountSeed) external {
+        _post(true, lenderSeed, maturitySeed, aprSeed, amountSeed);
+    }
+
+    /// @dev A payment into the vault spread over every sMUSD outstanding, as Mezo's PCV and converter pay.
+    function yieldLump(uint256 amountSeed) external {
+        uint256 amount = bound(amountSeed, 1e18, 5_000e18);
+        musd.mint(donor, amount);
+        vm.prank(donor);
+        try vault.receiveProtocolYield(amount) {
+            ++successes["yieldLump"];
+        } catch {}
+    }
+
+    /// @dev Half the calls drop any reported index, so the vault reports its real one again, which can be a fall;
+    ///      the rest make it report a jump with no MUSD behind it, a quarter of them to 2**200. With an honest index
+    ///      Doji's bookings never run ahead of what the vault delivers, so only this reaches C31's payout cap.
+    function jumpIndex(uint256 seed) external {
+        uint256 kind = seed % 4;
+        if (kind < 2) vault.stopReportingIndex();
+        else if (kind == 2) vault.reportIndex(2 ** 200);
+        else vault.reportIndex(vault.accrualIndex() + bound(seed >> 2, 1e15, 1e18));
+        ++successes["jumpIndex"];
+    }
+
+    function pullOut() external {
+        vm.prank(guardian);
+        try cm.pullOut() {
+            ++successes["pullOut"];
+        } catch {}
+    }
+
+    function resumeParking() external {
+        if (cm.parkingOn()) return;
+        vm.prank(owner);
+        try cm.resumeParking() {
+            ++successes["resumeParking"];
+        } catch {}
+    }
+
+    /// @dev A seeded lender lists up to MAX_YIELD_IDS of its parked offers, from a seeded start, and withdraws.
+    function withdrawOfferYield(uint256 lenderSeed, uint256 startSeed) external {
         address maker = lenders[lenderSeed % 3];
-        uint128 amount = uint128(bound(amountSeed, 10e18, 60_000e18));
-        uint16 aprBps = uint16(bound(aprSeed, 0, 2_000));
-        musd.mint(maker, amount);
+        uint256 n = offerIds.length;
+        uint256[] memory picked = new uint256[](MAX_YIELD_IDS);
+        uint256 count;
+        for (uint256 i; i < n && count < MAX_YIELD_IDS; ++i) {
+            uint256 id = offerIds[(startSeed % n + i) % n];
+            ICreditMarkets.Offer memory offer = cm.offerOf(id);
+            if (offer.parked && offer.maker == maker) picked[count++] = id;
+        }
+        uint256[] memory ids = new uint256[](count);
+        for (uint256 i; i < count; ++i) {
+            ids[i] = picked[i];
+        }
         vm.prank(maker);
-        try cm.postOffer(maturity, aprBps, amount) returns (uint256 id) {
-            offerIds.push(id);
-            ++successes["postOffer"];
+        try cm.withdrawOfferYield(ids) returns (uint256 paid) {
+            yieldWithdrawn += paid;
+            if (paid != 0) ++successes["yieldPaidOut"];
+            ++successes["withdrawOfferYield"];
         } catch {}
     }
 
@@ -330,6 +407,32 @@ contract CreditHandler is CommonBase, StdCheats, StdUtils {
         try lm.claim() {
             ++successes["claim"];
         } catch {}
+    }
+
+    /// @dev The one body behind both post actions, so plain and parked posts draw from the same ranges.
+    function _post(bool parked, uint256 lenderSeed, uint256 maturitySeed, uint256 aprSeed, uint256 amountSeed)
+        internal
+    {
+        if (offerIds.length >= MAX_OFFERS) return;
+        uint64 maturity = maturities[maturitySeed % 3];
+        if (!cm.isValidMaturity(maturity)) return;
+        address maker = lenders[lenderSeed % 3];
+        uint128 amount = uint128(bound(amountSeed, 10e18, 60_000e18));
+        uint16 aprBps = uint16(bound(aprSeed, 0, 2_000));
+        musd.mint(maker, amount);
+        vm.prank(maker);
+        if (parked) {
+            try cm.postParkedOffer(maturity, aprBps, amount) returns (uint256 id) {
+                offerIds.push(id);
+                parkedEra[id] = cm.parkingEra();
+                ++successes["postParkedOffer"];
+            } catch {}
+        } else {
+            try cm.postOffer(maturity, aprBps, amount) returns (uint256 id) {
+                offerIds.push(id);
+                ++successes["postOffer"];
+            } catch {}
+        }
     }
 
     function _claimer(uint256 i) internal view returns (address) {

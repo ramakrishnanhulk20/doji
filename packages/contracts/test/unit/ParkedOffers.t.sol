@@ -5,10 +5,10 @@ pragma solidity 0.8.28;
 // exactly the principal back out, a vault that pays or mints short is refused, a broken vault stops only parked
 // paths, and sMUSD can neither be rescued nor slipped in as principal (threat model C30, C34, C35, C33). Runs on
 // the real CreditMarkets and LoanManager with MockSavingsVault standing in for Mezo's MUSDSavingsRate.
-// It does NOT cover: booking or paying yield per offer, or the guardian's stop-parking and pull-out controls
-// (both come with the next work order; until then any yield stays in CreditMarkets credited to nobody); the real
-// vault or a real position (test/fork/SavingsFork.t.sol); a roll that takes a parked offer, which runs the same
-// fill path but is not exercised here; or a vault whose yield index falls.
+// It does NOT cover: booking or paying yield per offer, the guardian's stop-parking and pull-out controls, or a
+// vault whose yield index falls (all in OfferYield.t.sol); the real vault or a real position
+// (test/fork/SavingsFork.t.sol); or a roll that takes a parked offer, which runs the same fill path but is not
+// exercised here.
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CreditMarkets} from "../../src/CreditMarkets.sol";
@@ -206,8 +206,9 @@ contract ParkedOffersTest is LoanFixture {
         uint256 lenderBefore = musd.balanceOf(lender);
         vm.prank(lender);
         cm.cancelOffer(id);
-        assertEq(musd.balanceOf(lender) - lenderBefore, PARKED - PRINCIPAL, "the maker never gets the yield yet");
-        assertEq(musd.balanceOf(address(cm)) - before.cmMusd, firstLump + secondLump, "both lumps credited to nobody");
+        assertEq(musd.balanceOf(lender) - lenderBefore, PARKED - PRINCIPAL, "a cancel refunds principal, not yield");
+        assertEq(musd.balanceOf(address(cm)) - before.cmMusd, firstLump + secondLump, "both lumps wait here");
+        assertEq(cm.yieldDelivered(), firstLump + secondLump, "both lumps count as delivered yield");
         assertEq(cm.parkedPrincipal(), 0);
         assertEq(cm.offerOf(offerM2).remaining, OFFER, "no plain offer gained anything");
         assertEq(cm.marketOf(m1).collectedMusd, 0, "no market gained anything");

@@ -11,6 +11,7 @@ import {ICreditMarkets} from "../src/interfaces/ICreditMarkets.sol";
 import {IVeBTC} from "../src/interfaces/IVeBTC.sol";
 import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 import {MezoBtcStandIn} from "../test/utils/MezoBtcStandIn.sol";
+import {IWave1Offers} from "./CoreSliceLive.s.sol";
 
 /// @title ProveIt
 /// @notice Proves Doji's promise on the live Mezo testnet deployment with the BORROWER wallet: lock a little
@@ -219,11 +220,11 @@ contract ProveIt is Script {
         }
         uint256 first = next > MAX_OFFERS_READ ? next - MAX_OFFERS_READ : 1;
         console.log(string.concat("== Open offers per maturity (offer ids ", vm.toString(first), " to ", vm.toString(next - 1), ")"));
-        ICreditMarkets.Offer[] memory offers = new ICreditMarkets.Offer[](next - first);
+        IWave1Offers.Offer[] memory offers = new IWave1Offers.Offer[](next - first);
         uint64[] memory maturities = new uint64[](next - first);
         uint256 distinct;
         for (uint256 id = first; id < next; ++id) {
-            ICreditMarkets.Offer memory o = cm.offerOf(id);
+            IWave1Offers.Offer memory o = IWave1Offers(address(cm)).offerOf(id);
             offers[id - first] = o;
             if (!_isOpen(o)) continue;
             distinct = _insertSorted(maturities, distinct, o.maturity);
@@ -246,7 +247,7 @@ contract ProveIt is Script {
         }
     }
 
-    function _isOpen(ICreditMarkets.Offer memory o) internal view returns (bool) {
+    function _isOpen(IWave1Offers.Offer memory o) internal view returns (bool) {
         return o.maker != address(0) && o.remaining != 0 && o.maturity > block.timestamp;
     }
 
@@ -263,7 +264,7 @@ contract ProveIt is Script {
         return len + 1;
     }
 
-    function _tally(ICreditMarkets.Offer[] memory offers, uint64 maturity) internal view returns (uint256 count, uint256 total) {
+    function _tally(IWave1Offers.Offer[] memory offers, uint64 maturity) internal view returns (uint256 count, uint256 total) {
         for (uint256 j; j < offers.length; ++j) {
             if (!_isOpen(offers[j]) || offers[j].maturity != maturity) continue;
             ++count;
@@ -332,7 +333,7 @@ contract ProveIt is Script {
         uint256 next = cm.nextOfferId();
         uint256 first = next > MAX_OFFERS_READ ? next - MAX_OFFERS_READ : 1;
         for (uint256 id = first; id < next; ++id) {
-            ICreditMarkets.Offer memory o = cm.offerOf(id);
+            IWave1Offers.Offer memory o = IWave1Offers(address(cm)).offerOf(id);
             if (o.maker == address(0) || o.maturity != maturity || o.remaining < minLoan) continue;
             if (pick.offerId == 0 || o.aprBps < pick.aprBps) pick = Pick({offerId: id, aprBps: o.aprBps, remaining: o.remaining});
         }

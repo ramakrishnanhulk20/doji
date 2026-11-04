@@ -6,7 +6,8 @@ pragma solidity 0.8.28;
 ///         credit units whose token id is the maturity; one unit is one MUSD due on that date.
 interface ICreditMarkets {
     /// @dev `parked` is fixed at posting: a parked offer's unfilled MUSD waits in the sMUSD vault, a plain one's in
-    ///      this contract.
+    ///      this contract. A parked offer stays parked for good, but after a pullOut of its parking era its MUSD is
+    ///      back in this contract and it fills and cancels like a plain offer.
     struct Offer {
         address maker;
         uint64 maturity;
@@ -75,6 +76,16 @@ interface ICreditMarkets {
     event UriSet(string uri);
     /// @notice The owner moved a stray ERC-20 that is not MUSD, BTC or sMUSD.
     event Rescued(address indexed token, address indexed to, uint256 amount);
+    /// @notice New offers can no longer be parked; offers already parked stay in the vault.
+    event ParkingStopped();
+    /// @notice New offers can be parked again, in the current parking era.
+    event ParkingResumed();
+    /// @notice All `principal` MUSD of parking era `era` came back from the sMUSD vault, and that era's offers
+    ///         stopped earning at yield index `index`.
+    event PulledOut(uint32 era, uint256 principal, uint256 index);
+    /// @notice `maker` was paid `paid` MUSD of offer yield; `stillOwed` stays booked to it until the vault delivers
+    ///         enough to pay it.
+    event OfferYieldWithdrawn(address indexed maker, uint256 paid, uint256 stillOwed);
 
     /// @notice An address argument or setting was the zero address.
     error ZeroAddress();
@@ -139,6 +150,10 @@ interface ICreditMarkets {
     error VaultTokenMismatch(address vaultToken);
     /// @notice Ownership can never be given up, so the treasury, pause and rescue settings always keep an owner.
     error RenounceDisabled();
+    /// @notice Parking is stopped, so a new offer can only be posted plain.
+    error ParkingOff();
+    /// @notice No parked principal is in the vault, so there is nothing to pull out.
+    error NothingParked();
 
     /// @notice Escrows `amount` MUSD from the caller as a fixed-rate offer for `maturity`.
     /// @dev Pulls exactly `amount` with transferFrom, so the caller approves this contract first.
@@ -154,12 +169,14 @@ interface ICreditMarkets {
     /// @notice Escrows `amount` MUSD from the caller as a fixed-rate offer for `maturity` and deposits it in the
     ///         sMUSD vault until it is filled or cancelled.
     /// @dev Same checks, pull and OfferPosted event as postOffer, then adds `amount` to parkedPrincipal, emits
-    ///      OfferParked, approves the vault for exactly `amount`, deposits, and resets the approval to zero. Fills
-    ///      and cancels of a parked offer withdraw from the vault, so they need the vault to work; the borrower
-    ///      is paid exactly the principal, and any yield the vault pays with a withdraw stays in this contract,
-    ///      credited to nobody. Reverts like postOffer, and VaultShortfall unless this contract's sMUSD balance
-    ///      rose by exactly `amount`. A vault that reverts makes this revert too. Emits OfferPosted and
-    ///      OfferParked.
+    ///      OfferParked, approves the vault for exactly `amount`, deposits, and resets the approval to zero. After
+    ///      the deposit it records the vault's yieldIndex and the current parking era as the offer's yield
+    ///      snapshot, so the offer earns from that moment only. MUSD the vault pays out during the deposit counts
+    ///      as delivered yield. Fills and cancels of a parked offer withdraw from the vault while its era lasts,
+    ///      so they need the vault to work; the borrower is paid exactly the principal and never the yield.
+    ///      Reverts ParkingOff while parking is stopped, like postOffer otherwise, and VaultShortfall unless this
+    ///      contract's sMUSD balance rose by exactly `amount`. A vault whose deposit or yieldIndex reverts makes
+    ///      this revert too. Emits OfferPosted and OfferParked.
     /// @param maturity Thursday 00:00 UTC timestamp the loans repay on.
     /// @param aprBps Yearly rate in basis points.
     /// @param amount MUSD to lend, 18 decimals.
@@ -167,22 +184,27 @@ interface ICreditMarkets {
     function postParkedOffer(uint64 maturity, uint16 aprBps, uint128 amount) external returns (uint256 offerId);
 
     /// @notice Refunds the unfilled part of an offer to its maker. Works at any time and is never paused. A parked
-    ///         offer's refund is withdrawn from the sMUSD vault first, so it also needs the vault to pay.
-    /// @dev Reverts OfferNotFound, NotMaker, or OfferEmpty if nothing is left. For a parked offer the remainder is
-    ///      cut and parkedPrincipal lowered before the vault is called, and it reverts VaultShortfall unless the
-    ///      withdraw burned exactly the refund in sMUSD and returned at least the refund in MUSD; MUSD above the
-    ///      refund is vault yield and stays here. Emits OfferCancelled.
+    ///         offer still in the vault has its refund withdrawn from the vault first, so it also needs the vault
+    ///         to pay.
+    /// @dev Reverts OfferNotFound, NotMaker, or OfferEmpty if nothing is left. A parked offer first books its
+    ///      yield on the whole remainder to the maker (see pendingOfferYield). For an offer still in the vault the
+    ///      remainder is then cut and parkedPrincipal lowered before the vault is called, and it reverts
+    ///      VaultShortfall unless the withdraw burned exactly the refund in sMUSD and returned at least the refund
+    ///      in MUSD; MUSD above the refund counts as delivered yield. A parked offer from an era already pulled
+    ///      out refunds from this contract's MUSD and never calls the vault. Emits OfferCancelled.
     /// @param offerId Offer to cancel.
     function cancelOffer(uint256 offerId) external;
 
     /// @notice Fills the listed offers for one loan and sends the total principal to `recipient`.
     /// @dev Only LoanManager. Every offer must exist, be for exactly `maturity`, charge at most `maxAprBps`
-    ///      and have at least the listed amount left; each amount must be above zero. The remainder is cut
-    ///      before anything else. Units are recorded in storage and minted later by claimUnits, so no maker
-    ///      code runs here. Adds one open loan to the market. The amounts taken from parked offers are then
-    ///      withdrawn from the sMUSD vault in one call, which reverts VaultShortfall unless it burned exactly
-    ///      that sum in sMUSD and returned at least that sum in MUSD; plain offers never call the vault. The
-    ///      recipient gets exactly the principal and never the vault's yield. Emits Filled once per offer.
+    ///      and have at least the listed amount left; each amount must be above zero. A parked offer books its
+    ///      yield on the remainder as it stood, then every remainder is cut, all before any vault withdraw. Units
+    ///      are recorded in storage and minted later by claimUnits, so no maker code runs here. Adds one open
+    ///      loan to the market. The amounts taken from offers still in the vault are then withdrawn in one
+    ///      call, which reverts VaultShortfall unless it burned exactly that sum in sMUSD and returned at least
+    ///      that sum in MUSD; MUSD above it counts as delivered yield. Plain offers, and parked offers from an era
+    ///      already pulled out, never call the vault. The recipient gets exactly the principal and never the
+    ///      vault's yield. Emits Filled once per offer.
     /// @param maturity The loan's maturity.
     /// @param offerIds Offers to take, 1 to MAX_FILLS entries.
     /// @param amounts MUSD to take from each offer, same length as `offerIds`.
@@ -306,9 +328,72 @@ interface ICreditMarkets {
     /// @notice Mezo's sMUSD vault that parked offers wait in, fixed at deployment. Its musdToken() is musd().
     function savingsVault() external view returns (address);
 
-    /// @notice MUSD principal of parked offers still unfilled, which is the sum of their remaining amounts. This
-    ///         contract's sMUSD balance is always at least this; sMUSD sent here unasked is never counted.
+    /// @notice MUSD principal still in the sMUSD vault: the sum of the remaining amounts of parked offers posted in
+    ///         the current parking era. This contract's sMUSD balance is always at least this; sMUSD sent here
+    ///         unasked is never counted.
     function parkedPrincipal() external view returns (uint256);
+
+    /// @notice True while new offers may be parked. True at deployment.
+    function parkingOn() external view returns (bool);
+
+    /// @notice The parking era new parked offers join. Starts at 1 and goes up by one at every pullOut; only offers
+    ///         of the current era are in the vault.
+    function parkingEra() external view returns (uint32);
+
+    /// @notice The vault's yield index recorded when `era` was pulled out, where that era's offers stopped
+    ///         earning. Zero for an era not pulled out yet.
+    function eraEndIndex(uint32 era) external view returns (uint256);
+
+    /// @notice Offer yield booked to `maker` and not yet paid.
+    function yieldOwedOf(address maker) external view returns (uint256);
+
+    /// @notice MUSD this contract has measured arriving from the vault above the principal it asked for: withdraw
+    ///         surpluses, MUSD paid during a deposit, and claimYield. The most offer yield can ever pay out.
+    function yieldDelivered() external view returns (uint256);
+
+    /// @notice Offer yield paid out by withdrawOfferYield so far. Never above yieldDelivered.
+    function yieldPaid() external view returns (uint256);
+
+    /// @notice The yield `offerId` would book to its maker if it were booked now, in MUSD. Zero for a plain or
+    ///         empty offer, and when the vault's index cannot be read, has fallen or is too large to multiply.
+    /// @dev Remaining amount times the index rise since the offer's snapshot, divided by 1e18 and rounded down.
+    ///      The index used is the vault's live yieldIndex while the offer's era lasts, and the era's recorded end
+    ///      index once it has been pulled out. This is booked yield, not what withdrawOfferYield can pay right now.
+    /// @param offerId Offer to price.
+    function pendingOfferYield(uint256 offerId) external view returns (uint256);
+
+    /// @notice Books the yield of the listed offers to the caller and pays the caller as much of its booked
+    ///         yield as the vault has delivered and nobody has been paid yet. Never paused.
+    /// @dev Every listed id must be an offer the caller made, at most MAX_FILLS of them; an empty list just pays
+    ///      what is already booked. If the caller is owed more than delivered minus paid, it first asks the vault
+    ///      for this contract's accrued yield with claimYield inside try/catch and counts only the MUSD measured
+    ///      arriving. Pays min(owed, delivered minus paid); the rest stays booked to the caller. Never pays from
+    ///      offer escrow or market collections. Reverts BadFillCount above MAX_FILLS ids or NotMaker. Emits
+    ///      OfferYieldWithdrawn, then sends the MUSD, skipping a zero payment.
+    /// @param offerIds The caller's offers to book first, 0 to MAX_FILLS entries.
+    /// @return paid MUSD paid to the caller.
+    function withdrawOfferYield(uint256[] calldata offerIds) external returns (uint256 paid);
+
+    /// @notice Guardian or owner. Refuses new parked offers from now on; offers already parked stay in the vault
+    ///         and fill, cancel and earn as before.
+    /// @dev Reverts NotGuardianOrOwner. Emits ParkingStopped.
+    function stopParking() external;
+
+    /// @notice Owner only. Lets new offers be parked again, in the current parking era. Offers of an era already
+    ///         pulled out stay out of the vault.
+    /// @dev Reverts OwnableUnauthorizedAccount. Emits ParkingResumed.
+    function resumeParking() external;
+
+    /// @notice Guardian or owner. Takes every parked dollar out of the sMUSD vault in one fixed-cost call and stops
+    ///         parking, for when the vault misbehaves.
+    /// @dev Records the vault's yieldIndex as the current era's end index (zero if it cannot be read, so that
+    ///      era's last stretch books nothing), withdraws exactly parkedPrincipal, never the raw sMUSD balance,
+    ///      sets parkedPrincipal to zero, stops parking and starts the next era. No loop over offers: every offer
+    ///      of the ended era books yield only up to the recorded index and fills and cancels from this
+    ///      contract's MUSD from then on. Reverts NotGuardianOrOwner, NothingParked when parkedPrincipal is zero,
+    ///      and VaultShortfall unless the withdraw burned exactly parkedPrincipal in sMUSD and returned at least
+    ///      that in MUSD; MUSD above it counts as delivered yield. Emits PulledOut.
+    function pullOut() external;
 
     /// @notice Furthest a maturity may be from now, in seconds.
     function maxTermSeconds() external view returns (uint32);
@@ -322,7 +407,8 @@ interface ICreditMarkets {
     /// @notice Receiver of fee units.
     function treasury() external view returns (address);
 
-    /// @notice Address that may pause new offers alongside the owner.
+    /// @notice Address that may pause new offers, stop parking and pull parked MUSD out of the vault, alongside the
+    ///         owner.
     function guardian() external view returns (address);
 
     /// @notice True while new offers are paused.
@@ -350,7 +436,7 @@ interface ICreditMarkets {
     function setGuardian(address newGuardian) external;
 
     /// @notice Guardian or owner. Pauses or resumes postOffer and postParkedOffer only; cancel, fills, credits, claims,
-    /// finalize and redeem are never paused. Reverts NotGuardianOrOwner. Emits OffersPausedSet.
+    /// finalize, redeem and withdrawOfferYield are never paused. Reverts NotGuardianOrOwner. Emits OffersPausedSet.
     function setOffersPaused(bool paused) external;
 
     /// @notice Owner only. Sets the ERC-1155 metadata URI shared by every maturity's credit units.

@@ -37,6 +37,20 @@ interface IVeBTCLocks {
     function ownerOf(uint256 tokenId) external view returns (address);
 }
 
+/// @dev The 20 Oct testnet CreditMarkets predates parked offers, so its offerOf returns four fields and decoding it
+///      as today's five-field ICreditMarkets.Offer reverts. A later CreditMarkets returns a fifth field, which this
+///      view still reads, because ABI decoding of a fixed-size return ignores trailing words.
+interface IWave1Offers {
+    struct Offer {
+        address maker;
+        uint64 maturity;
+        uint16 aprBps;
+        uint128 remaining;
+    }
+
+    function offerOf(uint256 offerId) external view returns (Offer memory);
+}
+
 /// @title CoreSliceLive
 /// @notice The M1 core slice on Mezo testnet with two wallets. The deployer lends: it swaps a little BTC for
 ///         MUSD on Tigris and posts an offer for the next Thursday. The borrower locks a little BTC as veBTC,
@@ -205,7 +219,7 @@ contract CoreSliceLive is DeployCore {
         console.log("position owner after withdraw", IVeBTCLocks(cfg.veBTC).ownerOf(tokenId));
         console.log("market open loans", market.openLoans);
         console.log("market collected MUSD", market.collectedMusd);
-        console.log("offer remaining MUSD", cm.offerOf(offerId).remaining);
+        console.log("offer remaining MUSD", IWave1Offers(address(cm)).offerOf(offerId).remaining);
         console.log("lender pending units", cm.pendingUnits(w.lender, maturity));
         console.log("lender BTC", IERC20(BTC).balanceOf(w.lender));
         console.log("lender MUSD", IERC20(cfg.musd).balanceOf(w.lender));
