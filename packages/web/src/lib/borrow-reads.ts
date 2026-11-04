@@ -1,5 +1,5 @@
 import { parseAbi, type Address, type PublicClient } from "viem";
-import { addressBook } from "./addresses";
+import { addressBook, pairOf, type PairKey } from "./addresses";
 import { faceOf, type Selection } from "./borrow";
 
 // Small read-only slices, so the compiler does not have to carry the full contract ABIs through every read.
@@ -38,15 +38,20 @@ export type BorrowSettings = {
   maxTermSeconds: number;
 };
 
-export async function readBorrowSettings(client: PublicClient): Promise<BorrowSettings> {
+/**
+ * One pair's limits. Borrow reads Wave 2's, where every new loan starts; a roll reads its own loan's pair, since the
+ * new loan opens on the same LoanManager under that pair's limits and pause.
+ */
+export async function readBorrowSettings(client: PublicClient, key: PairKey = "wave2"): Promise<BorrowSettings> {
+  const { loanManager, creditMarkets } = pairOf(key);
   const [maxLtvBps, liqLtvBps, minLoan, borrowsPaused, maxTermSeconds] = await client.multicall({
     allowFailure: false,
     contracts: [
-      { address: book.loanManager, abi: loanManagerReads, functionName: "maxLtvBps" },
-      { address: book.loanManager, abi: loanManagerReads, functionName: "liqLtvBps" },
-      { address: book.loanManager, abi: loanManagerReads, functionName: "minLoan" },
-      { address: book.loanManager, abi: loanManagerReads, functionName: "borrowsPaused" },
-      { address: book.creditMarkets, abi: creditMarketsReads, functionName: "maxTermSeconds" },
+      { address: loanManager, abi: loanManagerReads, functionName: "maxLtvBps" },
+      { address: loanManager, abi: loanManagerReads, functionName: "liqLtvBps" },
+      { address: loanManager, abi: loanManagerReads, functionName: "minLoan" },
+      { address: loanManager, abi: loanManagerReads, functionName: "borrowsPaused" },
+      { address: creditMarkets, abi: creditMarketsReads, functionName: "maxTermSeconds" },
     ],
   });
   return { maxLtvBps, liqLtvBps, minLoan, borrowsPaused, maxTermSeconds };
@@ -127,13 +132,22 @@ export async function readPositions(client: PublicClient, owner: Address, price:
   });
 }
 
-/** The face CreditMarkets quotes for each pick, in order. Reverts on a date that is not open for loans. */
-export async function quoteFaces(client: PublicClient, maturity: number, picks: Pick<Selection, "amounts" | "aprs">): Promise<bigint[]> {
+/**
+ * The face one pair's CreditMarkets quotes for each pick, in order: Wave 2's for a new loan, the loan's own pair's for
+ * a roll. Reverts on a date that is not open for loans.
+ */
+export async function quoteFaces(
+  client: PublicClient,
+  maturity: number,
+  picks: Pick<Selection, "amounts" | "aprs">,
+  key: PairKey = "wave2",
+): Promise<bigint[]> {
   if (picks.amounts.length === 0) return [];
+  const { creditMarkets } = pairOf(key);
   const quotes = await client.multicall({
     allowFailure: false,
     contracts: picks.amounts.map((amount, index) => ({
-      address: book.creditMarkets,
+      address: creditMarkets,
       abi: creditMarketsReads,
       functionName: "quoteFill" as const,
       args: [amount, picks.aprs[index] ?? 0, BigInt(maturity)] as const,

@@ -31,10 +31,7 @@ const poolsVoterAbi = parseAbi([
   "function length() view returns (uint256)",
   "function pools(uint256 index) view returns (address)",
 ]);
-const offerBookAbi = parseAbi([
-  "function nextOfferId() view returns (uint256)",
-  "function offerOf(uint256 offerId) view returns ((address maker, uint64 maturity, uint16 aprBps, uint128 remaining))",
-]);
+const offerBookAbi = parseAbi(["function nextOfferId() view returns (uint256)"]);
 
 /** What the attacks point at. Every field is read from the chain or the deployment record. */
 export type AttackTargets = {
@@ -79,13 +76,19 @@ export type TargetInputs = {
   now: number;
 };
 
+/**
+ * Every attack is sent to the Wave 2 contracts, so only Wave 2 offers and auctions can be its targets: a 20 October
+ * auction's token id would read as "no auction" on the Wave 2 LoanManager and miss the rule the card is about.
+ */
 export function buildTargets({ offers, auctions, chain, now }: TargetInputs): AttackTargets {
-  const first = [...offers].sort((a, b) => a.maturity - b.maturity || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+  const first = [...offers]
+    .filter((offer) => offer.pair === "wave2")
+    .sort((a, b) => a.maturity - b.maturity || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
   const nextThursday = (Math.floor(now / WEEK_SECONDS) + 1) * WEEK_SECONDS;
   return {
     demoTokenId: demoLoan.tokenId,
     auctionKnown: auctions !== null,
-    auctionTokenId: auctions?.[0]?.tokenId ?? null,
+    auctionTokenId: auctions?.find((auction) => auction.pair === "wave2")?.tokenId ?? null,
     offerId: first?.id ?? chain.newestOfferId,
     earliestThursday: first?.maturity ?? nextThursday,
     nextThursday,

@@ -26,7 +26,7 @@ export function RewardsPanel({ mode, view, now, locked, busy, acting, onClaimReb
   const column = mode === "column";
   const votes = useVotes(view.id, view.voted === true || column);
   const hasVotes = (votes.data?.pools.length ?? 0) > 0;
-  const plan = useClaimPlan(view.id, column && hasVotes);
+  const plan = useClaimPlan(view.id, view.pair, column && hasVotes);
   const allowed = loanAllowsClaims(view);
   const waiting = view.rewards !== null && view.rewards > 0n;
   const off = locked || busy;

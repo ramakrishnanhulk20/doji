@@ -293,6 +293,25 @@ export const creditMarketsAbi = [
   },
   {
     "type": "function",
+    "name": "eraEndIndex",
+    "inputs": [
+      {
+        "name": "era",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "feeShareBps",
     "inputs": [],
     "outputs": [
@@ -387,6 +406,25 @@ export const creditMarketsAbi = [
         "name": "operator",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isInVault",
+    "inputs": [
+      {
+        "name": "offerId",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [
@@ -578,6 +616,11 @@ export const creditMarketsAbi = [
             "name": "remaining",
             "type": "uint128",
             "internalType": "uint128"
+          },
+          {
+            "name": "parked",
+            "type": "bool",
+            "internalType": "bool"
           }
         ]
       }
@@ -628,6 +671,64 @@ export const creditMarketsAbi = [
       },
       {
         "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "parkedPrincipal",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "parkingEra",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "parkingOn",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pendingOfferYield",
+    "inputs": [
+      {
+        "name": "offerId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "earned",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -698,6 +799,42 @@ export const creditMarketsAbi = [
         "internalType": "uint256"
       }
     ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "postParkedOffer",
+    "inputs": [
+      {
+        "name": "maturity",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "aprBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "amount",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "offerId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "pullOut",
+    "inputs": [],
+    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
@@ -800,6 +937,13 @@ export const creditMarketsAbi = [
   },
   {
     "type": "function",
+    "name": "resumeParking",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "safeBatchTransferFrom",
     "inputs": [
       {
@@ -863,6 +1007,19 @@ export const creditMarketsAbi = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "savingsVault",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -975,6 +1132,13 @@ export const creditMarketsAbi = [
   },
   {
     "type": "function",
+    "name": "stopParking",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "supportsInterface",
     "inputs": [
       {
@@ -1065,6 +1229,70 @@ export const creditMarketsAbi = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawOfferYield",
+    "inputs": [
+      {
+        "name": "offerIds",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "paid",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "yieldDelivered",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "yieldOwedOf",
+    "inputs": [
+      {
+        "name": "maker",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "owed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "yieldPaid",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "event",
@@ -1325,6 +1553,25 @@ export const creditMarketsAbi = [
   },
   {
     "type": "event",
+    "name": "OfferParked",
+    "inputs": [
+      {
+        "name": "offerId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OfferPosted",
     "inputs": [
       {
@@ -1356,6 +1603,31 @@ export const creditMarketsAbi = [
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OfferYieldWithdrawn",
+    "inputs": [
+      {
+        "name": "maker",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "paid",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "stillOwed",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1407,6 +1679,43 @@ export const creditMarketsAbi = [
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ParkingResumed",
+    "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ParkingStopped",
+    "inputs": [],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PulledOut",
+    "inputs": [
+      {
+        "name": "era",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "principal",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1937,6 +2246,11 @@ export const creditMarketsAbi = [
   },
   {
     "type": "error",
+    "name": "NothingParked",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NothingToClaim",
     "inputs": [
       {
@@ -2018,6 +2332,11 @@ export const creditMarketsAbi = [
   },
   {
     "type": "error",
+    "name": "ParkingOff",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "ReentrancyGuardReentrantCall",
     "inputs": []
   },
@@ -2077,6 +2396,33 @@ export const creditMarketsAbi = [
         "name": "received",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "VaultShortfall",
+    "inputs": [
+      {
+        "name": "expected",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "actual",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "VaultTokenMismatch",
+    "inputs": [
+      {
+        "name": "vaultToken",
+        "type": "address",
+        "internalType": "address"
       }
     ]
   },

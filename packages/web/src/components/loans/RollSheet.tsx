@@ -105,14 +105,14 @@ export function RollSheet({ view, client, settings, offers, wallet, send, busy, 
       run: () => {
         if (step.id === "extend") {
           return send(
-            buildExtendLockCall(id, date, Math.floor(Date.now() / 1000)),
+            buildExtendLockCall(view.pair, id, date, Math.floor(Date.now() / 1000)),
             `The lock on veBTC #${id} now runs to ${formatDate(date)}.`,
           );
         }
         if (step.id === "approve") {
-          return send(approveMusdCall(planned.topUp), `Approved ${approveText(planned.topUp)} MUSD for Doji.`);
+          return send(approveMusdCall(view.pair, planned.topUp), `Approved ${approveText(planned.topUp)} MUSD for Doji.`);
         }
-        return send(rollCall(id, date, planned.selection, planned.topUp), `veBTC #${id} rolled to ${formatDate(date)}.`);
+        return send(rollCall(view.pair, id, date, planned.selection, planned.topUp), `veBTC #${id} rolled to ${formatDate(date)}.`);
       },
     }));
     if (await flow.start(steps)) onClose();

@@ -66,7 +66,7 @@ function SendForm({ row, address, act, busy, runningKey, onClose }: SendFormProp
           : null;
   const validTarget = target !== "" && addressProblem === null;
   const unitsProblem = wei > row.balance ? `You hold ${fmtMusd(row.balance)} units.` : null;
-  const key = `send:${row.maturity}`;
+  const key = `send:${row.pair}:${row.maturity}`;
   const ready = validTarget && wei > 0n && unitsProblem === null;
 
   const send = async () => {
@@ -74,7 +74,7 @@ function SendForm({ row, address, act, busy, runningKey, onClose }: SendFormProp
     const recipient = getAddress(target);
     const done = await act(
       key,
-      sendUnitsCall(address, recipient, row.maturity, wei),
+      sendUnitsCall(row.pair, address, recipient, row.maturity, wei),
       `Sent ${fmtMusd(wei)} units to ${shortAddress(recipient)}.`,
     );
     if (done) onClose();
@@ -142,11 +142,11 @@ function WithdrawSheet({ row, act, busy, runningKey, onClose }: WithdrawSheetPro
   const wei = parseAmount(unitsText);
   const over = wei > row.balance;
   const pay = withdrawalAmounts(row.market, row.claim, over ? row.balance : wei);
-  const key = `withdraw:${row.maturity}`;
+  const key = `withdraw:${row.pair}:${row.maturity}`;
 
   const confirm = async () => {
     if (wei === 0n || over) return;
-    const done = await act(key, withdrawCollectedCall(row.maturity, wei), `You withdrew ${fmtMusd(pay.musd)} MUSD and ${fmtBtcAmount(pay.btc)} BTC.`);
+    const done = await act(key, withdrawCollectedCall(row.pair, row.maturity, wei), `You withdrew ${fmtMusd(pay.musd)} MUSD and ${fmtBtcAmount(pay.btc)} BTC.`);
     if (done) onClose();
   };
 
@@ -217,7 +217,8 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
   const hasWaiting = claim.units > 0n && (waiting.musd > 0n || waiting.btc > 0n);
   const perUnit = unitValue(market);
   const redeem = redeemAmounts(market, row.balance);
-  const key = (name: string) => `${name}:${maturity}`;
+  // The same date can have units on both pairs, so a running write is named by its pair too.
+  const key = (name: string) => `${name}:${row.pair}:${maturity}`;
   const loading = (name: string) => runningKey === key(name);
   const openLoans = Number(market.openLoans);
 
@@ -261,7 +262,7 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
                   disabled={busy}
                   loading={loading("claim")}
                   onClick={() =>
-                    void act(key("claim"), claimUnitsCall(maturity), `${fmtMusd(row.pending)} units for ${date} are in your wallet.`)
+                    void act(key("claim"), claimUnitsCall(row.pair, maturity), `${fmtMusd(row.pending)} units for ${date} are in your wallet.`)
                   }
                 >
                   Claim units
@@ -320,7 +321,7 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
                 onClick={() =>
                   void act(
                     key("more"),
-                    withdrawCollectedCall(maturity, 0n),
+                    withdrawCollectedCall(row.pair, maturity, 0n),
                     `You withdrew ${fmtMusd(waiting.musd)} MUSD and ${fmtBtcAmount(waiting.btc)} BTC.`,
                   )
                 }
@@ -335,7 +336,7 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
                 className="lend-small"
                 disabled={busy}
                 loading={loading("finalize")}
-                onClick={() => void act(key("finalize"), finalizeCall(maturity), `${date} is closed.`)}
+                onClick={() => void act(key("finalize"), finalizeCall(row.pair, maturity), `${date} is closed.`)}
               >
                 Close this date
               </Button>
@@ -349,7 +350,7 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
                 onClick={() =>
                   void act(
                     key("redeem"),
-                    redeemCall(maturity, row.balance),
+                    redeemCall(row.pair, maturity, row.balance),
                     `You received ${fmtMusd(redeem.musd)} MUSD and ${fmtBtcAmount(redeem.btc)} BTC.`,
                   )
                 }
@@ -367,7 +368,7 @@ function UnitsCard({ row, now, address, act, busy, runningKey }: CardProps) {
                 onClick={() =>
                   void act(
                     key("more"),
-                    withdrawCollectedCall(maturity, 0n),
+                    withdrawCollectedCall(row.pair, maturity, 0n),
                     `You withdrew ${fmtMusd(waiting.musd)} MUSD and ${fmtBtcAmount(waiting.btc)} BTC.`,
                   )
                 }
@@ -435,7 +436,7 @@ export function UnitsCards({ state, rows, now, address, act, busy, runningKey }:
   return (
     <div className="lend-cards">
       {rows.map((row) => (
-        <UnitsCard key={row.maturity} row={row} now={now} address={address} act={act} busy={busy} runningKey={runningKey} />
+        <UnitsCard key={`${row.pair}:${row.maturity}`} row={row} now={now} address={address} act={act} busy={busy} runningKey={runningKey} />
       ))}
     </div>
   );

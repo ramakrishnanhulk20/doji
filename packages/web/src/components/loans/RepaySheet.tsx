@@ -69,9 +69,9 @@ export function RepaySheet({ view, wallet, fullOnly, send, busy, onClose }: Repa
       ...step,
       run: () =>
         step.id === "approve"
-          ? send(approveMusdCall(pay), `Approved ${approveText(pay)} MUSD for Doji.`)
+          ? send(approveMusdCall(view.pair, pay), `Approved ${approveText(pay)} MUSD for Doji.`)
           : send(
-              repayCall(id, pay),
+              repayCall(view.pair, id, pay),
               isFull
                 ? `Repaid in full. veBTC #${id} has no loan and is ready to withdraw.`
                 : `Paid ${musdText(pay)} MUSD towards veBTC #${id}.`,

@@ -1,4 +1,6 @@
 import {
+  BaseError,
+  ContractFunctionRevertedError,
   decodeEventLog,
   formatUnits,
   hexToBigInt,
@@ -13,9 +15,9 @@ import {
   type PublicClient,
 } from "viem";
 import { erc20Abi, feeDistributorAbi, veBtcAbi } from "../abi/external";
+import { legacyLoanManagerAbi } from "../abi/legacyLoanManager";
 import { loanManagerAbi } from "../abi/loanManager";
-import { deployment } from "../generated/deployment";
-import { addressBook } from "./addresses";
+import { addressBook, pairByLoanManager, pairOf, pairs, type Pair, type PairKey } from "./addresses";
 import {
   BPS,
   auctionLinePrice,
@@ -27,7 +29,7 @@ import {
 } from "./borrow";
 import { quoteFaces, type BorrowSettings } from "./borrow-reads";
 import { explainProblem } from "./errors";
-import { formatDate, formatMusd } from "./stats";
+import { formatDate, formatMusd, type OpenOffer } from "./stats";
 
 const book = addressBook[31611];
 
@@ -50,9 +52,14 @@ export const SAFE_SHARE_BPS = 7_500;
 const BUY_SLACK_BPS = 100n;
 const BUY_DEADLINE_SECONDS = 600;
 
-// Small read-only slices, so the compiler does not carry the full contract ABI through every read.
+// Small read-only slices, so the compiler does not carry the full contract ABI through every read. positionOf is the
+// one read whose shape differs: Wave 2 adds the reward operator, and the 20 October record has the borrower only, in
+// one word that the two-field shape cannot decode.
+const positionReads: Record<PairKey, Abi> = {
+  wave2: parseAbi(["function positionOf(uint256 tokenId) view returns ((address borrower, address rewardOperator))"]),
+  legacy: parseAbi(["function positionOf(uint256 tokenId) view returns ((address borrower))"]),
+};
 const loanReads = parseAbi([
-  "function positionOf(uint256 tokenId) view returns ((address borrower))",
   "function loanOf(uint256 tokenId) view returns ((uint64 maturity, uint128 face, uint128 repaid, uint16 maxLtvBps, uint16 liqLtvBps, uint16 penaltyBps, uint16 auctionFloorBps, uint32 auctionDuration, uint8 state))",
   "function owedOf(uint256 tokenId) view returns (uint256)",
   "function collateralValue(uint256 tokenId) view returns (uint256 btcAmount, uint256 usdValue)",
@@ -161,11 +168,19 @@ export type Auction = {
 
 export type Lock = { amount: bigint; end: number; isPermanent: boolean };
 
+/** A position and the pair whose LoanManager it was read from, the one every write on it goes to. */
+export type PositionRef = { id: bigint; pair: PairKey };
+
 /** Everything Doji and Mezo say about one veBTC position. A field is null when its read reverted. */
 export type PositionView = {
   id: bigint;
+  /** The LoanManager this view was read from, and the one every write on the position goes to. */
+  pair: PairKey;
   /** Null when no one has deposited this position. */
   borrower: Address | null;
+  /** The one other address the borrower named to claim pool rewards. Null when none is named, and always on the 20
+   *  October pair, whose position record has no operator. */
+  rewardOperator: Address | null;
   loan: Loan;
   owed: bigint;
   /** Collateral value in MUSD. Null while Mezo's price feed is stale. */
@@ -184,29 +199,35 @@ export type PositionView = {
 const ZERO = "0x0000000000000000000000000000000000000000";
 const CALLS_PER_POSITION = 10;
 
-/** Reads the loan, the lock, the votes and the rewards of each position in two multicalls. */
-export async function readPositionViews(client: PublicClient, ids: readonly bigint[]): Promise<PositionView[]> {
-  if (ids.length === 0) return [];
+/**
+ * Reads the loan, the lock, the votes and the rewards of each position in two multicalls, each from the LoanManager of
+ * the pair it names. The result keeps the order of `refs` and tags every view with its pair.
+ */
+export async function readPositionViews(client: PublicClient, refs: readonly PositionRef[]): Promise<PositionView[]> {
+  if (refs.length === 0) return [];
 
-  const calls = ids.flatMap((id) => [
-    { address: book.loanManager, abi: loanReads, functionName: "positionOf" as const, args: [id] as const },
-    { address: book.loanManager, abi: loanReads, functionName: "loanOf" as const, args: [id] as const },
-    { address: book.loanManager, abi: loanReads, functionName: "owedOf" as const, args: [id] as const },
-    { address: book.loanManager, abi: loanReads, functionName: "collateralValue" as const, args: [id] as const },
-    { address: book.loanManager, abi: loanReads, functionName: "lockOf" as const, args: [id] as const },
-    { address: book.loanManager, abi: loanReads, functionName: "isUnsafe" as const, args: [id] as const },
-    { address: book.loanManager, abi: loanReads, functionName: "isOverdue" as const, args: [id] as const },
-    { address: book.loanManager, abi: loanReads, functionName: "auctionOf" as const, args: [id] as const },
-    { address: book.veBTC, abi: veBtcAbi, functionName: "voted" as const, args: [id] as const },
-    { address: book.feeDistributor, abi: feeDistributorAbi, functionName: "claimable" as const, args: [id] as const },
-  ]);
+  const calls = refs.flatMap(({ id, pair: key }) => {
+    const { loanManager } = pairOf(key);
+    return [
+      { address: loanManager, abi: positionReads[key], functionName: "positionOf", args: [id] },
+      { address: loanManager, abi: loanReads, functionName: "loanOf" as const, args: [id] as const },
+      { address: loanManager, abi: loanReads, functionName: "owedOf" as const, args: [id] as const },
+      { address: loanManager, abi: loanReads, functionName: "collateralValue" as const, args: [id] as const },
+      { address: loanManager, abi: loanReads, functionName: "lockOf" as const, args: [id] as const },
+      { address: loanManager, abi: loanReads, functionName: "isUnsafe" as const, args: [id] as const },
+      { address: loanManager, abi: loanReads, functionName: "isOverdue" as const, args: [id] as const },
+      { address: loanManager, abi: loanReads, functionName: "auctionOf" as const, args: [id] as const },
+      { address: book.veBTC, abi: veBtcAbi, functionName: "voted" as const, args: [id] as const },
+      { address: book.feeDistributor, abi: feeDistributorAbi, functionName: "claimable" as const, args: [id] as const },
+    ];
+  });
   const results = (await client.multicall({
     allowFailure: true,
     batchSize: 16_384,
-    contracts: calls,
+    contracts: calls as never[],
   })) as unknown as Entry[];
 
-  const stages = ids.map((id, index) => {
+  const stages = refs.map(({ id, pair }, index) => {
     const at = (slot: number) => results[index * CALLS_PER_POSITION + slot];
     const loan = answer<{
       maturity: bigint;
@@ -220,34 +241,39 @@ export async function readPositionViews(client: PublicClient, ids: readonly bigi
       state: number;
     }>(at(1));
     if (loan === null) throw new Error(`Doji could not read the loan of veBTC #${id}`);
-    const position = answer<{ borrower: Address }>(at(0));
+    const position = answer<{ borrower: Address; rewardOperator?: Address }>(at(0));
     const collateral = answer<readonly [bigint, bigint]>(at(3));
     const lock = answer<readonly [bigint, bigint, boolean]>(at(4));
     const auction = answer<{ startTime: bigint; duration: number; penaltyBps: number; startValue: bigint; floorPrice: bigint }>(at(7));
-    return { id, loan, position, collateral, lock, auction, entry: (slot: number) => at(slot) };
+    return { id, pair, loan, position, collateral, lock, auction, entry: (slot: number) => at(slot) };
   });
 
-  const inAuction = stages.filter((stage) => stage.loan.state === STATE_AUCTION).map((stage) => stage.id);
-  const prices = new Map<bigint, bigint | null>();
+  const refKey = (pair: PairKey, id: bigint) => `${pair}:${id}`;
+  const inAuction = stages.filter((stage) => stage.loan.state === STATE_AUCTION);
+  const prices = new Map<string, bigint | null>();
   if (inAuction.length > 0) {
     const priceResults = (await client.multicall({
       allowFailure: true,
-      contracts: inAuction.map((id) => ({
-        address: book.loanManager,
+      contracts: inAuction.map((stage) => ({
+        address: pairOf(stage.pair).loanManager,
         abi: loanReads,
         functionName: "auctionPrice" as const,
-        args: [id] as const,
+        args: [stage.id] as const,
       })),
     })) as unknown as Entry[];
-    inAuction.forEach((id, index) => prices.set(id, answer<bigint>(priceResults[index])));
+    inAuction.forEach((stage, index) => prices.set(refKey(stage.pair, stage.id), answer<bigint>(priceResults[index])));
   }
+
+  const named = (address: Address | undefined): Address | null =>
+    address !== undefined && address.toLowerCase() !== ZERO ? address : null;
 
   return stages.map((stage) => {
     const { loan, position, collateral, lock, auction } = stage;
-    const borrower = position !== null && position.borrower.toLowerCase() !== ZERO ? position.borrower : null;
     return {
       id: stage.id,
-      borrower,
+      pair: stage.pair,
+      borrower: named(position?.borrower),
+      rewardOperator: named(position?.rewardOperator),
       loan: {
         maturity: Number(loan.maturity),
         face: loan.face,
@@ -274,7 +300,7 @@ export async function readPositionViews(client: PublicClient, ids: readonly bigi
               floorPrice: auction.floorPrice,
             }
           : null,
-      auctionPrice: prices.get(stage.id) ?? null,
+      auctionPrice: prices.get(refKey(stage.pair, stage.id)) ?? null,
       voted: answer<boolean>(stage.entry(8)),
       rewards: answer<bigint>(stage.entry(9)),
     };
@@ -282,6 +308,7 @@ export async function readPositionViews(client: PublicClient, ids: readonly bigi
 }
 
 type RawLog = {
+  address: string;
   blockNumber: Hex;
   logIndex: Hex;
   transactionHash: Hex;
@@ -292,11 +319,18 @@ type RawLog = {
 
 type LogTopics = { topic0: Hex; topic1?: Hex; topic2?: Hex };
 
-/** LoanManager logs from the explorer, filtered by topic, from the deployment block on. */
-async function fetchExplorerLogs({ topic0, topic1, topic2 }: LogTopics): Promise<RawLog[]> {
+/** Lowercased on both sides, so a checksummed address and the explorer's lowercase one compare equal. */
+const sameAddress = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+/**
+ * One pair's LoanManager logs from the explorer, filtered by topic, from the pair's deployment block on. Both
+ * LoanManagers emit the same events for the same token ids, so the explorer is asked for the pair's address and every
+ * log it returns is checked against that address again.
+ */
+async function fetchExplorerLogs(pair: Pair, { topic0, topic1, topic2 }: LogTopics): Promise<RawLog[]> {
   const seen = new Set<string>();
   const logs: RawLog[] = [];
-  let start = BigInt(deployment.block);
+  let start = pair.fromBlock;
 
   for (let call = 0; call < EXPLORER_MAX_CALLS; call++) {
     const url = new URL(EXPLORER_API);
@@ -304,7 +338,7 @@ async function fetchExplorerLogs({ topic0, topic1, topic2 }: LogTopics): Promise
     url.searchParams.set("action", "getLogs");
     url.searchParams.set("fromBlock", start.toString());
     url.searchParams.set("toBlock", "latest");
-    url.searchParams.set("address", book.loanManager);
+    url.searchParams.set("address", pair.loanManager);
     url.searchParams.set("topic0", topic0);
     if (topic1) {
       url.searchParams.set("topic1", topic1);
@@ -323,6 +357,7 @@ async function fetchExplorerLogs({ topic0, topic1, topic2 }: LogTopics): Promise
     const page = Array.isArray(body.result) ? (body.result as RawLog[]) : [];
 
     for (const raw of page) {
+      if (typeof raw.address !== "string" || !sameAddress(raw.address, pair.loanManager)) continue;
       const key = `${raw.transactionHash}:${raw.logIndex}`;
       const block = hexToBigInt(raw.blockNumber);
       if (block > start) start = block;
@@ -337,20 +372,16 @@ async function fetchExplorerLogs({ topic0, topic1, topic2 }: LogTopics): Promise
 
 const wordOf = (value: bigint | Address): Hex => pad(typeof value === "bigint" ? (`0x${value.toString(16)}` as Hex) : value, { size: 32 });
 
-/**
- * The position ids a wallet has put into Doji: the explorer's Deposited logs plus one RPC request over the newest
- * blocks (the explorer can lag a little). Each id is then checked live, and only those whose borrower is the wallet
- * today are kept, newest id first.
- */
-export async function readWalletPositionIds(client: PublicClient, owner: Address): Promise<bigint[]> {
-  const latest = await client.getBlockNumber();
+/** One pair's positions whose recorded borrower is `owner` today. */
+async function readPairPositionIds(client: PublicClient, pair: Pair, owner: Address, latest: bigint): Promise<bigint[]> {
+  const windowStart = latest > RPC_LOG_WINDOW ? latest - RPC_LOG_WINDOW : 0n;
   const [indexed, recent] = await Promise.all([
-    fetchExplorerLogs({ topic0: DEPOSITED_TOPIC, topic2: wordOf(owner) }),
+    fetchExplorerLogs(pair, { topic0: DEPOSITED_TOPIC, topic2: wordOf(owner) }),
     client.getLogs({
-      address: book.loanManager,
+      address: pair.loanManager,
       event: depositedEvent,
       args: { borrower: owner },
-      fromBlock: latest > RPC_LOG_WINDOW ? latest - RPC_LOG_WINDOW : 0n,
+      fromBlock: windowStart > pair.fromBlock ? windowStart : pair.fromBlock,
       toBlock: latest,
     }),
   ]);
@@ -361,57 +392,93 @@ export async function readWalletPositionIds(client: PublicClient, owner: Address
     if (topic) ids.add(hexToBigInt(topic));
   }
   for (const log of recent) {
+    if (!sameAddress(log.address, pair.loanManager)) continue;
     if (log.args.tokenId !== undefined) ids.add(log.args.tokenId);
   }
   if (ids.size === 0) return [];
 
   const list = [...ids];
-  const positions = await client.multicall({
+  const positions = (await client.multicall({
     allowFailure: false,
     contracts: list.map((id) => ({
-      address: book.loanManager,
-      abi: loanReads,
-      functionName: "positionOf" as const,
-      args: [id] as const,
+      address: pair.loanManager,
+      abi: positionReads[pair.key],
+      functionName: "positionOf",
+      args: [id],
     })),
+  })) as { borrower: Address }[];
+  return list.filter((_, index) => {
+    const borrower = positions[index]?.borrower;
+    return borrower !== undefined && sameAddress(borrower, owner);
   });
-  return list
-    .filter((_, index) => positions[index]?.borrower.toLowerCase() === owner.toLowerCase())
-    .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
 }
 
-export type Claimables = { musd: bigint; btc: bigint };
+/**
+ * The positions a wallet has put into Doji, on both pairs: each pair's Deposited logs from the explorer plus one RPC
+ * request over the newest blocks (the explorer can lag a little). Each id is then checked live on that pair's
+ * LoanManager, and only those whose borrower is the wallet today are kept, newest id first, each tagged with its pair.
+ */
+export async function readWalletPositionIds(client: PublicClient, owner: Address): Promise<PositionRef[]> {
+  const latest = await client.getBlockNumber();
+  const perPair = await Promise.all(pairs.map((pair) => readPairPositionIds(client, pair, owner, latest)));
+  return pairs
+    .flatMap((pair, index) => (perPair[index] ?? []).map((id): PositionRef => ({ id, pair: pair.key })))
+    .sort((a, b) => (a.id > b.id ? -1 : a.id < b.id ? 1 : 0));
+}
 
-export async function readClaimables(client: PublicClient, owner: Address): Promise<Claimables> {
-  const [musd, btc] = await client.multicall({
+/** What auctions and settlements left for a wallet on one pair's LoanManager, collected by that pair's claim. */
+export type Claimables = { pair: PairKey; musd: bigint; btc: bigint };
+
+/** The wallet's claimables on each pair, Wave 2 first, one entry per pair whether or not it holds anything. */
+export async function readClaimables(client: PublicClient, owner: Address): Promise<Claimables[]> {
+  const reads = await client.multicall({
     allowFailure: false,
-    contracts: [
-      { address: book.loanManager, abi: loanReads, functionName: "claimableMusd", args: [owner] },
-      { address: book.loanManager, abi: loanReads, functionName: "claimableBtc", args: [owner] },
-    ],
+    contracts: pairs.flatMap((pair) => [
+      { address: pair.loanManager, abi: loanReads, functionName: "claimableMusd" as const, args: [owner] as const },
+      { address: pair.loanManager, abi: loanReads, functionName: "claimableBtc" as const, args: [owner] as const },
+    ]),
   });
-  return { musd, btc };
+  return pairs.map((pair, index) => ({ pair: pair.key, musd: reads[index * 2] as bigint, btc: reads[index * 2 + 1] as bigint }));
 }
 
+/** The wallet's MUSD and how much of it one pair's LoanManager may already pull. */
 export type MusdWallet = { balance: bigint; allowance: bigint };
 
-/** The wallet's MUSD and how much of it Doji may already pull. */
-export async function readMusdWallet(client: PublicClient, owner: Address): Promise<MusdWallet> {
+/** The wallet's MUSD and its allowance to the LoanManager of `pair`, the one a repay, roll or purchase there pulls. */
+export async function readMusdWallet(client: PublicClient, owner: Address, pair: PairKey = "wave2"): Promise<MusdWallet> {
   const [balance, allowance] = await client.multicall({
     allowFailure: false,
     contracts: [
       { address: book.musd, abi: erc20Abi, functionName: "balanceOf", args: [owner] },
-      { address: book.musd, abi: erc20Abi, functionName: "allowance", args: [owner, book.loanManager] },
+      { address: book.musd, abi: erc20Abi, functionName: "allowance", args: [owner, pairOf(pair).loanManager] },
     ],
   });
   return { balance, allowance };
 }
 
+/**
+ * The pair whose LoanManager holds `id` right now, from veBTC.ownerOf. Null when neither does: the position was never
+ * deposited, was withdrawn, sold or settled, or the token does not exist. A network failure throws instead, so an
+ * outage never reads as "not in Doji".
+ */
+export async function readLoanPair(client: PublicClient, id: bigint): Promise<Pair | null> {
+  try {
+    const owner = await client.readContract({ address: book.veBTC, abi: veBtcAbi, functionName: "ownerOf", args: [id] });
+    return pairByLoanManager(owner);
+  } catch (error) {
+    if (error instanceof BaseError && error.walk((inner) => inner instanceof ContractFunctionRevertedError)) return null;
+    throw error;
+  }
+}
+
 export type OpenedRecord = { principal: bigint; hash: Hex; timestamp: number };
 
-/** The latest Borrowed log of a position, from the explorer. Null when the position never had a loan. */
+/**
+ * The latest Borrowed log of a position across both pairs, from the explorer. Block numbers are shared, so the newest
+ * log is the current or the last loan wherever it was. Null when the position never had a loan on either pair.
+ */
 export async function readOpened(id: bigint): Promise<OpenedRecord | null> {
-  const logs = await fetchExplorerLogs({ topic0: BORROWED_TOPIC, topic1: wordOf(id) });
+  const logs = (await Promise.all(pairs.map((pair) => fetchExplorerLogs(pair, { topic0: BORROWED_TOPIC, topic1: wordOf(id) })))).flat();
   let latest: { log: RawLog; block: bigint; index: number } | null = null;
   for (const log of logs) {
     const block = hexToBigInt(log.blockNumber);
@@ -433,10 +500,10 @@ export async function readOpened(id: bigint): Promise<OpenedRecord | null> {
 
 export type MarketView = { lent: bigint; openLoans: number };
 
-/** What the loan's Thursday has lent so far and how many of its loans are still open. */
-export async function readMarket(client: PublicClient, maturity: number): Promise<MarketView> {
+/** What the loan's Thursday has lent so far on the loan's own pair, and how many of that pair's loans there are still open. */
+export async function readMarket(client: PublicClient, maturity: number, pair: PairKey): Promise<MarketView> {
   const market = await client.readContract({
-    address: book.creditMarkets,
+    address: pairOf(pair).creditMarkets,
     abi: marketReads,
     functionName: "marketOf",
     args: [BigInt(maturity)],
@@ -580,10 +647,18 @@ export type RollInput = {
   principal: bigint;
 };
 
-/** The offers a roll would use, their quoted face, the weighted rate and the difference with what is owed. */
+/**
+ * The offers a roll would use, their quoted face, the weighted rate and the difference with what is owed. A loan can
+ * only roll inside its own pair, so an offer from the other pair, or one with no pair tag, is refused here rather than
+ * sent to a contract that would read its id as a different offer. The groups keep the scanned offer objects, so the
+ * tag scanPairOffers set is still on each one.
+ */
 export async function quoteRoll(client: PublicClient, { view, group, principal }: RollInput): Promise<RollQuote> {
+  if (group.offers.some((offer) => (offer as Partial<OpenOffer>).pair !== view.pair)) {
+    throw new Error(`veBTC #${view.id} can only roll into offers on its own pair`);
+  }
   const selection = selectOffers(principal, group.offers);
-  const faces = await quoteFaces(client, group.maturity, selection);
+  const faces = await quoteFaces(client, group.maturity, selection, view.pair);
   const face = faces.reduce((sum, value) => sum + value, 0n);
   return {
     selection,
@@ -657,60 +732,64 @@ export function buySteps(maxPay: bigint, allowance: bigint): StepSpec[] {
 
 /** One contract call, named by the address book entry it goes to. The write hook resolves the address. */
 export type LoanCall = {
-  target: "loanManager" | "musd";
+  target: "loanManager" | "legacyLoanManager" | "musd";
   address: Address;
   abi: Abi;
   functionName: string;
   args: readonly unknown[];
 };
 
-export const managerCall = (functionName: string, args: readonly unknown[]): LoanCall => ({
-  target: "loanManager",
-  address: book.loanManager,
-  abi: loanManagerAbi as Abi,
-  functionName,
-  args,
-});
+/** A call on one pair's LoanManager, with that pair's own ABI and the address book name the write hook resolves. */
+export const managerCall = (key: PairKey, functionName: string, args: readonly unknown[]): LoanCall => {
+  const pair = pairOf(key);
+  return {
+    target: key === "wave2" ? "loanManager" : "legacyLoanManager",
+    address: pair.loanManager,
+    abi: (key === "wave2" ? loanManagerAbi : legacyLoanManagerAbi) as Abi,
+    functionName,
+    args,
+  };
+};
 
-/** MUSD is approved for the exact amount the next step will pull, never more. */
-export const approveMusdCall = (amount: bigint): LoanCall => ({
+/** MUSD is approved for the exact amount the next step will pull, never more, to the LoanManager that will pull it. */
+export const approveMusdCall = (pair: PairKey, amount: bigint): LoanCall => ({
   target: "musd",
   address: book.musd,
   abi: erc20Abi as Abi,
   functionName: "approve",
-  args: [book.loanManager, amount],
+  args: [pairOf(pair).loanManager, amount],
 });
 
-export const repayCall = (id: bigint, amount: bigint): LoanCall => managerCall("repay", [id, amount]);
+export const repayCall = (pair: PairKey, id: bigint, amount: bigint): LoanCall => managerCall(pair, "repay", [id, amount]);
 
-export const rollCall = (id: bigint, newMaturity: number, selection: Selection, maxTopUp: bigint): LoanCall =>
-  managerCall("roll", [id, BigInt(newMaturity), selection.offerIds, selection.amounts, selection.maxAprBps, maxTopUp]);
+export const rollCall = (pair: PairKey, id: bigint, newMaturity: number, selection: Selection, maxTopUp: bigint): LoanCall =>
+  managerCall(pair, "roll", [id, BigInt(newMaturity), selection.offerIds, selection.amounts, selection.maxAprBps, maxTopUp]);
 
-export const withdrawCall = (id: bigint): LoanCall => managerCall("withdrawCollateral", [id]);
+export const withdrawCall = (pair: PairKey, id: bigint): LoanCall => managerCall(pair, "withdrawCollateral", [id]);
 
-export const claimCall = (): LoanCall => managerCall("claim", []);
+export const claimCall = (pair: PairKey): LoanCall => managerCall(pair, "claim", []);
 
-export const purchaseCall = (id: bigint, maxPay: bigint, deadline: bigint): LoanCall =>
-  managerCall("purchase", [id, maxPay, deadline]);
+export const purchaseCall = (pair: PairKey, id: bigint, maxPay: bigint, deadline: bigint): LoanCall =>
+  managerCall(pair, "purchase", [id, maxPay, deadline]);
 
-export const startAuctionCall = (id: bigint): LoanCall => managerCall("startAuction", [id]);
+export const startAuctionCall = (pair: PairKey, id: bigint): LoanCall => managerCall(pair, "startAuction", [id]);
 
-export const cancelAuctionCall = (id: bigint): LoanCall => managerCall("cancelAuction", [id]);
+export const cancelAuctionCall = (pair: PairKey, id: bigint): LoanCall => managerCall(pair, "cancelAuction", [id]);
 
-export const prepareSettleCall = (id: bigint): LoanCall => managerCall("prepareSettle", [id]);
+export const prepareSettleCall = (pair: PairKey, id: bigint): LoanCall => managerCall(pair, "prepareSettle", [id]);
 
-export const settleCall = (id: bigint): LoanCall => managerCall("settle", [id]);
+export const settleCall = (pair: PairKey, id: bigint): LoanCall => managerCall(pair, "settle", [id]);
 
-export const anyoneCallFor = (id: AnyoneActionId, tokenId: bigint): LoanCall => {
+export const anyoneCallFor = (pair: PairKey, id: AnyoneActionId, tokenId: bigint): LoanCall => {
   switch (id) {
     case "startAuction":
-      return startAuctionCall(tokenId);
+      return startAuctionCall(pair, tokenId);
     case "cancelAuction":
-      return cancelAuctionCall(tokenId);
+      return cancelAuctionCall(pair, tokenId);
     case "prepareSettle":
-      return prepareSettleCall(tokenId);
+      return prepareSettleCall(pair, tokenId);
     case "settle":
-      return settleCall(tokenId);
+      return settleCall(pair, tokenId);
   }
 };
 

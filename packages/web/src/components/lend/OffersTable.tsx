@@ -75,11 +75,14 @@ function CancelPopover({ offer, onClose, onConfirm }: PopoverProps) {
   );
 }
 
-const focusCancelButton = (id: bigint) =>
-  document.querySelector<HTMLButtonElement>(`[data-cancel="${String(id)}"] button`)?.focus();
+// Offer ids repeat across the two pairs, so a row is named by its pair and id together.
+const rowKey = (offer: MyOffer): string => `${offer.pair}:${offer.id}`;
+
+const focusCancelButton = (key: string) =>
+  document.querySelector<HTMLButtonElement>(`[data-cancel="${key}"] button`)?.focus();
 
 export function OffersTable({ state, offers, now, runningKey, busy, onCancel }: OffersTableProps) {
-  const [askingId, setAskingId] = useState<bigint | null>(null);
+  const [askingKey, setAskingKey] = useState<string | null>(null);
 
   if (state === "connect") return <p className="lend-empty">Connect a wallet to see your offers and units.</p>;
   if (state === "loading") {
@@ -112,9 +115,10 @@ export function OffersTable({ state, offers, now, runningKey, busy, onCancel }: 
       <tbody>
         {offers.map((offer) => {
           const status = STATUS[offerStatus(offer, now)];
-          const key = `cancel:${offer.id}`;
+          const row = rowKey(offer);
+          const key = `cancel:${row}`;
           return (
-            <tr key={String(offer.id)}>
+            <tr key={row}>
               <td data-label="Offer">#{String(offer.id)}</td>
               <td data-label="Due">{formatDate(offer.maturity)}</td>
               <td data-label="Rate">{formatApr(offer.aprBps / 100)}</td>
@@ -126,26 +130,26 @@ export function OffersTable({ state, offers, now, runningKey, busy, onCancel }: 
               <td data-label="" className="lend-action">
                 {offer.remaining > 0n && (
                   <>
-                    <span data-cancel={String(offer.id)}>
+                    <span data-cancel={row}>
                       <Button
                         variant="secondary"
                         className="lend-small"
                         disabled={busy && runningKey !== key}
                         loading={runningKey === key}
-                        onClick={() => setAskingId(offer.id)}
+                        onClick={() => setAskingKey(row)}
                       >
                         Cancel
                       </Button>
                     </span>
-                    {askingId === offer.id && (
+                    {askingKey === row && (
                       <CancelPopover
                         offer={offer}
                         onClose={(refocus) => {
-                          setAskingId(null);
-                          if (refocus) focusCancelButton(offer.id);
+                          setAskingKey(null);
+                          if (refocus) focusCancelButton(row);
                         }}
                         onConfirm={() => {
-                          setAskingId(null);
+                          setAskingKey(null);
                           onCancel(offer);
                         }}
                       />

@@ -62,11 +62,16 @@ export function useBorrowData() {
   });
 
   // Positions the wallet already put into Doji that carry no loan: they can borrow again with no approval or deposit.
+  // Only Wave 2 holds count, because a new loan opens on Wave 2; one held by the 20 October LoanManager is withdrawn
+  // from My loans first.
   const held = useQuery({
     queryKey: ["doji-held-positions", address, price.data?.toString()],
     queryFn: async (): Promise<Position[]> => {
-      const ids = await readWalletPositionIds(client as PublicClient, address as `0x${string}`);
-      const views = await readPositionViews(client as PublicClient, ids);
+      const refs = await readWalletPositionIds(client as PublicClient, address as `0x${string}`);
+      const views = await readPositionViews(
+        client as PublicClient,
+        refs.filter((ref) => ref.pair === "wave2"),
+      );
       return views
         .filter((view) => view.loan.state === STATE_NONE && view.lock !== null)
         .map((view) => {

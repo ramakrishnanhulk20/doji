@@ -81,8 +81,8 @@ export function BuyCard({ view, now, wallet, send, busy, onBought }: BuyCardProp
     const steps: FlowStep[] = buySteps(cap, wallet.allowance).map((step) => ({
       ...step,
       run: async () => {
-        if (step.id === "approve") return send(approveMusdCall(cap), `Approved ${approveText(cap)} MUSD for Doji.`);
-        const result = await send(purchaseCall(id, cap, buyDeadline(Math.floor(Date.now() / 1000))), `veBTC #${id} is yours.`);
+        if (step.id === "approve") return send(approveMusdCall(view.pair, cap), `Approved ${approveText(cap)} MUSD for Doji.`);
+        const result = await send(purchaseCall(view.pair, id, cap, buyDeadline(Math.floor(Date.now() / 1000))), `veBTC #${id} is yours.`);
         if (result.ok) onBought(result.hash);
         return result;
       },

@@ -140,7 +140,7 @@ export function PositionCard({
           busy={busy}
           acting={voteActions.acting}
           onVote={onVote}
-          onReset={() => void voteActions.resetVotes(view.id)}
+          onReset={() => void voteActions.resetVotes(view.id, view.pair)}
         />
         <RewardsPanel
           mode="row"
@@ -149,8 +149,8 @@ export function PositionCard({
           locked={locked}
           busy={busy}
           acting={voteActions.acting}
-          onClaimRebase={() => void voteActions.claimRebase(view.id)}
-          onClaimRewards={() => void voteActions.claimRewards(view.id)}
+          onClaimRebase={() => void voteActions.claimRebase(view.id, view.pair)}
+          onClaimRewards={() => void voteActions.claimRewards(view.id, view.pair)}
         />
       </dl>
 

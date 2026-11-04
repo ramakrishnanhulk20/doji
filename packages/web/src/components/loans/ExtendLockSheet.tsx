@@ -50,7 +50,7 @@ export function ExtendLockSheet({ view, now, send, busy, onClose }: ExtendLockSh
       ...step,
       run: () =>
         send(
-          buildExtendLockCall(id, target, Math.floor(Date.now() / 1000)),
+          buildExtendLockCall(view.pair, id, target, Math.floor(Date.now() / 1000)),
           `The lock on veBTC #${id} now runs to ${formatDate(target)}.`,
         ),
     }));

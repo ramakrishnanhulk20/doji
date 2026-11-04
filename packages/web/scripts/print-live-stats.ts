@@ -52,5 +52,5 @@ for (const card of board) {
 console.log(
   auctions.length === 0
     ? "auctions open: 0"
-    : `auctions open: ${auctions.length} (${auctions.map((a) => `loan ${a.tokenId} at ${formatMusd(a.price)} MUSD`).join(", ")})`,
+    : `auctions open: ${auctions.length} (${auctions.map((a) => `loan ${a.tokenId} [${a.pair}] at ${formatMusd(a.price)} MUSD`).join(", ")})`,
 );

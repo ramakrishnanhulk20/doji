@@ -51,24 +51,24 @@ for (const card of board) {
 }
 
 const wallet = await readMusdWallet(client, account);
-console.log(`wallet MUSD balance ${musd(wallet.balance)}, allowance to CreditMarkets ${musd(wallet.allowance)}`);
+console.log(`wallet MUSD balance ${musd(wallet.balance)}, allowance to the Wave 2 CreditMarkets ${musd(wallet.allowance)}`);
 
 const offers = await readMyOffers(client, account);
-console.log(`offers posted by this wallet: ${offers.length}`);
+console.log(`offers posted by this wallet on both pairs: ${offers.length}`);
 for (const offer of offers) {
   console.log(
-    `  #${offer.id} due ${formatDate(offer.maturity)} at ${formatApr(offer.aprBps / 100)}: posted ${musd(offer.posted)}, left ${musd(offer.remaining)}, ${offerStatus(offer, now)}${offer.cancelled ? " (cancel log found)" : ""}`,
+    `  [${offer.pair}] #${offer.id}${offer.parked ? " parked" : ""} due ${formatDate(offer.maturity)} at ${formatApr(offer.aprBps / 100)}: posted ${musd(offer.posted)}, left ${musd(offer.remaining)}, ${offerStatus(offer, now)}${offer.cancelled ? " (cancel log found)" : ""}`,
   );
 }
 
 const unitRows = await readCreditUnits(client, account, now, settings.maxTermSeconds);
-console.log(`credit-unit dates with something for this wallet: ${unitRows.length}`);
+console.log(`credit-unit rows (pair and date) with something for this wallet: ${unitRows.length}`);
 for (const row of unitRows) {
   const state = dateState(row.market, row.maturity, now);
   const perUnit = unitValue(row.market);
   const withdraw = withdrawalAmounts(row.market, row.claim, row.balance);
   console.log(
-    `  ${formatDate(row.maturity)} (${state}): holds ${musd(row.balance)} units, pending ${musd(row.pending)}, claim ${musd(row.claim.units)} units (paid ${musd(row.claim.musdPaid)} MUSD, ${fmtBtcAmount(row.claim.btcPaid)} BTC)`,
+    `  [${row.pair}] ${formatDate(row.maturity)} (${state}): holds ${musd(row.balance)} units, pending ${musd(row.pending)}, claim ${musd(row.claim.units)} units (paid ${musd(row.claim.musdPaid)} MUSD, ${fmtBtcAmount(row.claim.btcPaid)} BTC)`,
   );
   console.log(
     `    market: lent ${musd(row.market.faceTotal)}, collected ${musd(row.market.collectedMusd)} MUSD and ${fmtBtcAmount(row.market.collectedBtc)} BTC, open loans ${row.market.openLoans}, final ${row.market.isFinal}, paid out ${musd(row.paidOut.musd)} MUSD and ${fmtBtcAmount(row.paidOut.btc)} BTC`,
@@ -106,10 +106,17 @@ async function simulate(label: string, call: LendCall) {
 }
 
 await simulate(`approve(CreditMarkets, 20 MUSD) from ${account}`, approveMusdCall(parseUnits("20", 18)));
-const withPending = unitRows.find((row) => row.pending > 0n);
-if (withPending) {
-  await simulate(`claimUnits(${formatDate(withPending.maturity)}) with ${musd(withPending.pending)} pending`, claimUnitsCall(withPending.maturity));
-} else {
-  console.log("claimUnits: this wallet has no pending units on any date, so there is nothing to simulate");
+// One claim per pair, so a 20 October claim is shown going to the 20 October CreditMarkets with its own ABI.
+for (const pair of ["wave2", "legacy"] as const) {
+  const withPending = unitRows.find((row) => row.pair === pair && row.pending > 0n);
+  if (withPending) {
+    const call = claimUnitsCall(withPending.pair, withPending.maturity);
+    await simulate(
+      `[${withPending.pair}] claimUnits(${formatDate(withPending.maturity)}) on ${call.address} with ${musd(withPending.pending)} pending`,
+      call,
+    );
+  } else {
+    console.log(`claimUnits [${pair}]: this wallet has no pending units on that pair, so there is nothing to simulate`);
+  }
 }
-console.log(`CreditMarkets ${addressBook[31611].creditMarkets}`);
+console.log(`CreditMarkets: Wave 2 ${addressBook[31611].creditMarkets}, 20 October ${addressBook[31611].legacyCreditMarkets}`);

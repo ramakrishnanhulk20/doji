@@ -71,7 +71,7 @@ export function VoteSheet({ view, now, send, busy, onClose }: VoteSheetProps) {
   })();
 
   const run = async () => {
-    const call = buildVoteCall(id, chosen as `0x${string}`[], weights);
+    const call = buildVoteCall(view.pair, id, chosen as `0x${string}`[], weights);
     const steps: FlowStep[] = PLAN.map((step) => ({ ...step, run: () => send(call, `Voted with veBTC #${id}.`) }));
     if (await flow.start(steps)) onClose();
   };

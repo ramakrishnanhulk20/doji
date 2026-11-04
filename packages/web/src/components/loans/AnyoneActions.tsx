@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useLoanGate } from "../../hooks/useLoanGate";
+import type { PairKey } from "../../lib/addresses";
 import { anyoneCallFor, anyoneSuccessLine, type AnyoneAction } from "../../lib/loans";
 import { Button } from "../Button";
 import type { SendCall } from "./RepaySheet";
@@ -9,12 +10,14 @@ import type { SendCall } from "./RepaySheet";
 type AnyoneActionsProps = {
   actions: readonly AnyoneAction[];
   tokenId: bigint;
+  /** The pair whose LoanManager holds the loan; every step goes there. */
+  pair: PairKey;
   send: SendCall;
   busy: boolean;
 };
 
 /** The steps any wallet may run on a loan. The write hook simulates each one first and explains a refusal. */
-export function AnyoneActions({ actions, tokenId, send, busy }: AnyoneActionsProps) {
+export function AnyoneActions({ actions, tokenId, pair, send, busy }: AnyoneActionsProps) {
   const gate = useLoanGate();
   const [acting, setActing] = useState<string | null>(null);
 
@@ -23,7 +26,7 @@ export function AnyoneActions({ actions, tokenId, send, busy }: AnyoneActionsPro
   const run = async (action: AnyoneAction) => {
     setActing(action.id);
     try {
-      await send(anyoneCallFor(action.id, tokenId), anyoneSuccessLine(action.id, tokenId));
+      await send(anyoneCallFor(pair, action.id, tokenId), anyoneSuccessLine(action.id, tokenId));
     } finally {
       setActing(null);
     }

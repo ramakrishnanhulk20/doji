@@ -18,17 +18,19 @@ import {
 } from "viem";
 import { creditMarketsAbi } from "../abi/creditMarkets";
 import { erc20Abi } from "../abi/external";
-import { deployment } from "../generated/deployment";
-import { addressBook } from "./addresses";
+import { legacyCreditMarketsAbi } from "../abi/legacyCreditMarkets";
+import { addressBook, pairOf, pairs, wave2Pair, type Pair, type PairKey } from "./addresses";
 import { formatMusd } from "./stats";
 
 const book = addressBook[31611];
 const WEEK_SECONDS = 604_800;
-/** The newest credit-unit dates that are read for a wallet. */
+/** The newest credit-unit dates that are read for a wallet, per pair. */
 const MAX_UNIT_DATES = 32;
 /** How far back the node is asked for logs, so an offer posted a moment ago shows before the explorer has it. */
 const RPC_LOG_WINDOW = 10_000n;
 const MAX_UINT128 = (1n << 128n) - 1n;
+// Both CreditMarkets refuse a longest term above 4 weeks (MAX_TERM_CEILING), so no 20 October date can lie further out.
+const MAX_TERM_CEILING = 4 * WEEK_SECONDS;
 
 const settingsReads = parseAbi([
   "function minOffer() view returns (uint128)",
@@ -42,9 +44,18 @@ const quoteRead = parseAbi([
   "function quoteFill(uint128 principal, uint16 aprBps, uint64 maturity) view returns (uint256 face, uint256 makerUnits, uint256 treasuryUnits)",
 ]);
 
-const offerRead = parseAbi([
-  "function offerOf(uint256 offerId) view returns ((address maker, uint64 maturity, uint16 aprBps, uint128 remaining))",
-]);
+// Wave 2's offerOf adds a fifth field, parked; the 20 October contract returns four words and is read with four.
+const offerReads: Record<PairKey, Abi> = {
+  wave2: parseAbi([
+    "function offerOf(uint256 offerId) view returns ((address maker, uint64 maturity, uint16 aprBps, uint128 remaining, bool parked))",
+  ]),
+  legacy: parseAbi([
+    "function offerOf(uint256 offerId) view returns ((address maker, uint64 maturity, uint16 aprBps, uint128 remaining))",
+  ]),
+};
+
+/** Lowercased on both sides, so a checksummed address and the explorer's lowercase one compare equal. */
+const sameAddress = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
 const unitsReads = parseAbi([
   "function balanceOf(address account, uint256 id) view returns (uint256)",
@@ -201,9 +212,11 @@ const EXPLORER_API = "https://api.explorer.test.mezo.org/api";
 const EXPLORER_PAGE_LOGS = 1_000;
 const EXPLORER_MAX_CALLS = 5;
 
-async function explorerLogs(topic0: Hex, maker: Address): Promise<OfferLog[]> {
+// Both CreditMarkets emit the same offer events and number offers from 1, so every log is checked against the pair's
+// address on the way in: an offer id means nothing without the contract it came from.
+async function explorerLogs(pair: Pair, topic0: Hex, maker: Address): Promise<OfferLog[]> {
   const found: OfferLog[] = [];
-  let start = BigInt(deployment.block);
+  let start = pair.fromBlock;
 
   for (let call = 0; call < EXPLORER_MAX_CALLS; call++) {
     const url = new URL(EXPLORER_API);
@@ -211,7 +224,7 @@ async function explorerLogs(topic0: Hex, maker: Address): Promise<OfferLog[]> {
     url.searchParams.set("action", "getLogs");
     url.searchParams.set("fromBlock", start.toString());
     url.searchParams.set("toBlock", "latest");
-    url.searchParams.set("address", book.creditMarkets);
+    url.searchParams.set("address", pair.creditMarkets);
     url.searchParams.set("topic0", topic0);
     url.searchParams.set("topic2", pad(maker, { size: 32 }));
     url.searchParams.set("topic0_2_opr", "and");
@@ -222,6 +235,7 @@ async function explorerLogs(topic0: Hex, maker: Address): Promise<OfferLog[]> {
     const page = Array.isArray(body.result) ? (body.result as Record<string, unknown>[]) : [];
 
     for (const raw of page) {
+      if (typeof raw.address !== "string" || !sameAddress(raw.address, pair.creditMarkets)) continue;
       const topics = (Array.isArray(raw.topics) ? raw.topics : []).filter((topic): topic is Hex => typeof topic === "string");
       if (typeof raw.data !== "string") continue;
       const log = decodeOfferLog(topics, raw.data as Hex);
@@ -236,15 +250,15 @@ async function explorerLogs(topic0: Hex, maker: Address): Promise<OfferLog[]> {
   return found;
 }
 
-async function nodeLogs(client: PublicClient, maker: Address): Promise<OfferLog[]> {
+async function nodeLogs(client: PublicClient, pair: Pair, maker: Address): Promise<OfferLog[]> {
   const latest = await client.getBlockNumber();
-  const floor = BigInt(deployment.block);
+  const floor = pair.fromBlock;
   const from = latest > RPC_LOG_WINDOW && latest - RPC_LOG_WINDOW + 1n > floor ? latest - RPC_LOG_WINDOW + 1n : floor;
   const logs = await client.request({
     method: "eth_getLogs",
     params: [
       {
-        address: book.creditMarkets,
+        address: pair.creditMarkets,
         fromBlock: toHex(from),
         toBlock: "latest",
         topics: [[OFFER_POSTED_TOPIC, OFFER_CANCELLED_TOPIC], null, pad(maker, { size: 32 })],
@@ -252,13 +266,17 @@ async function nodeLogs(client: PublicClient, maker: Address): Promise<OfferLog[
     ],
   });
   return logs.flatMap((log) => {
+    if (!sameAddress(log.address, pair.creditMarkets)) return [];
     const decoded = decodeOfferLog(log.topics as Hex[], log.data);
     return decoded ? [decoded] : [];
   });
 }
 
 export type MyOffer = {
+  /** Unique only inside its pair: both CreditMarkets number their offers from 1. */
   id: bigint;
+  /** The CreditMarkets that holds the offer, and the one a cancel must go to. */
+  pair: PairKey;
   maturity: number;
   aprBps: number;
   /** MUSD the offer was posted with. */
@@ -267,19 +285,21 @@ export type MyOffer = {
   remaining: bigint;
   /** An OfferCancelled log exists for it. */
   cancelled: boolean;
+  /** Its unfilled MUSD waits in Mezo's sMUSD vault. Always false on the 20 October pair, which has no vault. */
+  parked: boolean;
 };
 
 /**
- * The offers a wallet has posted. The explorer lists every OfferPosted and OfferCancelled log for the wallet from the
- * deployment block, the node adds the newest 10,000 blocks so a fresh post shows before the explorer has indexed it,
- * and offerOf gives the live amount left. If the explorer is down the read fails, so a partial list never passes for
- * a full one.
+ * One pair's offers from this wallet. The explorer lists every OfferPosted and OfferCancelled log for the wallet from
+ * the pair's deployment block, the node adds the newest 10,000 blocks so a fresh post shows before the explorer has
+ * indexed it, and offerOf gives the live amount left. If the explorer is down the read fails, so a partial list never
+ * passes for a full one.
  */
-export async function readMyOffers(client: PublicClient, maker: Address): Promise<MyOffer[]> {
+async function readPairOffers(client: PublicClient, pair: Pair, maker: Address): Promise<MyOffer[]> {
   const [posted, cancelled, node] = await Promise.allSettled([
-    explorerLogs(OFFER_POSTED_TOPIC, maker),
-    explorerLogs(OFFER_CANCELLED_TOPIC, maker),
-    nodeLogs(client, maker),
+    explorerLogs(pair, OFFER_POSTED_TOPIC, maker),
+    explorerLogs(pair, OFFER_CANCELLED_TOPIC, maker),
+    nodeLogs(client, pair, maker),
   ]);
   if (posted.status === "rejected") throw posted.reason;
   if (cancelled.status === "rejected") throw cancelled.reason;
@@ -297,26 +317,36 @@ export async function readMyOffers(client: PublicClient, maker: Address): Promis
   const live = await client.multicall({
     allowFailure: false,
     batchSize: 16_384,
-    contracts: ids.map((id) => ({ address: book.creditMarkets, abi: offerRead, functionName: "offerOf" as const, args: [id] as const })),
+    contracts: ids.map((id) => ({ address: pair.creditMarkets, abi: offerReads[pair.key], functionName: "offerOf", args: [id] })),
   });
 
   // The logs only name candidates. An offer is shown as this wallet's only when the contract says this wallet made it;
   // cancelOffer keeps the maker, so cancelled offers still pass.
   return ids.flatMap((id, index) => {
-    const onChain = live[index] as { maker: Address; remaining: bigint };
+    const onChain = live[index] as { maker: Address; remaining: bigint; parked?: boolean };
     if (!isAddressEqual(onChain.maker, maker)) return [];
     const fixed = offers.get(id) as { maturity: number; aprBps: number; posted: bigint };
     return [
       {
         id,
+        pair: pair.key,
         maturity: fixed.maturity,
         aprBps: fixed.aprBps,
         posted: fixed.posted,
         remaining: onChain.remaining,
         cancelled: cancelledIds.has(id),
+        parked: onChain.parked === true,
       },
     ];
   });
+}
+
+/**
+ * The offers a wallet has posted on both pairs, Wave 2 first and newest first inside each, every one tagged with the
+ * pair it lives on. Either pair's read failing fails the whole read, so a partial list never passes for a full one.
+ */
+export async function readMyOffers(client: PublicClient, maker: Address): Promise<MyOffer[]> {
+  return (await Promise.all(pairs.map((pair) => readPairOffers(client, pair, maker)))).flat();
 }
 
 export type OfferStatus = "open" | "partly" | "taken" | "cancelled" | "expired";
@@ -345,6 +375,8 @@ export type MarketView = {
 export type ClaimView = { units: bigint; musdPaid: bigint; btcPaid: bigint };
 
 export type DateUnits = {
+  /** The CreditMarkets that issued these units. The same date can have units on both pairs, as two rows. */
+  pair: PairKey;
   /** Unix seconds of Thursday 00:00 UTC. */
   maturity: number;
   /** Credit units the wallet holds (the ERC-1155 balance). */
@@ -357,17 +389,18 @@ export type DateUnits = {
   paidOut: { musd: bigint; btc: bigint };
 };
 
-let deploymentTime: Promise<number> | null = null;
+const deploymentTimes = new Map<PairKey, Promise<number>>();
 
-/** The timestamp of the deployment block, read once. No date before the next Thursday after it can have units. */
-function readDeploymentTime(client: PublicClient): Promise<number> {
-  if (deploymentTime === null) {
-    deploymentTime = client.getBlock({ blockNumber: BigInt(deployment.block) }).then((block) => Number(block.timestamp));
-    deploymentTime.catch(() => {
-      deploymentTime = null;
-    });
-  }
-  return deploymentTime;
+/** The timestamp of a pair's deployment block, read once. No date before the next Thursday after it can have units. */
+function readDeploymentTime(client: PublicClient, pair: Pair): Promise<number> {
+  const known = deploymentTimes.get(pair.key);
+  if (known !== undefined) return known;
+  const read = client.getBlock({ blockNumber: pair.fromBlock }).then((block) => Number(block.timestamp));
+  deploymentTimes.set(pair.key, read);
+  read.catch(() => {
+    deploymentTimes.delete(pair.key);
+  });
+  return read;
 }
 
 /** Every Thursday from the first one after the deployment up to now plus the longest term, the newest 32. */
@@ -379,25 +412,34 @@ export function unitDates(deployedAt: number, now: number, maxTermSeconds: numbe
   return dates.slice(-MAX_UNIT_DATES);
 }
 
-/** The dates where the wallet has units, units waiting to be claimed, or an early-withdrawal claim. Newest date first. */
+/**
+ * The dates where the wallet has units, units waiting to be claimed, or an early-withdrawal claim, on both pairs: one
+ * row per pair and date, newest date first and Wave 2 first on the same date. `maxTermSeconds` is Wave 2's; the 20
+ * October dates run to the 4-week ceiling, which its own setting can never pass.
+ */
 export async function readCreditUnits(client: PublicClient, owner: Address, now: number, maxTermSeconds: number): Promise<DateUnits[]> {
-  const dates = unitDates(await readDeploymentTime(client), now, maxTermSeconds);
-  if (dates.length === 0) return [];
+  const deployedAt = await Promise.all(pairs.map((pair) => readDeploymentTime(client, pair)));
+  const slots = pairs.flatMap((pair, index) =>
+    unitDates(deployedAt[index] as number, now, pair.key === wave2Pair.key ? maxTermSeconds : MAX_TERM_CEILING).map(
+      (maturity) => ({ pair, maturity }),
+    ),
+  );
+  if (slots.length === 0) return [];
 
   const reads = await client.multicall({
     allowFailure: false,
     batchSize: 16_384,
-    contracts: dates.flatMap((date) => [
-      { address: book.creditMarkets, abi: unitsReads, functionName: "balanceOf" as const, args: [owner, BigInt(date)] as const },
-      { address: book.creditMarkets, abi: unitsReads, functionName: "pendingUnits" as const, args: [owner, BigInt(date)] as const },
-      { address: book.creditMarkets, abi: unitsReads, functionName: "claimOf" as const, args: [owner, BigInt(date)] as const },
-      { address: book.creditMarkets, abi: unitsReads, functionName: "marketOf" as const, args: [BigInt(date)] as const },
-      { address: book.creditMarkets, abi: unitsReads, functionName: "paidOutOf" as const, args: [BigInt(date)] as const },
+    contracts: slots.flatMap(({ pair, maturity }) => [
+      { address: pair.creditMarkets, abi: unitsReads, functionName: "balanceOf" as const, args: [owner, BigInt(maturity)] as const },
+      { address: pair.creditMarkets, abi: unitsReads, functionName: "pendingUnits" as const, args: [owner, BigInt(maturity)] as const },
+      { address: pair.creditMarkets, abi: unitsReads, functionName: "claimOf" as const, args: [owner, BigInt(maturity)] as const },
+      { address: pair.creditMarkets, abi: unitsReads, functionName: "marketOf" as const, args: [BigInt(maturity)] as const },
+      { address: pair.creditMarkets, abi: unitsReads, functionName: "paidOutOf" as const, args: [BigInt(maturity)] as const },
     ]),
   });
 
   const rows: DateUnits[] = [];
-  dates.forEach((maturity, index) => {
+  slots.forEach(({ pair, maturity }, index) => {
     const at = index * 5;
     const balance = reads[at] as bigint;
     const pending = reads[at + 1] as bigint;
@@ -406,6 +448,7 @@ export async function readCreditUnits(client: PublicClient, owner: Address, now:
     const paid = reads[at + 4] as readonly [bigint, bigint];
     if (balance === 0n && pending === 0n && claim.units === 0n) return;
     rows.push({
+      pair: pair.key,
       maturity,
       balance,
       pending,
@@ -414,7 +457,8 @@ export async function readCreditUnits(client: PublicClient, owner: Address, now:
       paidOut: { musd: paid[0], btc: paid[1] },
     });
   });
-  return rows.sort((a, b) => b.maturity - a.maturity);
+  const order = (key: PairKey) => pairs.findIndex((pair) => pair.key === key);
+  return rows.sort((a, b) => b.maturity - a.maturity || order(a.pair) - order(b.pair));
 }
 
 export type DateState = "open" | "due" | "closeable" | "final";
@@ -490,43 +534,50 @@ export function fmtBtcAmount(wei: bigint): string {
 }
 
 export type LendCall = {
-  target: "creditMarkets" | "musd";
+  target: "creditMarkets" | "legacyCreditMarkets" | "musd";
   address: Address;
   abi: Abi;
   functionName: string;
   args: readonly unknown[];
 };
 
-const marketsCall = (functionName: string, args: readonly unknown[]): LendCall => ({
-  target: "creditMarkets",
-  address: book.creditMarkets,
-  abi: creditMarketsAbi as Abi,
-  functionName,
-  args,
-});
+/** A call on one pair's CreditMarkets, with that pair's own ABI and the address book name the write hook resolves. */
+const marketsCall = (key: PairKey, functionName: string, args: readonly unknown[]): LendCall => {
+  const pair = pairOf(key);
+  return {
+    target: key === "wave2" ? "creditMarkets" : "legacyCreditMarkets",
+    address: pair.creditMarkets,
+    abi: (key === "wave2" ? creditMarketsAbi : legacyCreditMarketsAbi) as Abi,
+    functionName,
+    args,
+  };
+};
 
-/** MUSD is approved for the exact amount of the offer, never more. */
+/** MUSD is approved for the exact amount of the offer, never more, and only to Wave 2, where every new offer goes. */
 export const approveMusdCall = (amount: bigint): LendCall => ({
   target: "musd",
   address: book.musd,
   abi: erc20Abi as Abi,
   functionName: "approve",
-  args: [book.creditMarkets, amount],
+  args: [wave2Pair.creditMarkets, amount],
 });
 
+/** A new offer always goes to Wave 2. */
 export const postOfferCall = (maturity: number, aprBps: number, amount: bigint): LendCall =>
-  marketsCall("postOffer", [BigInt(maturity), aprBps, amount]);
+  marketsCall("wave2", "postOffer", [BigInt(maturity), aprBps, amount]);
 
-export const cancelOfferCall = (offerId: bigint): LendCall => marketsCall("cancelOffer", [offerId]);
+export const cancelOfferCall = (offer: Pick<MyOffer, "id" | "pair">): LendCall =>
+  marketsCall(offer.pair, "cancelOffer", [offer.id]);
 
-export const claimUnitsCall = (maturity: number): LendCall => marketsCall("claimUnits", [BigInt(maturity)]);
+export const claimUnitsCall = (pair: PairKey, maturity: number): LendCall => marketsCall(pair, "claimUnits", [BigInt(maturity)]);
 
-export const sendUnitsCall = (from: Address, to: Address, maturity: number, units: bigint): LendCall =>
-  marketsCall("safeTransferFrom", [from, to, BigInt(maturity), units, "0x"]);
+export const sendUnitsCall = (pair: PairKey, from: Address, to: Address, maturity: number, units: bigint): LendCall =>
+  marketsCall(pair, "safeTransferFrom", [from, to, BigInt(maturity), units, "0x"]);
 
-export const withdrawCollectedCall = (maturity: number, units: bigint): LendCall =>
-  marketsCall("withdrawCollected", [BigInt(maturity), units]);
+export const withdrawCollectedCall = (pair: PairKey, maturity: number, units: bigint): LendCall =>
+  marketsCall(pair, "withdrawCollected", [BigInt(maturity), units]);
 
-export const finalizeCall = (maturity: number): LendCall => marketsCall("finalize", [BigInt(maturity)]);
+export const finalizeCall = (pair: PairKey, maturity: number): LendCall => marketsCall(pair, "finalize", [BigInt(maturity)]);
 
-export const redeemCall = (maturity: number, units: bigint): LendCall => marketsCall("redeem", [BigInt(maturity), units]);
+export const redeemCall = (pair: PairKey, maturity: number, units: bigint): LendCall =>
+  marketsCall(pair, "redeem", [BigInt(maturity), units]);

@@ -1,5 +1,5 @@
 import { createPublicClient, formatUnits, http, isAddress, type Address } from "viem";
-import { addressBook } from "../src/lib/addresses";
+import { addressBook, pairs } from "../src/lib/addresses";
 import { groupOffersByDate } from "../src/lib/borrow";
 import { readBorrowSettings } from "../src/lib/borrow-reads";
 import { mezoTestnetChain } from "../src/lib/chains";
@@ -19,6 +19,7 @@ import {
   readClaimables,
   readMarket,
   readMusdWallet,
+  readLoanPair,
   readOpened,
   readPositionViews,
   readWalletPositionIds,
@@ -34,7 +35,7 @@ import {
   DEPOSITED_TOPIC,
   type PositionView,
 } from "../src/lib/loans";
-import { formatApr, formatDate, scanOpenOffers } from "../src/lib/stats";
+import { formatApr, formatDate, scanPairOffers } from "../src/lib/stats";
 
 // Read-only: every call below is a view, an eth_call or an explorer lookup. No key is involved and nothing is sent.
 const owner = process.env.CHECK_ADDRESS;
@@ -55,7 +56,7 @@ function line(view: PositionView): string {
   const used = lineUsedBps(view);
   const floor = view.auction ? view.auction.startTime + view.auction.duration : null;
   return [
-    `veBTC #${view.id}`,
+    `veBTC #${view.id} [${view.pair}]`,
     `state ${standingOf(view)} (loan state ${view.loan.state})`,
     view.loan.state === 0 ? "owes nothing" : `owed ${musdText(view.owed)} MUSD, due ${formatDate(view.loan.maturity)}`,
     `collateral ${view.lock ? btcText(view.lock.amount) : "?"} BTC worth ${view.value === null ? "unavailable" : `${musdText(view.value)} MUSD`}`,
@@ -73,27 +74,33 @@ function line(view: PositionView): string {
 }
 
 console.log(`\n== My loans for ${wallet}`);
-const ids = await readWalletPositionIds(client, wallet);
-console.log(`positions in Doji (live check on positionOf): ${ids.map((id) => `#${id}`).join(", ") || "none"}`);
-const views = await readPositionViews(client, ids);
+const refs = await readWalletPositionIds(client, wallet);
+console.log(`positions in Doji (live check on each pair's positionOf): ${refs.map((ref) => `#${ref.id} [${ref.pair}]`).join(", ") || "none"}`);
+const views = await readPositionViews(client, refs);
 for (const view of views) console.log(line(view));
 
-const claimables = await readClaimables(client, wallet);
-console.log(`claimables: ${musdText(claimables.musd)} MUSD and ${btcText(claimables.btc)} BTC${claimables.musd > 0n || claimables.btc > 0n ? " (the Claim strip shows)" : " (no strip)"}`);
+for (const claimables of await readClaimables(client, wallet)) {
+  console.log(
+    `claimables [${claimables.pair}]: ${musdText(claimables.musd)} MUSD and ${btcText(claimables.btc)} BTC${claimables.musd > 0n || claimables.btc > 0n ? " (a Claim strip shows)" : " (no strip)"}`,
+  );
+}
 
-const wantedId = 389n;
-const loan = views.find((view) => view.id === wantedId);
-if (!loan) {
-  console.log(`\nveBTC #${wantedId} is not held by this wallet, so the repay and roll checks are skipped`);
-} else {
-  const wallet20 = await readMusdWallet(client, wallet);
-  console.log(`\n== Repay veBTC #${loan.id}`);
-  console.log(`wallet MUSD ${musdText(wallet20.balance)}, allowance to LoanManager ${formatUnits(wallet20.allowance, 18)}`);
+// The first open loan on each pair: a repay and a roll must go to the loan's own pair, and a roll may only use that
+// pair's offers.
+for (const pair of pairs) {
+  const loan = views.find((view) => view.pair === pair.key && view.loan.state === 1);
+  if (!loan) {
+    console.log(`\nno active loan on the ${pair.key} pair for this wallet, so its repay and roll checks are skipped`);
+    continue;
+  }
+  const wallet20 = await readMusdWallet(client, wallet, loan.pair);
+  console.log(`\n== Repay veBTC #${loan.id} [${loan.pair}]`);
+  console.log(`wallet MUSD ${musdText(wallet20.balance)}, allowance to the ${loan.pair} LoanManager ${formatUnits(wallet20.allowance, 18)}`);
   console.log(`owed in full (exact) ${formatUnits(loan.owed, 18)} MUSD`);
   console.log(`steps: ${repaySteps(loan.owed, wallet20.allowance).map((step, index) => `${index + 1}. ${step.label}`).join("  ")}`);
   console.log(`steps with a zero allowance: ${repaySteps(loan.owed, 0n).map((step, index) => `${index + 1}. ${step.label}`).join("  ")}`);
   try {
-    const call = approveMusdCall(loan.owed);
+    const call = approveMusdCall(loan.pair, loan.owed);
     await client.simulateContract({
       account: wallet,
       address: addressBook[31611][call.target],
@@ -101,13 +108,13 @@ if (!loan) {
       functionName: call.functionName,
       args: call.args,
     } as never);
-    console.log(`approve(LoanManager, ${formatUnits(loan.owed, 18)}) on MUSD ${book.musd}: simulation ok`);
+    console.log(`approve(${String(call.args[0])}, ${formatUnits(loan.owed, 18)}) on MUSD ${book.musd}: simulation ok`);
   } catch (error) {
     console.log(`approve(LoanManager, owed): simulation failed, ${(error as Error).message.split("\n")[0]}`);
   }
 
-  console.log(`\n== Roll veBTC #${loan.id}`);
-  const [settings, openOffers] = await Promise.all([readBorrowSettings(client), scanOpenOffers()]);
+  console.log(`\n== Roll veBTC #${loan.id} [${loan.pair}]`);
+  const [settings, openOffers] = await Promise.all([readBorrowSettings(client, loan.pair), scanPairOffers(loan.pair)]);
   const groups = groupOffersByDate(openOffers);
   const dates = rollDates(loan, settings.maxTermSeconds, now);
   console.log(
@@ -137,7 +144,7 @@ if (!loan) {
       `  button check: ${rollProblem({ view: loan, settings, group: target, principal, quote, musdBalance: wallet20.balance }) ?? "all checks pass"}`,
     );
     try {
-      const call = rollCall(loan.id, target.maturity, quote.selection, quote.topUp);
+      const call = rollCall(loan.pair, loan.id, target.maturity, quote.selection, quote.topUp);
       await client.simulateContract({
         account: wallet,
         address: addressBook[31611][call.target],
@@ -153,13 +160,15 @@ if (!loan) {
 }
 
 console.log("\n== Public loan pages");
-for (const id of [387n, 388n, 389n]) {
-  const [view] = await readPositionViews(client, [id]);
+for (const id of [387n, 388n, 389n, 401n, 411n]) {
+  const pair = await readLoanPair(client, id);
+  const [view] = await readPositionViews(client, [{ id, pair: pair?.key ?? "wave2" }]);
   if (!view) continue;
   const opened = await readOpened(id).catch(() => "unavailable" as const);
   const hadLoan = opened !== null && opened !== "unavailable";
   console.log(`/loans/${id}`);
   console.log(`  title: Loan on veBTC #${id}`);
+  console.log(`  held by: ${pair === null ? "neither LoanManager (the not-in-Doji path)" : `the ${pair.key} LoanManager ${pair.loanManager}`}`);
   console.log(`  subtitle: ${describeLoan(view, now, hadLoan)}`);
   console.log(`  borrower: ${view.borrower ? shortAddress(view.borrower) : "none"}`);
   console.log(
@@ -170,7 +179,7 @@ for (const id of [387n, 388n, 389n]) {
     console.log(
       `  terms: limit ${view.loan.maxLtvBps / 100}%, auction line ${view.loan.liqLtvBps / 100}%, floor ${view.loan.auctionFloorBps / 100}%, auction ${+(view.loan.auctionDuration / 3600).toFixed(2)}h, penalty ${view.loan.penaltyBps / 100}%`,
     );
-    const market = await readMarket(client, view.loan.maturity);
+    const market = await readMarket(client, view.loan.maturity, view.pair);
     console.log(`  market: ${formatDate(view.loan.maturity)} market: ${musdText(market.lent)} MUSD lent, ${market.openLoans} open loans`);
   }
   if (view.auction && view.auctionPrice !== null) {

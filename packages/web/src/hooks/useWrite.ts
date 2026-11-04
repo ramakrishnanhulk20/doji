@@ -13,7 +13,16 @@ import { getPending, setPending, usePendingConfirmation } from "./pending";
 
 const EXPLORER_TX = "https://explorer.test.mezo.org/tx/";
 
-export type WriteTarget = "loanManager" | "creditMarkets" | "btc" | "veBTC" | "musd";
+export type WriteTarget =
+  | "loanManager"
+  | "creditMarkets"
+  | "payDown"
+  | "unitMarket"
+  | "legacyLoanManager"
+  | "legacyCreditMarkets"
+  | "btc"
+  | "veBTC"
+  | "musd";
 
 export type SuccessLine = string | ((receipt: TransactionReceipt) => string);
 
@@ -176,7 +185,7 @@ export function useWrite() {
         if (!address || !walletClient) return fail(new AppError("noWallet"), { phase: "simulate" });
         if (chainId !== APP_CHAIN_ID || !publicClient) return fail(new AppError("wrongChain"), { phase: "simulate" });
 
-        const to: Address = addressBook[APP_CHAIN_ID][request.target as "loanManager"];
+        const to: Address = addressBook[APP_CHAIN_ID][request.target];
 
         const call = {
           account: address,

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PublicClient } from "viem";
 import { usePublicClient } from "wagmi";
 import { showToast } from "../components/app/toast-store";
+import type { PairKey } from "../lib/addresses";
 import {
   buildClaimRebaseCall,
   buildClaimRewardsArgs,
@@ -70,16 +71,19 @@ export function useVotes(tokenId: bigint, enabled = true) {
   });
 }
 
-/** The gauges and token lists a pool rewards claim would send, so the screen knows whether it has anything to claim. */
-export function useClaimPlan(tokenId: bigint, enabled: boolean) {
+/**
+ * The gauges and token lists a pool rewards claim would send on the position's own pair, so the screen knows whether
+ * it has anything to claim. The two pairs accept different tokens, so the plan is built for that pair's rule.
+ */
+export function useClaimPlan(tokenId: bigint, pair: PairKey, enabled: boolean) {
   const client = useClient();
   const addresses = useVoterAddresses();
   const votes = useVotes(tokenId, enabled);
   const voter = addresses.data?.poolsVoter;
   const pools = votes.data?.pools.map((entry) => entry.pool);
   return useQuery({
-    queryKey: ["claim-plan", voter, tokenId.toString(), pools?.join(",")],
-    queryFn: () => buildClaimRewardsArgs(client as PublicClient, voter as `0x${string}`, pools ?? []),
+    queryKey: ["claim-plan", pair, voter, tokenId.toString(), pools?.join(",")],
+    queryFn: () => buildClaimRewardsArgs(client as PublicClient, voter as `0x${string}`, pools ?? [], pair),
     enabled: enabled && client !== undefined && voter !== undefined && pools !== undefined,
     refetchInterval: POLL_MS,
     retry: false,
@@ -126,31 +130,32 @@ export function useVoteActions(send: Send) {
     [client, queryClient],
   );
 
+  // Each action goes to the LoanManager of the pair that holds the position.
   const resetVotes = useCallback(
-    (id: bigint) =>
+    (id: bigint, pair: PairKey) =>
       run(`reset:${id}`, async () => {
         const { poolsVoter, maxVotes } = await addresses();
         const state = await readVotes(client as PublicClient, poolsVoter, maxVotes, id);
         const refusal = voterRefusal("reset", state.lastVoted, nowSeconds());
         if (refusal) return stop(refusal);
-        await send(buildResetCall(id), `The votes on veBTC #${id} are cleared.`);
+        await send(buildResetCall(pair, id), `The votes on veBTC #${id} are cleared.`);
       }),
     [addresses, client, run, send, stop],
   );
 
   const claimRebase = useCallback(
-    (id: bigint) =>
+    (id: bigint, pair: PairKey) =>
       run(`rebase:${id}`, async () => {
         const { feeDistributor } = await addresses();
         const refusal = rebaseRefusal(await readRewardsRound(client as PublicClient, feeDistributor), nowSeconds());
         if (refusal) return stop(refusal);
-        await send(buildClaimRebaseCall(id), `The rebase for veBTC #${id} is claimed.`);
+        await send(buildClaimRebaseCall(pair, id), `The rebase for veBTC #${id} is claimed.`);
       }),
     [addresses, client, run, send, stop],
   );
 
   const claimRewards = useCallback(
-    (id: bigint) =>
+    (id: bigint, pair: PairKey) =>
       run(`rewards:${id}`, async () => {
         const { poolsVoter, maxVotes } = await addresses();
         const state = await readVotes(client as PublicClient, poolsVoter, maxVotes, id);
@@ -158,6 +163,7 @@ export function useVoteActions(send: Send) {
           client as PublicClient,
           poolsVoter,
           state.pools.map((entry) => entry.pool),
+          pair,
         );
         if (plan.gauges.length === 0) {
           return stop(
@@ -166,7 +172,7 @@ export function useVoteActions(send: Send) {
               : "Mezo's voter lists no reward token for these pools yet, so there is nothing Doji can claim.",
           );
         }
-        await send(buildClaimRewardsCall(id, plan), (receipt) => forwardedLine(parseForwarded(receipt, plan.tokens)));
+        await send(buildClaimRewardsCall(pair, id, plan), (receipt) => forwardedLine(parseForwarded(receipt, plan.tokens, pair)));
       }),
     [addresses, client, run, send, stop],
   );

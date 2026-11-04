@@ -73,7 +73,7 @@ export function LoanPage({ id }: { id: string }) {
                 {loan.loan.state === STATE_AUCTION && (
                   <BuyCard view={loan} now={now} wallet={musd.data} send={send} busy={busy} onBought={setBoughtHash} />
                 )}
-                <AnyoneActions actions={anyoneActions(loan, now)} tokenId={tokenId} send={send} busy={busy} />
+                <AnyoneActions actions={anyoneActions(loan, now)} tokenId={tokenId} pair={loan.pair} send={send} busy={busy} />
               </>
             )}
 

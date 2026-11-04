@@ -36,9 +36,10 @@ export function MyLoans() {
   const [acting, setActing] = useState<string | null>(null);
 
   const views = data.views.data;
-  const claimables = data.claimables.data;
-  const hasClaim = claimables !== undefined && (claimables.musd > 0n || claimables.btc > 0n);
+  // Each LoanManager keeps its own claimables and pays them out with its own claim, so each pair gets its own strip.
+  const waiting = (data.claimables.data ?? []).filter((claimables) => claimables.musd > 0n || claimables.btc > 0n);
   const sheetView = sheet && views ? views.find((view) => view.id === sheet.id) : undefined;
+  const sheetPair = sheetView ? data.forPair(sheetView.pair) : undefined;
 
   const act = async (key: string, run: () => Promise<unknown>) => {
     setActing(key);
@@ -80,18 +81,22 @@ export function MyLoans() {
               </div>
             )}
 
-            {hasClaim && claimables && (
+            {waiting.map((claimables) => (
               <ClaimStrip
+                key={claimables.pair}
                 claimables={claimables}
                 disabled={gate.wrongChain || busy}
-                loading={acting === "claim"}
+                loading={acting === `claim:${claimables.pair}`}
                 onClaim={() =>
-                  void act("claim", () =>
-                    send(claimCall(), `Collected ${musdText(claimables.musd)} MUSD and ${btcText(claimables.btc)} BTC.`),
+                  void act(`claim:${claimables.pair}`, () =>
+                    send(
+                      claimCall(claimables.pair),
+                      `Collected ${musdText(claimables.musd)} MUSD and ${btcText(claimables.btc)} BTC.`,
+                    ),
                   )
                 }
               />
-            )}
+            ))}
 
             {data.ids.isError || data.views.isError ? (
               <p className="field-note field-note-problem">
@@ -127,7 +132,7 @@ export function MyLoans() {
                     onRepay={(fullOnly) => setSheet({ kind: "repay", id: view.id, fullOnly })}
                     onRoll={() => setSheet({ kind: "roll", id: view.id })}
                     onWithdraw={() =>
-                      void act(`withdraw:${view.id}`, () => send(withdrawCall(view.id), `veBTC #${view.id} is back in your wallet.`))
+                      void act(`withdraw:${view.id}`, () => send(withdrawCall(view.pair, view.id), `veBTC #${view.id} is back in your wallet.`))
                     }
                   />
                 ))}
@@ -141,7 +146,7 @@ export function MyLoans() {
         <RepaySheet
           key={`repay-${sheet.id}`}
           view={sheetView}
-          wallet={data.musd.data}
+          wallet={sheetPair?.wallet}
           fullOnly={sheet.fullOnly}
           send={send}
           busy={busy}
@@ -153,9 +158,9 @@ export function MyLoans() {
           key={`roll-${sheet.id}`}
           view={sheetView}
           client={data.client}
-          settings={data.settings.data}
-          offers={data.offers.data}
-          wallet={data.musd.data}
+          settings={sheetPair?.settings}
+          offers={sheetPair?.offers}
+          wallet={sheetPair?.wallet}
           send={send}
           busy={busy}
           onClose={() => setSheet(null)}

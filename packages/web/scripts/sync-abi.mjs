@@ -9,6 +9,8 @@ const targetDir = resolve(here, "../src/abi");
 const contracts = [
   { name: "LoanManager", variable: "loanManagerAbi", file: "loanManager.ts" },
   { name: "CreditMarkets", variable: "creditMarketsAbi", file: "creditMarkets.ts" },
+  { name: "PayDown", variable: "payDownAbi", file: "payDown.ts" },
+  { name: "UnitMarket", variable: "unitMarketAbi", file: "unitMarket.ts" },
 ];
 
 const keep = new Set(["function", "event", "error"]);

@@ -895,6 +895,11 @@ export const loanManagerAbi = [
             "name": "borrower",
             "type": "address",
             "internalType": "address"
+          },
+          {
+            "name": "rewardOperator",
+            "type": "address",
+            "internalType": "address"
           }
         ]
       }
@@ -1147,6 +1152,24 @@ export const loanManagerAbi = [
         "name": "newMinLoan",
         "type": "uint128",
         "internalType": "uint128"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setRewardOperator",
+    "inputs": [
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "operator",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -1743,6 +1766,25 @@ export const loanManagerAbi = [
   },
   {
     "type": "event",
+    "name": "RewardOperatorSet",
+    "inputs": [
+      {
+        "name": "tokenId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "operator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "RewardsForwarded",
     "inputs": [
       {
@@ -2104,6 +2146,17 @@ export const loanManagerAbi = [
         "name": "maturity",
         "type": "uint64",
         "internalType": "uint64"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidOperator",
+    "inputs": [
+      {
+        "name": "operator",
+        "type": "address",
+        "internalType": "address"
       }
     ]
   },
@@ -2574,8 +2627,13 @@ export const loanManagerAbi = [
   },
   {
     "type": "error",
-    "name": "TokenNotWhitelisted",
+    "name": "TokenNotReward",
     "inputs": [
+      {
+        "name": "rewardContract",
+        "type": "address",
+        "internalType": "address"
+      },
       {
         "name": "token",
         "type": "address",

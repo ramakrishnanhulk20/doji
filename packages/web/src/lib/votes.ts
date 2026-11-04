@@ -9,7 +9,7 @@ import {
   type TransactionReceipt,
 } from "viem";
 import { bribeRewardAbi, erc20Abi, feeDistributorAbi, poolAbi, poolsVoterAbi, splitterAbi } from "../abi/external";
-import { addressBook } from "./addresses";
+import { addressBook, pairOf, type PairKey } from "./addresses";
 import { lockDurationFor, thursdaysWithin } from "./borrow";
 import {
   STATE_ACTIVE,
@@ -40,6 +40,13 @@ const managerWiringAbi = parseAbi([
   "function maxVotes() view returns (uint16)",
 ]);
 
+// Wave 2 checks every listed reward token against the reward contract on its own side (F36), so its claim plan asks
+// the same two questions: which fee contract the voter registered for the gauge, and whether a contract pays a token.
+const rewardSideAbi = parseAbi([
+  "function gaugeToFees(address gauge) view returns (address)",
+  "function isReward(address token) view returns (bool)",
+]);
+
 const forwardedEvent = parseAbiItem("event RewardsForwarded(uint256 indexed tokenId, address indexed token, uint256 amount)");
 const FORWARDED_TOPIC = toEventSelector(forwardedEvent);
 
@@ -48,7 +55,11 @@ const isSet = (address: Address | null): address is Address => address !== null 
 
 export type VoterAddresses = { poolsVoter: Address; feeDistributor: Address; maxVotes: number };
 
-/** The voter, the fee distributor and the vote size limit LoanManager was deployed with. They never change. */
+/**
+ * The voter, the fee distributor and the vote size limit LoanManager was deployed with. They never change. Both pairs
+ * were deployed with the same three (read live on 2026-11-04: PoolsVoter 0x72F8...5738, fee distributor 0x10B0...4729,
+ * 30 pools), so the Wave 2 reading serves positions on either pair.
+ */
 export async function readVoterAddresses(client: PublicClient): Promise<VoterAddresses> {
   const [poolsVoter, feeDistributor, maxVotes] = await client.multicall({
     allowFailure: false,
@@ -173,15 +184,15 @@ export function evenSplit(count: number): number[] {
 export const percentText = (percent: number): string => String(Math.round(percent * 10) / 10);
 
 /** The weights go to PoolsVoter as percent x 100, so a 25% share is 2,500. */
-export const buildVoteCall = (tokenId: bigint, pools: readonly Address[], percents: readonly number[]): LoanCall =>
-  managerCall("vote", [tokenId, pools, percents.map((percent) => BigInt(percent) * 100n)]);
+export const buildVoteCall = (pair: PairKey, tokenId: bigint, pools: readonly Address[], percents: readonly number[]): LoanCall =>
+  managerCall(pair, "vote", [tokenId, pools, percents.map((percent) => BigInt(percent) * 100n)]);
 
-export const buildResetCall = (tokenId: bigint): LoanCall => managerCall("resetVotes", [tokenId]);
+export const buildResetCall = (pair: PairKey, tokenId: bigint): LoanCall => managerCall(pair, "resetVotes", [tokenId]);
 
-export const buildClaimRebaseCall = (tokenId: bigint): LoanCall => managerCall("claimRebase", [tokenId]);
+export const buildClaimRebaseCall = (pair: PairKey, tokenId: bigint): LoanCall => managerCall(pair, "claimRebase", [tokenId]);
 
-export const buildExtendLockCall = (tokenId: bigint, date: number, now: number): LoanCall =>
-  managerCall("extendLock", [tokenId, lockDurationFor(date, now)]);
+export const buildExtendLockCall = (pair: PairKey, tokenId: bigint, date: number, now: number): LoanCall =>
+  managerCall(pair, "extendLock", [tokenId, lockDurationFor(date, now)]);
 
 /** BTC the fee distributor holds for this position. */
 export async function readRebase(client: PublicClient, feeDistributor: Address, tokenId: bigint): Promise<bigint> {
@@ -263,6 +274,8 @@ export function rollExtensionDates(view: PositionView, maxTermSeconds: number, n
 export type RewardToken = { token: Address; symbol: string; decimals: number };
 
 export type ClaimPlan = {
+  /** The LoanManager whose token rule the lists were built for. A plan is only ever sent to that pair. */
+  pair: PairKey;
   gauges: Address[];
   feeTokens: Address[][];
   bribeTokens: Address[][];
@@ -283,13 +296,24 @@ const distinct = (list: readonly Address[]): Address[] => {
 };
 
 /**
- * The gauges and token lists for claimRewards. Fee tokens are each pool's two tokens, incentive tokens are the ones
- * the gauge's incentive contract lists, and only tokens PoolsVoter whitelists are kept, because the contract refuses
- * the rest. A gauge with no token left is dropped, since every listed gauge must list at least one. The contract
- * counts a token once per list it appears in, so the call is cut at 16 entries.
+ * The gauges and token lists for claimRewards on `pair`'s LoanManager. Fee tokens are each pool's two tokens and
+ * incentive tokens are the ones the gauge's incentive contract lists; then each pair's own rule decides what stays,
+ * because each LoanManager refuses a claim that lists anything else:
+ * - 20 October: only tokens PoolsVoter whitelists.
+ * - Wave 2: a token stays on a side only when that side's reward contract (gaugeToFees or gaugeToBribe) says
+ *   isReward(token), checked on both sides for a token on both; a gauge missing either contract is dropped, since
+ *   Wave 2 refuses it as an unknown gauge. This covers a pool's own tokens that PoolsVoter does not whitelist, MUSD and
+ *   BTC on testnet included.
+ * A gauge with no token left is dropped, since every listed gauge must list at least one. The contract counts a token
+ * once per list it appears in, so the call is cut at 16 entries.
  */
-export async function buildClaimRewardsArgs(client: PublicClient, voter: Address, pools: readonly Address[]): Promise<ClaimPlan> {
-  const empty: ClaimPlan = { gauges: [], feeTokens: [], bribeTokens: [], tokens: [], truncated: false };
+export async function buildClaimRewardsArgs(
+  client: PublicClient,
+  voter: Address,
+  pools: readonly Address[],
+  pair: PairKey,
+): Promise<ClaimPlan> {
+  const empty: ClaimPlan = { pair, gauges: [], feeTokens: [], bribeTokens: [], tokens: [], truncated: false };
   if (pools.length === 0) return empty;
 
   const poolReads = (await client.multicall({
@@ -310,18 +334,20 @@ export async function buildClaimRewardsArgs(client: PublicClient, voter: Address
     .filter((entry): entry is { gauge: Address; token0: Address | null; token1: Address | null } => isSet(entry.gauge));
   if (entries.length === 0) return empty;
 
-  const bribeReads = (await client.multicall({
+  const sideReads = (await client.multicall({
     allowFailure: true,
-    contracts: entries.map((entry) => ({
-      address: voter,
-      abi: poolsVoterAbi,
-      functionName: "gaugeToBribe" as const,
-      args: [entry.gauge] as const,
-    })),
+    contracts: entries.flatMap((entry) => [
+      { address: voter, abi: poolsVoterAbi, functionName: "gaugeToBribe" as const, args: [entry.gauge] as const },
+      { address: voter, abi: rewardSideAbi, functionName: "gaugeToFees" as const, args: [entry.gauge] as const },
+    ]),
   })) as unknown as Entry[];
   const bribes = entries.map((_, index) => {
-    const bribe = answer<Address>(bribeReads[index]);
+    const bribe = answer<Address>(sideReads[index * 2]);
     return isSet(bribe) ? bribe : null;
+  });
+  const feeContracts = entries.map((_, index) => {
+    const fees = answer<Address>(sideReads[index * 2 + 1]);
+    return isSet(fees) ? fees : null;
   });
 
   const lengthReads = (await client.multicall({
@@ -357,25 +383,16 @@ export async function buildClaimRewardsArgs(client: PublicClient, voter: Address
   });
   const fees = entries.map((entry) => distinct([entry.token0, entry.token1].filter(isSet)));
 
-  const candidates = distinct([...fees.flat(), ...incentives.flat()]);
-  const whitelistReads = (await client.multicall({
-    allowFailure: true,
-    contracts: candidates.map((token) => ({
-      address: voter,
-      abi: poolsVoterAbi,
-      functionName: "isWhitelistedToken" as const,
-      args: [token] as const,
-    })),
-  })) as unknown as Entry[];
-  const accepted = new Set(
-    candidates.filter((_, index) => answer<boolean>(whitelistReads[index]) === true).map((token) => token.toLowerCase()),
-  );
+  const kept =
+    pair === "legacy"
+      ? await keepWhitelisted(client, voter, fees, incentives)
+      : await keepRewards(client, fees, incentives, feeContracts, bribes);
 
-  const plan: ClaimPlan = { gauges: [], feeTokens: [], bribeTokens: [], tokens: [], truncated: false };
+  const plan: ClaimPlan = { pair, gauges: [], feeTokens: [], bribeTokens: [], tokens: [], truncated: false };
   let listed = 0;
   entries.forEach((entry, index) => {
-    const fee = (fees[index] ?? []).filter((token) => accepted.has(token.toLowerCase()));
-    const incentive = (incentives[index] ?? []).filter((token) => accepted.has(token.toLowerCase()));
+    const fee = kept.fee[index] ?? [];
+    const incentive = kept.incentive[index] ?? [];
     const room = MAX_REWARD_TOKENS - listed;
     const keptFee = fee.slice(0, room);
     const keptIncentive = incentive.slice(0, room - keptFee.length);
@@ -404,16 +421,100 @@ export async function buildClaimRewardsArgs(client: PublicClient, voter: Address
   return plan;
 }
 
-export const buildClaimRewardsCall = (tokenId: bigint, plan: ClaimPlan): LoanCall =>
-  managerCall("claimRewards", [tokenId, plan.gauges, plan.feeTokens, plan.bribeTokens]);
+type KeptTokens = { fee: Address[][]; incentive: Address[][] };
+
+/** The 20 October rule: a token stays only when PoolsVoter whitelists it. A failed read drops the token. */
+async function keepWhitelisted(
+  client: PublicClient,
+  voter: Address,
+  fees: readonly Address[][],
+  incentives: readonly Address[][],
+): Promise<KeptTokens> {
+  const candidates = distinct([...fees.flat(), ...incentives.flat()]);
+  const whitelistReads = (await client.multicall({
+    allowFailure: true,
+    contracts: candidates.map((token) => ({
+      address: voter,
+      abi: poolsVoterAbi,
+      functionName: "isWhitelistedToken" as const,
+      args: [token] as const,
+    })),
+  })) as unknown as Entry[];
+  const accepted = new Set(
+    candidates.filter((_, index) => answer<boolean>(whitelistReads[index]) === true).map((token) => token.toLowerCase()),
+  );
+  const keep = (list: readonly Address[]) => list.filter((token) => accepted.has(token.toLowerCase()));
+  return { fee: fees.map(keep), incentive: incentives.map(keep) };
+}
+
+/**
+ * The Wave 2 rule, the same predicate LoanManager runs (F36): a fee token stays when the gauge's fee contract says
+ * isReward, an incentive token when its incentive contract does. A gauge without both contracts keeps nothing, and a
+ * failed read drops the token, so the plan never lists what the contract would refuse.
+ */
+async function keepRewards(
+  client: PublicClient,
+  fees: readonly Address[][],
+  incentives: readonly Address[][],
+  feeContracts: readonly (Address | null)[],
+  bribes: readonly (Address | null)[],
+): Promise<KeptTokens> {
+  const sides = fees.map((_, index) => {
+    const feeContract = feeContracts[index];
+    const bribe = bribes[index];
+    return feeContract && bribe ? { feeContract, bribe } : null;
+  });
+  const checks = fees.flatMap((list, index) => {
+    const side = sides[index];
+    if (!side) return [];
+    return [
+      ...list.map((token) => ({ address: side.feeContract, token })),
+      ...(incentives[index] ?? []).map((token) => ({ address: side.bribe, token })),
+    ];
+  });
+  const answers = (await client.multicall({
+    allowFailure: true,
+    contracts: checks.map(({ address, token }) => ({
+      address,
+      abi: rewardSideAbi,
+      functionName: "isReward" as const,
+      args: [token] as const,
+    })),
+  })) as unknown as Entry[];
+
+  let slot = 0;
+  const fee: Address[][] = [];
+  const incentive: Address[][] = [];
+  fees.forEach((list, index) => {
+    if (!sides[index]) {
+      fee.push([]);
+      incentive.push([]);
+      return;
+    }
+    fee.push(list.filter(() => answer<boolean>(answers[slot++]) === true));
+    incentive.push((incentives[index] ?? []).filter(() => answer<boolean>(answers[slot++]) === true));
+  });
+  return { fee, incentive };
+}
+
+/** A plan is built for one pair's token rule, so it is refused on the other pair rather than sent to be rejected. */
+export const buildClaimRewardsCall = (pair: PairKey, tokenId: bigint, plan: ClaimPlan): LoanCall => {
+  if (plan.pair !== pair) throw new Error(`This claim plan was built for the ${plan.pair} pair, not ${pair}`);
+  return managerCall(pair, "claimRewards", [tokenId, plan.gauges, plan.feeTokens, plan.bribeTokens]);
+};
 
 export type Forwarded = { token: Address; symbol: string; decimals: number; amount: bigint };
 
-/** The RewardsForwarded events LoanManager emitted in a receipt, in the order they were paid. */
-export function parseForwarded(receipt: Pick<TransactionReceipt, "logs">, labels: readonly RewardToken[]): Forwarded[] {
+/** The RewardsForwarded events `pair`'s LoanManager emitted in a receipt, in the order they were paid. */
+export function parseForwarded(
+  receipt: Pick<TransactionReceipt, "logs">,
+  labels: readonly RewardToken[],
+  pair: PairKey,
+): Forwarded[] {
+  const loanManager = pairOf(pair).loanManager.toLowerCase();
   const found: Forwarded[] = [];
   for (const log of receipt.logs) {
-    if (log.address.toLowerCase() !== book.loanManager.toLowerCase() || log.topics[0] !== FORWARDED_TOPIC) continue;
+    if (log.address.toLowerCase() !== loanManager || log.topics[0] !== FORWARDED_TOPIC) continue;
     try {
       const event = decodeEventLog({ abi: [forwardedEvent], data: log.data, topics: log.topics });
       const label = labels.find((candidate) => candidate.token.toLowerCase() === event.args.token.toLowerCase());

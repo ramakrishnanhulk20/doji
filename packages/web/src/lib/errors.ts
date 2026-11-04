@@ -10,7 +10,11 @@ import {
   type Hex,
 } from "viem";
 import { creditMarketsAbi } from "../abi/creditMarkets";
+import { legacyCreditMarketsAbi } from "../abi/legacyCreditMarkets";
+import { legacyLoanManagerAbi } from "../abi/legacyLoanManager";
 import { loanManagerAbi } from "../abi/loanManager";
+import { payDownAbi } from "../abi/payDown";
+import { unitMarketAbi } from "../abi/unitMarket";
 import { formatDate, formatMusd } from "./stats";
 
 // Every sentence a person can read when something goes wrong comes from this file, so the wording stays in one place.
@@ -97,7 +101,11 @@ const REVERTS: Record<string, (args: Args) => string> = {
   StillSafe: () => "The loan is safe again at the current price, so the auction can't sell it now.",
   StillUnsafe: () => "The loan is still unsafe, so the auction can't be cancelled.",
   DeadlinePassed: () => "The price quote expired. Refresh and try again.",
-  PriceAboveMax: (args) => `The price moved up to ${musd(args[0])} MUSD, above your limit. Refresh and try again.`,
+  // LoanManager's purchase names (price, maxPay); UnitMarket's buy names (listingId, pricePerUnit, maxPricePerUnit).
+  PriceAboveMax: (args) =>
+    args.length === 3
+      ? `This listing's price is now ${musd(args[1])} MUSD a unit, above your limit. Refresh and try again.`
+      : `The price moved up to ${musd(args[0])} MUSD, above your limit. Refresh and try again.`,
   FloorTimeNotReached: (args) =>
     `The auction reaches its floor at ${date(args[1])}; it can be settled after that.`,
   LockNotEnded: (args) => `The lock ends ${date(args[1])}; it can be settled after that.`,
@@ -111,17 +119,85 @@ const REVERTS: Record<string, (args: Args) => string> = {
   RenounceDisabled: () => "Ownership can never be given up.",
   NotLoanManager: () => "Only Doji's LoanManager can do that.",
   NotGuardianOrOwner: () => "Only the guardian or the owner can do that.",
+  ERC20InsufficientAllowance: () => "Doji is not approved to move that much of your token yet. Approve the amount first, then try again.",
+  ERC20InsufficientBalance: () => "Your wallet does not hold enough of that token for this step.",
   ERC1155InsufficientBalance: () => "You don't hold that many credit units.",
   ERC1155MissingApprovalForAll: () => "That wallet hasn't approved you to move its credit units.",
   ERC1155InvalidReceiver: () => "That address is a contract that can't receive credit units. Send them to a wallet instead.",
+
+  ZeroAddress: () => "An address was left empty. Fill it in and try again.",
+  ZeroAmount: () => "The amount is zero. Enter an amount above zero and try again.",
+  LengthMismatch: () => "The lists in this call don't line up one to one. Refresh and try again.",
+  TokenNotRescuable: () => "That token belongs to users' records, so it can never be rescued.",
+  RescueExceedsSurplus: () => "That rescue would dip into what users are owed. Only the spare amount above it can be moved.",
+  OwnableInvalidOwner: () => "That address can't become the owner. Pick another address.",
+  ReentrancyGuardReentrantCall: () => "The contract refused a call made from inside one of its own calls. Send it as its own transaction.",
+  SafeERC20FailedOperation: () => "The token refused the transfer. Check your balance and approval and try again.",
+  SafeCastOverflowedUintDowncast: () => "That number is too large for the contract. Use a smaller amount.",
+
+  InvalidOperator: () => "Doji's LoanManager can't collect rewards for a position. Name another address, or clear it.",
+  TokenNotReward: () =>
+    "Mezo's reward contract for one of these pools doesn't pay one of the listed tokens. Refresh the page and claim again.",
+  TokenNotWhitelisted: () =>
+    "One of the listed reward tokens isn't on Mezo's voter whitelist, so this loan's contract won't claim it. Refresh the page and claim again.",
+
+  ParkingOff: () => "Parking offers in Mezo's savings vault is switched off for now. Post the offer without parking instead.",
+  NothingParked: () => "No offer MUSD is in Mezo's savings vault, so there is nothing to pull out.",
+  VaultShortfall: () =>
+    "Mezo's savings vault moved a different amount than asked, so Doji stopped the transaction and nothing changed. Try again later.",
+  VaultTokenMismatch: () => "That savings vault takes another token than Doji's MUSD, so it can't hold offers.",
+
+  BadExpiry: () => "A listing has to end in the future. Pick a later end time and try again.",
+  BadListingData: () => "The listing terms couldn't be read. Set a price and an end time and try again.",
+  BadPrice: () => "A unit's price must be above zero and at most 1 MUSD. Change the price and try again.",
+  BatchNotAccepted: () => "Units are listed one date at a time. Send each date's units in its own transfer.",
+  FeeTooHigh: () => "The market fee can be at most 1%.",
+  ListingEmpty: () => "This listing has no units left: it sold out, was cancelled or was returned.",
+  ListingExpired: () => "This listing has ended, so its units can't be bought any more. Pick another listing.",
+  ListingNotFound: () => "No listing has that number. Refresh and pick another.",
+  MarketPaused: () => "Listing and buying units are paused by the guardian. Taking back a listing still works.",
+  NotCreditMarkets: () => "Only Doji credit units can be listed here.",
+  NotEnoughUnits: (args) => `This listing has only ${musd(args[1])} units left. Buy fewer and try again.`,
+  NotExpired: (args) => `This listing runs until ${date(args[1])}. Until then only its seller can take the units back.`,
+  NotSeller: () => "Only the wallet that listed these units can take them back.",
+  NotTreasury: () => "Only the treasury can collect the market fees.",
+  ZeroCost: () => "That buy is too small to cost anything. Buy more units.",
+
+  BadRoute: () => "A swap route doesn't run from its reward token to MUSD in connected steps. Fix the route and try again.",
+  BadSwapToken: () =>
+    "A swap names a token this harvest didn't earn, or MUSD or BTC, which a harvest handles on its own. Remove it from the swaps.",
+  BelowFloor: (args) =>
+    `The sale would bring ${musd(args[0])} MUSD, below its floor of ${musd(args[1])} MUSD. Try again when the pool's price is closer.`,
+  DuplicateToken: () => "A token is listed twice in the swaps. List each token once.",
+  HarvestsPaused: () => "Reward harvests are paused by the guardian. You can still claim the rewards yourself and repay.",
+  SlippageTooHigh: () => "That price allowance is above the most a harvest may accept, 3%.",
+  TooManySwaps: () => "A harvest can sell at most 8 reward tokens. List fewer swaps.",
+  TooManyTokens: () => "A harvest can list at most 16 reward tokens and gauges. List fewer.",
+  ZeroMinimum: () => "Every swap needs a minimum above zero, so a sale can never go through at any price. Set a minimum.",
 };
 
 // Errors that name a refreshed offer list are the ones where the screen should reload.
 const REFRESH = new Set(["AprAboveMax", "InsufficientRemaining", "OfferEmpty", "OfferNotFound", "WrongMaturity"]);
 
-// Mezo's voter answers a second vote in the same week with this error, which neither Doji ABI declares.
+// Mezo's voter answers a second vote in the same week with this error, which no Doji ABI declares.
 const voterErrorsAbi = parseAbi(["error AlreadyVotedOrDeposited()"]);
-const knownAbi = [...loanManagerAbi, ...creditMarketsAbi, ...voterErrorsAbi] as unknown as Abi;
+// MUSD reports a short allowance or balance with the OpenZeppelin 5 token errors, which no Doji ABI declares.
+const tokenErrorsAbi = parseAbi([
+  "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
+  "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
+]);
+// Errors are matched by selector, so one name with different arguments on two contracts (PriceAboveMax, NothingToClaim)
+// still decodes to the right arguments for the contract that sent it.
+const knownAbi = [
+  ...loanManagerAbi,
+  ...creditMarketsAbi,
+  ...payDownAbi,
+  ...unitMarketAbi,
+  ...legacyLoanManagerAbi,
+  ...legacyCreditMarketsAbi,
+  ...voterErrorsAbi,
+  ...tokenErrorsAbi,
+] as unknown as Abi;
 
 export type Revert = { name: string; args: Args; reason?: string };
 
@@ -135,7 +211,7 @@ export function findRevert(error: unknown): Revert | null {
     const args = reverted.data.args ?? [];
     return { name: reverted.data.errorName, args, reason: reverted.data.errorName === "Error" ? String(args[0]) : undefined };
   }
-  // A contract called by LoanManager reverted with an error LoanManager does not declare, so try the other ABI.
+  // A contract called by the one sent to reverted with an error the sent-to contract does not declare, so try them all.
   if (reverted.raw) {
     try {
       const decoded = decodeErrorResult({ abi: knownAbi, data: reverted.raw as Hex });

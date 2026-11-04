@@ -51,7 +51,7 @@ export function VotesAndRewards({ view, now, send, busy }: VotesAndRewardsProps)
             busy={busy}
             acting={actions.acting}
             onVote={() => setSheet("vote")}
-            onReset={() => void actions.resetVotes(view.id)}
+            onReset={() => void actions.resetVotes(view.id, view.pair)}
           />
           <RewardsPanel
             mode="column"
@@ -60,8 +60,8 @@ export function VotesAndRewards({ view, now, send, busy }: VotesAndRewardsProps)
             locked={locked}
             busy={busy}
             acting={actions.acting}
-            onClaimRebase={() => void actions.claimRebase(view.id)}
-            onClaimRewards={() => void actions.claimRewards(view.id)}
+            onClaimRebase={() => void actions.claimRebase(view.id, view.pair)}
+            onClaimRewards={() => void actions.claimRewards(view.id, view.pair)}
           />
         </div>
       </section>

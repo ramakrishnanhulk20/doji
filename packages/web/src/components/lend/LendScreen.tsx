@@ -194,8 +194,8 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
 
   const cancelOffer = (offer: MyOffer) =>
     void act(
-      `cancel:${offer.id}`,
-      cancelOfferCall(offer.id),
+      `cancel:${offer.pair}:${offer.id}`,
+      cancelOfferCall(offer),
       `Offer #${offer.id} cancelled. ${fmtMusd(offer.remaining)} MUSD is back in your wallet.`,
     );
 
