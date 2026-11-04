@@ -1,15 +1,69 @@
 ---
 title: Audit
-description: What the independent review of 20 October 2026 found, how each finding was fixed, and the tests that prove it.
+description: What the independent reviews of 4 November 2026 (Wave 2) and 20 October 2026 found, how each finding was settled, and the tests that prove it.
 ---
+
+Doji's code has had two independent review passes, one for each pair. Neither was a third-party audit firm, and no outside firm has reviewed Doji's code. Doji runs on Mezo testnet only.
+
+## 4 November 2026: the Wave 2 code
+
+<Callout type="info">
+This was an independent review pass, separate from the build and read-only on the contracts and scripts. It was not a third-party audit firm. The full report is [docs/audit/findings-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-11-04.md).
+</Callout>
+
+The review read CreditMarkets, LoanManager, PassThrough, PayDown and UnitMarket and their interfaces in full, diffed against the 20 October code, with the threat model's rules C1 to C52 as the standard. It ran the unit suite, then deeper random runs than the defaults (1,500 invariant runs of depth 150 on the credit accounting, and 10,000 fuzz runs on the Wave 2 suites), and a 30,000-run fuzz of its own on the yield books. It did not run the fork tests and did not review the keeper or the website. It found no Critical, High or Medium issue: one Low and six Informational. Its summary: every vault amount is judged by a measured balance change, yield can only be paid out of yield that arrived, PayDown keeps no balance between calls, and UnitMarket moves each token after its own books are final.
+
+### Wave 2 findings
+
+| Id | Severity | What went wrong | How it was settled | Proven by |
+| --- | --- | --- | --- | --- |
+| L-01 | Low | Once a loan was in auction, nobody could claim the position's earned rewards: a buyer collected them, or a settle stranded them, and PayDown could not cure the auction. | Fixed before deployment: `claimRewards`, by the borrower or the reward operator, runs during an auction, and every other pass-through stays closed there (F37). A harvest that covers the debt now repays it and ends the auction. | [RewardsStrandedInAuction.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/audit/RewardsStrandedInAuction.t.sol): three tests that failed on the reviewed code and pass on the deployed code |
+| I-01 | Info | Doji's per-offer yield books can sit a few wei above what the vault delivered: 1 wei in one random run of 40 steps. | Accepted. It is wei-sized, and C31 already caps payouts at what the vault delivered, so it can never reach escrow or collections. C31 now says the last maker to withdraw can be short by those wei. | The reviewer's 30,000-run fuzz |
+| I-02 | Info | No view said whether a parked offer's MUSD was still in the vault. | Fixed: `isInVault(offerId)`. | `test_C32_IsInVaultTrueWhileParked_FalseAfterPullOutAndForPlainOffers` |
+| I-03 | Info | The guardian's pull-out is all or nothing and needs the vault to pay in full. | Documented in C52: if `pullOut` reverts, the guardian stops parking and lenders cancel parked offers one by one, each as far as the vault pays. | Not a code change |
+| I-04 | Info | Stray MUSD sent to UnitMarket, and stray sMUSD sent to CreditMarkets, could never be recovered. | Fixed for UnitMarket: MUSD above the fees owed can be rescued. CreditMarkets never rescues sMUSD, by design (C25). | `test_C46_RescueMovesStrayMusdButNeverTheFeesOwed` |
+| I-05 | Info | A harvest that repays with MUSD alone still needed a fresh oracle price. | Fixed: PayDown reads the price only when it must sell BTC. | `test_C7_HarvestThatSellsNoBtcNeverReadsThePrice` |
+| I-06 | Info | `setURI` is an owner power the standard did not list, and one deployer key holds every role at deployment. | Documented in C19 and the non-goals: before any mainnet use the owner becomes a multisig and the guardian a separate key. | Not a code change |
+
+### Wave 2 L-01 in numbers
+
+In the review's test, Alice deposits 1 BTC, borrows 30,000 MUSD and owes 30,038.63 on a Thursday, and names PayDown as her reward operator. Her position earns 500 MUSD of pool fees, which Mezo pays only once the epoch ends, and epochs end at Thursday 00:00 UTC, the same moment the loan falls due. One second later the loan is overdue and its auction starts. On the reviewed code her own claim and PayDown's harvest both reverted, a buyer paid the floor of 56,000, and then collected her 500 MUSD, 2.0% of her 24,459.44 surplus. On the deployed code she, or PayDown for her, claims during the auction, and a harvest whose rewards cover the debt repays it and ends the auction.
+
+### What the review said the standard missed
+
+The review also attacked the threat model and named 14 gaps. These changed the standard:
+
+1. C31 now says makers are paid first come, first served from yield delivered, so if booked yield ever runs ahead the last makers are short, never lenders.
+2. C52 now says what happens when the guardian's pull-out cannot run (I-03).
+3. C35 now promises that a yield calculation never blocks a principal movement only for a vault that answers with well-formed data.
+4. C42 now names the reason PayDown's open rescue is safe: PayDown keeps no balance between calls, and the rescue cannot run inside a harvest.
+5. C46 now says that changing the treasury hands over fees already owed.
+6. The vault's trust boundary (T9) now names its ERC-2771 forwarder, and three non-goals were added: no cap on the total parked in one vault, yield timed inside one transaction on testnet, and no MUSD-only pay-down mode.
+7. The L-01 fix changed C4, C36 and C41 (F37).
+
+The keeper and website rules, C48 to C50, were outside this review.
+
+### Checked and found sound in Wave 2
+
+Exact vault movement (C30), yield paid only out of yield delivered (C31), the pull-out and its parking eras (C32), plain paths that never call the vault (C35), reentrancy around every vault call and receiver hook, rolls and borrows that take parked offers, the reward operator's reach, PassThrough's `isReward` check, PayDown's floors and its empty balance after every harvest, UnitMarket's exact buys and always-open exits, every owner and guardian power and its cap, and the contract sizes, all under the 24,576-byte limit. The 20 October review's three regression tests still pass. The report lists each with what was checked.
+
+### Run the Wave 2 audit tests
+
+From `packages/contracts`:
+
+```bash
+forge test --match-path "test/audit/RewardsStrandedInAuction.t.sol" -vv
+```
+
+## 20 October 2026: the first contracts
 
 <Callout type="info">
 This was an independent review pass, separate from the build and read-only on the contracts and scripts. It was not a third-party audit firm. The full report is [docs/audit/findings-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-10-20.md).
 </Callout>
 
-The review read every contract, library, interface, the deploy script, the keeper and its workflow, against the threat model's section C and the risk study. It found no Critical or High issue: one Medium and three Low. The custody, accounting and settle paths held up. It ran the unit suite and wrote a failing test for each finding it could execute; it did not run the fork tests. The fixes were deployed in the contracts now on testnet, together with code this review never read: [Code added with the fixes](#code-added-with-the-fixes) says who checked that code and how.
+The review read every contract, library, interface, the deploy script, the keeper and its workflow, against the threat model's section C and the risk study. It found no Critical or High issue: one Medium and three Low. The custody, accounting and settle paths held up. It ran the unit suite and wrote a failing test for each finding it could execute; it did not run the fork tests. The fixes were deployed in the 20 October contracts, together with code this review never read: [Code added with the fixes](#code-added-with-the-fixes) says who checked that code and how.
 
-## Findings
+### Findings
 
 | Id | Severity | What went wrong | How it was fixed | Proven by |
 | --- | --- | --- | --- | --- |
@@ -26,7 +80,7 @@ In the review's test, a borrower owed 30,038.63 MUSD. The price fell until the d
 
 The owner lowered the line to 49% and then set a 50% floor, a 10% penalty and a one-hour auction. A loan opened under 65%, 70%, 5% and 72 hours went overdue by one second and sold an hour later. The borrower's share fell from 24,459.44 MUSD under the loan's own terms to 6,957.51. Lenders were unaffected; the money moved to the treasury and the buyer. With the fix, the loan keeps the terms it opened with.
 
-## Gaps in the standard, and how each was answered
+### Gaps in the standard, and how each was answered
 
 The review also attacked the threat model itself.
 
@@ -40,11 +94,11 @@ The review also attacked the threat model itself.
 8. `renounceOwnership` was inherited and not disabled. Both contracts now always revert `RenounceDisabled`, so the rescue paths always keep an owner (C19). It is attack 12 on [Try to break it](/docs/security/try-to-break-it).
 9. Three lines of text did not match the code (in C8, C12 and C15). They were corrected.
 
-## Checked and found sound
+### Checked and found sound
 
 Custody and identity, the collateral test, the fill rules, the quote (lender units plus protocol units equal the face exactly), the open-loan counts, finalisation and redemption, donations, repay, cancel, purchase and settle conditions, claimables, the pass-throughs, the vote cutoff, the setter bounds, the two contracts' mutual wiring, the lock reader and price, the time limit, the deploy checks and the keeper's writes. The report lists each one with what was checked.
 
-## Code added with the fixes
+### Code added with the fixes
 
 The commit that fixed these findings, [09e20c3](https://github.com/ramakrishnanhulk20/doji/commit/09e20c3), also added code this review never read: early payouts (`withdrawCollected`, the answer to gap 5), purchase prices recomputed at today's value, each loan keeping its own auction terms, and penalties waiting as treasury claimables. Two more review passes read it before it was deployed. The first read the fixes: its one important finding, the keeper's list of open loans, was fixed, and two design questions were settled (who gains when Bitcoin recovers during a sale, and whether to build early payouts). The second read only the early payout code and the keeper fix and found no important issue: no order of calls pays a date more than it collected, pays a holder more per unit, or locks a holder out (C14, C15, C25).
 
@@ -52,11 +106,11 @@ What proves it:
 
 - [EarlyPayouts.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/EarlyPayouts.t.sol) runs 1,000 random cases of a lender who withdraws early against one who waits, and 1,000 of one lender who mixes both: part of its units paid early, the rest redeemed after the date is finalized, while loans are repaid, sold, settled in BTC or written off in between. No holder gets more than its share of what the date collected, no unit is paid twice, and only rounding dust is left. Two deliberately broken versions of `withdrawCollected`, one that forgets what a Claim was already paid and one that does not burn the units it takes, both fail it.
 - [CreditInvariants.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/CreditInvariants.t.sol) runs random sequences of early withdrawals, redemptions, sales and settles across three dates and checks after every call that no date has paid out more MUSD or BTC than it collected.
-- On testnet the 22 October date went through this order for real: an early payout of 28.51 MUSD, then a settle that added 0.00035461 BTC, then finalize. All 28.51 MUSD collected has been paid out and none of the BTC yet. A read-only call of the lender's next withdrawal returns exactly the 0.00035461 BTC collected, and nothing more.
+- On testnet the 22 October date went through this order for real: an early payout of 28.51 MUSD, then a settle that added 0.00035461 BTC, then finalize. On 4 November 2026 the lender's next withdrawal paid exactly the 0.000354608 BTC the settle had added, and nothing more ([live paths, 4 November](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/live-paths-2026-11-04.md)).
 
 None of these passes was a third-party audit firm, and no outside firm has reviewed Doji's code. Doji runs on Mezo testnet only.
 
-## Run the tests
+### Run the tests
 
 From `packages/contracts`:
 

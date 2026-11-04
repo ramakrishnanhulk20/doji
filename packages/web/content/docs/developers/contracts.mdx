@@ -1,24 +1,30 @@
 ---
 title: Contracts
-description: Doji's deployed addresses, the library's code hash, and every external function and event of LoanManager and CreditMarkets.
+description: Doji's deployed addresses for both pairs, the libraries' code hashes, and every external function and event of LoanManager, CreditMarkets, PayDown and UnitMarket.
 ---
 
 ## Addresses on Mezo testnet
 
-All three are verified on Mezo's testnet explorer. None of them can be upgraded: there is no proxy and no admin that can replace code.
+Doji runs as two pairs on Mezo testnet (chain 31611). New offers and new loans go to the Wave 2 pair. The 20 October pair keeps serving every loan, offer, credit unit and auction opened on it. All eight contracts are verified on Mezo's testnet explorer. None of them can be upgraded: there is no proxy and no admin that can replace code.
 
-| Contract | Address |
-| --- | --- |
-| LoanManager | [0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa](https://explorer.test.mezo.org/address/0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa) |
-| CreditMarkets | [0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de](https://explorer.test.mezo.org/address/0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de) |
-| PassThrough (library) | [0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061](https://explorer.test.mezo.org/address/0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061) |
+| Contract | Wave 2 pair | 20 October pair |
+| --- | --- | --- |
+| LoanManager | [0xdB407A06E5CedF2fd4f8C5C557338908B2776978](https://explorer.test.mezo.org/address/0xdB407A06E5CedF2fd4f8C5C557338908B2776978) | [0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa](https://explorer.test.mezo.org/address/0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa) |
+| CreditMarkets | [0x89Dc7C4a7Cbfddf3Cb7a00b5f3fEFaB47aC61a1f](https://explorer.test.mezo.org/address/0x89Dc7C4a7Cbfddf3Cb7a00b5f3fEFaB47aC61a1f) | [0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de](https://explorer.test.mezo.org/address/0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de) |
+| PassThrough (library) | [0x895187e9501E424774d93A0931D36b4be99E58A9](https://explorer.test.mezo.org/address/0x895187e9501E424774d93A0931D36b4be99E58A9) | [0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061](https://explorer.test.mezo.org/address/0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061) |
+| PayDown | [0xf0dbbD5167F9852234883aD58109dC80692a18DE](https://explorer.test.mezo.org/address/0xf0dbbD5167F9852234883aD58109dC80692a18DE) | none |
+| UnitMarket | [0xC50ff38f0a51Cda01BFB2c7E6324c30Cf5a16e18](https://explorer.test.mezo.org/address/0xC50ff38f0a51Cda01BFB2c7E6324c30Cf5a16e18) | none |
+| Deployed | 4 November 2026, block 16,564,749 | 20 October 2026, block 16,259,280 |
+| Record | [deployments/31611-wave2.json](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/deployments/31611-wave2.json) | [deployments/31611.json](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/deployments/31611.json) |
+| PassThrough runtime code hash | `0x982c24088d039adce9a80453762c5b95471988c67f871f487d248142b1ac3cf9` | `0x37e8ef36bdb592b8cbb39af72ce99b46ce3098ff8b706bda489ab7e3737b72b6` |
 
-- Chain 31611, deployed at block 16,259,280. The full record is [deployments/31611.json](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/deployments/31611.json).
-- PassThrough runtime code hash: `0x37e8ef36bdb592b8cbb39af72ce99b46ce3098ff8b706bda489ab7e3737b72b6`. The deploy script refuses a library whose code differs from the compiled one, and records the hash.
-- Deployer: `0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e`. At deployment it is the owner, the guardian and the treasury of both contracts.
-- Solidity 0.8.28, EVM version cancun, OpenZeppelin Contracts 5.7.0. Each contract fixes the other's address in its constructor, so there is no setter a first caller could front-run.
+- The deploy script refuses a library whose code differs from the compiled one, and records the hash. For Wave 2 it also checked, before sending anything, that the sMUSD vault takes this MUSD, that the Router's factory is Mezo's and that PayDown points at the new LoanManager, then read every setting back (C51).
+- Mezo contracts only the Wave 2 pair uses: the sMUSD vault (MUSDSavingsRate) `0x6f461c68B2c5492C0F5CCEc5a264d692aA7A8e16` and the Router `0x9a1ff7FE3a0F69959A3fBa1F1e5ee18e1A9CD7E9`, with its default pool factory `0x4947243CC818b627A5D06d14C4eCe7398A23Ce1A`. The rest are on [Built on Mezo](/docs/mezo).
+- ValidatorsVoter is Mezo mainnet only. Both testnet records hold the zero address for it, so on testnet `validatorsVoter()` returns zero and Doji passes votes to PoolsVoter only.
+- Deployer: `0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e`. At deployment it is the owner and the guardian of every Doji contract, and the treasury of each CreditMarkets and of UnitMarket. That is a testnet setup: before any mainnet use the owner becomes a multisig and the guardian a separate key.
+- Solidity 0.8.28, EVM version cancun, OpenZeppelin Contracts 5.7.0. LoanManager and CreditMarkets fix each other's address in their constructors, PayDown fixes its LoanManager and Router, and UnitMarket fixes its CreditMarkets, so there is no setter a first caller could front-run.
 
-The full NatSpec, including every custom error, is in [ILoanManager.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ILoanManager.sol) and [ICreditMarkets.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ICreditMarkets.sol).
+The full NatSpec, including every custom error, is in [ILoanManager.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ILoanManager.sol), [ICreditMarkets.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ICreditMarkets.sol), [IPayDown.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/IPayDown.sol) and [IUnitMarket.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/IUnitMarket.sol). They describe the Wave 2 pair. Rows marked "Wave 2" below do not exist on the 20 October pair.
 
 ## LoanManager
 
@@ -37,11 +43,12 @@ Custody of veBTC positions, loans, auctions and settlement. Every state-changing
 | `withdrawCollateral(uint256 tokenId)` | the borrower | Sends a position with no open loan back to its borrower. |
 | `vote(uint256 tokenId, address[] pools, uint256[] weights)` | the borrower | Casts the position's PoolsVoter vote. The loan must be on time and safe, and a normal lock cannot vote in its last week. |
 | `resetVotes(uint256 tokenId)` | the borrower | Clears the position's PoolsVoter vote. |
-| `claimRewards(uint256 tokenId, address[] gauges, address[][] feeTokens, address[][] bribeTokens)` | the borrower | Claims pool fees and incentives from registered gauges and pays the measured increase of each whitelisted token to the borrower. |
+| `claimRewards(uint256 tokenId, address[] gauges, address[][] feeTokens, address[][] bribeTokens)` | the borrower, or the reward operator the borrower named | Claims pool fees and incentives from registered gauges and pays the measured increase of each listed token to the caller. Wave 2: a token passes when the gauge's own fee or incentive contract lists it (`isReward`, F36), so a pool's own tokens, MUSD and BTC included, pass whether or not PoolsVoter whitelists them. The 20 October pair accepts only PoolsVoter's whitelisted tokens, and Mezo's testnet whitelists neither MUSD nor BTC. |
+| `setRewardOperator(uint256 tokenId, address operator)` | the borrower | Wave 2. Names the one other address that may call `claimRewards` for this position and receive what it claims, such as PayDown, or clears it with the zero address. Naming LoanManager reverts `InvalidOperator`. The operator can do nothing else, the borrower can still claim, clear and repay, and the operator is deleted with the position record. Never paused. |
 | `claimRebase(uint256 tokenId)` | the borrower | Claims from the veBTC fee distributor. BTC from an expired lock is credited to the borrower's claimable. |
 | `extendLock(uint256 tokenId, uint256 lockDuration)` | the borrower | Pushes the lock's end out with veBTC's `increaseUnlockTime`. The loan must be on time and safe. |
 
-None of the pass-throughs (`vote` to `extendLock`) runs while the loan is in auction.
+On the Wave 2 pair `claimRewards` and `setRewardOperator` also run while the loan is in auction, so what the position earned stays with its borrower and a harvest can still repay (audit L-01, F37). `vote`, `resetVotes`, `claimRebase` and `extendLock` never run in an auction. On the 20 October pair none of the pass-throughs runs in an auction.
 
 ### Functions anyone can call
 
@@ -75,7 +82,7 @@ None of the pass-throughs (`vote` to `extendLock`) runs while the loan is in auc
 | --- | --- |
 | `collateralValue(uint256 tokenId)` | Locked BTC and its MUSD value at the live price. The one value used for borrowing and shown to users. |
 | `owedOf(uint256 tokenId)` | MUSD still owed, zero with no loan. |
-| `positionOf(uint256 tokenId)` | The recorded borrower. Zero means no position. |
+| `positionOf(uint256 tokenId)` | The recorded borrower, zero meaning no position. On Wave 2 a `Position` with the borrower and the reward operator, zero meaning none. |
 | `loanOf(uint256 tokenId)` | The loan: maturity, face, repaid, its own limit, line, penalty, floor and duration, and its state. |
 | `auctionOf(uint256 tokenId)` | The running auction's snapshot. A zero start time means none. |
 | `auctionPrice(uint256 tokenId)` | Exactly what a purchase would pay now. Reads the oracle. |
@@ -83,7 +90,7 @@ None of the pass-throughs (`vote` to `extendLock`) runs while the loan is in auc
 | `lockOf(uint256 tokenId)` | The lock's amount, end and permanent flag, decoded for this chain. |
 | `claimableMusd(address)`, `claimableBtc(address)`, `totalClaimableMusd()`, `totalClaimableBtc()` | What waits for each claimant, and the totals. |
 | `maxLtvBps()`, `liqLtvBps()`, `minLoan()`, `penaltyBps()`, `auctionFloorBps()`, `auctionDuration()`, `guardian()`, `borrowsPaused()`, `owner()`, `pendingOwner()` | The current settings, roles and pause. |
-| `veBTC()`, `priceFeed()`, `musd()`, `btc()`, `poolsVoter()`, `validatorsVoter()`, `feeDistributor()`, `creditMarkets()`, `lockLayoutWords()`, `maxVotes()` | Fixed at deployment. |
+| `veBTC()`, `priceFeed()`, `musd()`, `btc()`, `poolsVoter()`, `validatorsVoter()`, `feeDistributor()`, `creditMarkets()`, `lockLayoutWords()`, `maxVotes()` | Fixed at deployment. `validatorsVoter()` is the zero address on testnet, where ValidatorsVoter does not exist. |
 | `MIN_MAX_LTV_BPS`, `MAX_LIQ_LTV_BPS`, `MAX_PENALTY_BPS`, `MIN_AUCTION_FLOOR_BPS`, `MAX_AUCTION_FLOOR_BPS`, `MIN_AUCTION_DURATION`, `MAX_AUCTION_DURATION`, `MIN_LOAN_FLOOR`, `MIN_LOAN_CEILING`, `ESCROW_NORMAL`, `MAX_REWARD_TOKENS` | The hard-coded bounds. |
 
 ### Events
@@ -103,7 +110,8 @@ None of the pass-throughs (`vote` to `extendLock`) runs while the loan is in auc
 | `Settled(uint256 indexed tokenId, address indexed borrower, uint256 btcReceived, uint256 btcPrice, uint256 toMarket, uint256 toTreasury, uint256 toBorrower)` | An unsold lock is withdrawn and its BTC split. |
 | `WrittenOff(uint256 indexed tokenId, uint64 indexed maturity, uint256 owed)` | A loan whose position left custody is closed. |
 | `Claimed(address indexed account, uint256 musdAmount, uint256 btcAmount)` | A claimant collects. |
-| `RewardsForwarded(uint256 indexed tokenId, address indexed token, uint256 amount)` | A reward claim raised a token balance and the increase went to the borrower. |
+| `RewardsForwarded(uint256 indexed tokenId, address indexed token, uint256 amount)` | A reward claim raised a token balance and the increase went to the caller: the borrower, or on Wave 2 the reward operator. |
+| `RewardOperatorSet(uint256 indexed tokenId, address indexed operator)` | Wave 2. The borrower named a reward operator, or cleared it (zero). |
 | `RebaseClaimed(uint256 indexed tokenId, address indexed borrower, uint256 btcCredited)` | A fee-distributor claim ran. |
 | `RiskParamsSet(uint16 maxLtvBps, uint16 liqLtvBps)`, `AuctionParamsSet(uint16 penaltyBps, uint16 auctionFloorBps, uint32 auctionDuration)`, `MinLoanSet(uint128 minLoan)` | A setting for new loans changes. |
 | `GuardianSet(address indexed guardian)`, `BorrowsPausedSet(bool paused)` | The guardian or the pause changes. |
@@ -119,7 +127,9 @@ Offers, one market per Thursday, and the ERC-1155 credit units whose token id is
 | Function | Who may call | What it does |
 | --- | --- | --- |
 | `postOffer(uint64 maturity, uint16 aprBps, uint128 amount)` | anyone | Escrows exactly `amount` MUSD as a fixed-rate offer for a valid Thursday within the longest term. Pausable. |
-| `cancelOffer(uint256 offerId)` | the offer's maker | Refunds the unfilled part. Never paused. |
+| `postParkedOffer(uint64 maturity, uint16 aprBps, uint128 amount)` | anyone | Wave 2. The same offer, then deposits the MUSD in Mezo's sMUSD vault, with an approval for exactly `amount` that is reset to zero, and requires CreditMarkets' sMUSD to rise by exactly `amount`. It records the vault's yield index, so the offer earns from that moment only. Reverts `ParkingOff` while parking is stopped. Pausable. |
+| `cancelOffer(uint256 offerId)` | the offer's maker | Refunds the unfilled part. Never paused. A parked offer first books its yield; if its MUSD is still in the vault the refund is withdrawn from the vault, so that cancel needs the vault to pay. |
+| `withdrawOfferYield(uint256[] offerIds)` | an offer's maker | Wave 2. Books the yield of up to 8 of the caller's offers, then pays as much of the caller's booked yield as the vault has delivered and nobody has been paid yet. The rest stays booked. Never paid from escrow or market collections. Never paused. |
 | `claimUnits(uint64 maturity)` | anyone with units waiting | Mints the caller's recorded units for that date. |
 | `withdrawCollected(uint64 maturity, uint256 units)` | any holder, after the date | Moves units into the caller's Claim and pays its share of what is collected so far. Zero units pays what arrived since. |
 | `finalize(uint64 maturity)` | anyone | Closes a date that has passed, had loans, and has none open. Freezes the redemption totals. |
@@ -130,7 +140,7 @@ Offers, one market per Thursday, and the ERC-1155 credit units whose token id is
 
 | Function | Who may call | What it does |
 | --- | --- | --- |
-| `fill(uint64 maturity, uint256[] offerIds, uint128[] amounts, uint16 maxAprBps, address recipient)` | LoanManager | Fills up to 8 listed offers for one loan, records each lender's and the treasury's units, and sends the principal. |
+| `fill(uint64 maturity, uint256[] offerIds, uint128[] amounts, uint16 maxAprBps, address recipient)` | LoanManager | Fills up to 8 listed offers for one loan, records each lender's and the treasury's units, and sends the principal. On Wave 2 the amounts taken from offers still in the vault are withdrawn in one call, and the recipient gets exactly the principal, never the yield. |
 | `credit(uint64 maturity, uint256 musdAmount, bool closesLoan)` | LoanManager | Books MUSD into a date, measured as it arrives. |
 | `creditBtc(uint64 maturity, uint256 btcAmount, bool closesLoan)` | LoanManager | Books BTC from a settled loan into a date. |
 
@@ -143,9 +153,12 @@ Offers, one market per Thursday, and the ERC-1155 credit units whose token id is
 | `setMaxTermSeconds(uint32 newMaxTermSeconds)` | owner | Longest term, 1 to 4 weeks. |
 | `setTreasury(address newTreasury)` | owner | Receiver of future fee units. |
 | `setGuardian(address newGuardian)` | owner | Sets the guardian. |
-| `setOffersPaused(bool paused)` | guardian or owner | Pauses or resumes `postOffer` only. |
+| `setOffersPaused(bool paused)` | guardian or owner | Pauses or resumes `postOffer`, and `postParkedOffer` on Wave 2, only. |
+| `stopParking()` | guardian or owner | Wave 2. Refuses new parked offers. Offers already parked stay in the vault and fill, cancel and earn as before. |
+| `pullOut()` | guardian or owner | Wave 2. Takes every parked dollar out of the vault in one fixed-cost call with no loop, records the vault's index where that era's offers stop earning, and stops parking. It needs the vault to pay the whole parked principal back; if it cannot, lenders cancel parked offers one by one (C52). |
+| `resumeParking()` | owner | Wave 2. Lets new offers park again, in the current parking era. Offers of an era already pulled out stay out of the vault. |
 | `setURI(string newUri)` | owner | Metadata URI template for every date's units. |
-| `rescueToken(address token, address to, uint256 amount)` | owner | Moves a stray ERC-20 that is neither MUSD nor BTC. |
+| `rescueToken(address token, address to, uint256 amount)` | owner | Moves a stray ERC-20 that is neither MUSD nor BTC, nor on Wave 2 sMUSD. |
 | `transferOwnership(address newOwner)`, `acceptOwnership()` | owner, then the new owner | Two-step ownership transfer. |
 | `renounceOwnership()` | nobody | Always reverts `RenounceDisabled`. |
 
@@ -154,7 +167,11 @@ Offers, one market per Thursday, and the ERC-1155 credit units whose token id is
 | Function | Returns |
 | --- | --- |
 | `quoteFill(uint128 principal, uint16 aprBps, uint64 maturity)` | The face, the lender's units and the treasury's units a fill would get now. |
-| `offerOf(uint256 offerId)` | Maker, maturity, rate and what is left. A zero maker means no such offer. |
+| `offerOf(uint256 offerId)` | Maker, maturity, rate and what is left, and on Wave 2 whether it is parked. A zero maker means no such offer. |
+| `isInVault(uint256 offerId)` | Wave 2. True when the offer's unfilled MUSD is held as sMUSD in the vault. False for a plain offer and for a parked offer whose era was pulled out. |
+| `pendingOfferYield(uint256 offerId)` | Wave 2. The yield the offer would book to its maker now. Booked yield, not what can be paid right now. |
+| `yieldOwedOf(address maker)`, `yieldDelivered()`, `yieldPaid()` | Wave 2. Yield booked to a maker and not yet paid; MUSD measured arriving from the vault above principal; yield paid so far, never above what was delivered. |
+| `parkedPrincipal()`, `parkingOn()`, `parkingEra()`, `eraEndIndex(uint32 era)`, `savingsVault()` | Wave 2. Principal in the vault, whether new offers may park, the current era and where a pulled-out era stopped earning, and the vault fixed at deployment. |
 | `marketOf(uint64 maturity)` | Units issued, MUSD and BTC collected, open loans, and the closing snapshot. |
 | `pendingUnits(address account, uint64 maturity)` | Units recorded and not yet minted. |
 | `claimOf(address account, uint64 maturity)` | An early-payout Claim: units moved in and MUSD and BTC paid. |
@@ -170,7 +187,10 @@ Offers, one market per Thursday, and the ERC-1155 credit units whose token id is
 | Event | Emitted when |
 | --- | --- |
 | `OfferPosted(uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint16 aprBps, uint128 amount)` | An offer is posted. |
+| `OfferParked(uint256 indexed offerId, uint128 amount)` | Wave 2. A new offer's MUSD went into the sMUSD vault. |
 | `OfferCancelled(uint256 indexed offerId, address indexed maker, uint128 refunded)` | An offer's unfilled MUSD goes back. |
+| `OfferYieldWithdrawn(address indexed maker, uint256 paid, uint256 stillOwed)` | Wave 2. A maker was paid offer yield; `stillOwed` waits until the vault delivers enough. |
+| `ParkingStopped()`, `ParkingResumed()`, `PulledOut(uint32 era, uint256 principal, uint256 index)` | Wave 2. The parking controls were used. |
 | `Filled(uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint256 principal, uint256 face)` | An offer lends to a loan, once per offer. |
 | `Credited(uint64 indexed maturity, uint256 musdAmount, bool closesLoan)` | MUSD is booked into a date. |
 | `CreditedBtc(uint64 indexed maturity, uint256 btcAmount, bool closesLoan)` | BTC from a settle is booked into a date. |
@@ -187,4 +207,82 @@ Offers, one market per Thursday, and the ERC-1155 credit units whose token id is
 
 ## PassThrough
 
-An external library that holds LoanManager's calls into Mezo's voters: `castVote`, `forwardRewards` and `clearForSettle`. It exists only to keep LoanManager under the contract size limit. LoanManager runs it with `delegatecall`, after its own borrower and custody checks and under its reentrancy lock. It keeps no state, and its events and errors are LoanManager's own, so logs carry LoanManager's address.
+An external library that holds LoanManager's calls into Mezo's voters: `castVote`, `forwardRewards` and `clearForSettle`. It exists only to keep LoanManager under the contract size limit. LoanManager runs it with `delegatecall`, after its own borrower and custody checks and under its reentrancy lock. It keeps no state, and its events and errors are LoanManager's own, so logs carry LoanManager's address. Each pair links its own copy. The Wave 2 copy checks every listed reward token with `isReward` on the reward contract PoolsVoter registered for the gauge, measures each distinct token once, and pays the caller.
+
+## PayDown (Wave 2)
+
+Turns a position's pool rewards into repayment of its loan. A borrower opts in by naming PayDown as the position's reward operator in LoanManager. PayDown keeps no balance between calls, and every function that moves tokens runs under one reentrancy lock.
+
+### Functions
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `harvest(uint256 tokenId, address[] gauges, address[][] feeTokens, address[][] bribeTokens)` | anyone; the keeper does it weekly | Reads the borrower from LoanManager, measures PayDown's balance of MUSD and every listed token, claims through `LoanManager.claimRewards` as the operator, and uses only each measured increase. With an open loan: MUSD gained counts toward the repay; BTC gained is sold only as far as the debt still needs, on the BTC to MUSD volatile route of the Router's default factory, with the oracle floor (BTC sold x price x (10,000 - `slippageBps`) / 10,000) handed to the Router and checked again against the MUSD measured arriving; then the smaller of the MUSD gained and `owedOf` is repaid. Everything else goes to the borrower in the same call. With no open loan nothing is sold. The price is read only when BTC must be sold. Works during an auction, and a harvest that clears the debt ends it. |
+| `harvestAndSwap(uint256 tokenId, address[] gauges, address[][] feeTokens, address[][] bribeTokens, Swap[] swaps)` | the borrower | The same, and it also sells the reward tokens the borrower lists, other than MUSD and BTC: at most 8, each on a route of 1 to 3 hops from the token to MUSD, each at the borrower's own minimum, which the MUSD measured arriving must reach. The swaps run before the BTC sale, so their MUSD shrinks the BTC sold. |
+| `setSlippageBps(uint16 newSlippageBps)` | owner | The discount to the oracle price a BTC sale may accept: 100 (1%) at deployment, at most `MAX_SLIPPAGE_BPS` 300 (3%). |
+| `setGuardian(address newGuardian)` | owner | Sets the guardian. |
+| `setPaused(bool newPaused)` | guardian or owner to pause, owner to resume | Pauses `harvest` and `harvestAndSwap` only. Nothing in LoanManager changes: the borrower's own claim, operator clear and repay keep working. |
+| `rescueToken(address token, address to, uint256 amount)` | owner | Moves tokens PayDown holds outside a harvest. A harvest keeps nothing, so anything held at rest is a stray credited to nobody. Under the reentrancy lock, so it can never run inside a harvest. |
+| `transferOwnership(address newOwner)`, `acceptOwnership()` | owner, then the new owner | Two-step ownership transfer. |
+| `renounceOwnership()` | nobody | Always reverts `RenounceDisabled`. |
+
+### Views
+
+| Function | Returns |
+| --- | --- |
+| `slippageBps()`, `paused()`, `guardian()`, `owner()`, `pendingOwner()` | The current settings and roles. |
+| `loanManager()`, `router()`, `factory()`, `musd()`, `btc()`, `priceFeed()` | Fixed at deployment. MUSD, BTC and the price feed are read from LoanManager, the factory from the Router. |
+| `MAX_SLIPPAGE_BPS`, `MAX_SWAPS`, `MAX_ROUTE_HOPS`, `MAX_REWARD_TOKENS` | The hard-coded caps: 300, 8, 3 and 16. |
+
+### Events
+
+| Event | Emitted when |
+| --- | --- |
+| `Harvested(uint256 indexed tokenId, address indexed caller, uint256 musdRepaid, uint256 btcSold, uint256 musdFromBtc)` | A harvest ran. Every part of the rewards not repaid went to the borrower. |
+| `RewardSwapped(uint256 indexed tokenId, address indexed token, uint256 amountIn, uint256 musdOut)` | In a borrower's `harvestAndSwap`, a reward token was sold for MUSD. |
+| `SlippageSet(uint16 slippageBps)`, `GuardianSet(address indexed guardian)`, `PausedSet(bool paused)` | A setting changed. |
+| `Rescued(address indexed token, address indexed to, uint256 amount)` | The owner moved a stray token. |
+| `OwnershipTransferStarted`, `OwnershipTransferred` | The two steps of an ownership transfer. |
+
+## UnitMarket (Wave 2)
+
+A market for Wave 2 credit units before their date. It accepts units only from the Wave 2 CreditMarkets, so 20 October units cannot be listed. A listing price is the seller's ask and never a value Doji uses for anything (C47).
+
+### Functions
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| CreditMarkets `safeTransferFrom(address from, address to, uint256 maturity, uint256 units, bytes data)` with `to` UnitMarket and `data` = `abi.encode(uint128 pricePerUnit, uint64 expiry)` | a holder of Wave 2 units | Creates a listing in UnitMarket's `onERC1155Received`. The seller is the transfer's `from`, never the operator. The price must be above zero and at most 1e18 MUSD wei a unit (par, 1 MUSD), the expiry in the future, and the data exactly 64 bytes. The fee rate in force (25 bps now) is copied into the listing. No `setApprovalForAll` is needed. Batch transfers and units from any other contract revert. Pausable. |
+| `buy(uint256 listingId, uint128 units, uint128 maxPricePerUnit)` | anyone | Buys exactly `units` before the expiry, never a part. The cost is units x price / 1e18 rounded up, so it is never zero; the fee is the cost x the listing's rate / 10,000 rounded down. The listing and the fee owed are updated first, the cost is pulled and measured, the seller is paid the cost less the fee, and the units are sent to the buyer last. Pausable. |
+| `cancel(uint256 listingId)` | the seller | Takes every unsold unit back and closes the listing, at any time: never paused, and unaffected by expiry or fee changes. |
+| `returnExpired(uint256 listingId)` | anyone, after the expiry | Sends an expired listing's unsold units back to its seller. Never paused. |
+| `claimFees()` | the treasury | Pays the treasury every fee owed. Never paused. |
+| `setFeeBps(uint16 newFeeBps)` | owner | The fee rate new listings copy, at most `MAX_FEE_BPS` 100 (1%). Open listings keep theirs. |
+| `setTreasury(address newTreasury)`, `setGuardian(address newGuardian)` | owner | The treasury, which also claims fees already owed, and the guardian. |
+| `setPaused(bool paused_)` | guardian or owner to pause, owner to resume | Pauses new listings and buys only. |
+| `rescueToken(address token, address to, uint256 amount)` | owner | Moves a stray ERC-20. Never the units, and MUSD only above the fees owed. |
+| `transferOwnership(address newOwner)`, `acceptOwnership()` | owner, then the new owner | Two-step ownership transfer. |
+| `renounceOwnership()` | nobody | Always reverts `RenounceDisabled`. |
+
+### Views
+
+| Function | Returns |
+| --- | --- |
+| `listingOf(uint256 listingId)` | Seller, maturity, expiry, fee rate, units left and price. A zero seller means no listing; zero units left means it is closed. |
+| `quoteBuy(uint256 listingId, uint128 units)` | The exact cost and fee a buy would charge now, with the same rounding as `buy`. |
+| `nextListingId()`, `treasuryOwed()` | The next listing id (ids start at 1 and are never reused), and the fees owed to the treasury. |
+| `feeBps()`, `paused()`, `guardian()`, `treasury()`, `owner()`, `pendingOwner()` | The current settings and roles. |
+| `creditMarkets()`, `musd()` | Fixed at deployment. |
+
+### Events
+
+| Event | Emitted when |
+| --- | --- |
+| `Listed(uint256 indexed listingId, address indexed seller, uint64 indexed maturity, uint128 units, uint128 pricePerUnit, uint64 expiry, uint16 feeBps)` | Units arrived and became a listing. |
+| `Bought(uint256 indexed listingId, address indexed buyer, uint128 units, uint256 cost, uint256 fee)` | A buyer took units; `cost - fee` went to the seller. |
+| `Cancelled(uint256 indexed listingId, address indexed seller, uint128 units)` | The seller took the unsold units back. |
+| `Returned(uint256 indexed listingId, address indexed seller, uint128 units)` | An expired listing's units went back to the seller. |
+| `FeesClaimed(address indexed treasury, uint256 amount)` | The treasury collected its fees. |
+| `FeeBpsSet(uint16 feeBps)`, `TreasurySet(address indexed treasury)`, `GuardianSet(address indexed guardian)`, `PausedSet(bool paused)` | A setting changed. |
+| `Rescued(address indexed token, address indexed to, uint256 amount)` | The owner moved a stray token. |
+| `OwnershipTransferStarted`, `OwnershipTransferred` | The two steps of an ownership transfer. |

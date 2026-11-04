@@ -1,9 +1,16 @@
 ---
 title: Run the proof yourself
-description: The prove-it command against the live testnet, the mainnet fork tests and the website test, with what each one prints.
+description: The prove-it command against the live testnet, the fork tests, the explorer verification of both pairs, the live proof pages and the website test, with what each one prints.
 ---
 
 Everything Doji claims can be checked with commands in the repository. Each one says what it does not cover.
+
+## The live proof pages
+
+Each page lists every transaction with an explorer link and the chain reads that check it.
+
+- [Wave 2 live, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md): the Wave 2 deploy, two offers parked in Mezo's sMUSD vault and a borrow paid out of the vault, the pay-down demo loan 411 with PayDown as its reward operator and incentives posted on both its pools, and a sale of credit units on UnitMarket. The pay-down harvest itself can run only after the epoch turns on 5 November, because Mezo pays an epoch's incentives once it ends; the page says so and adds it once it has run.
+- [Live paths, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/live-paths-2026-11-04.md), on the 20 October pair: a veBTC locked directly on Mezo, deposited, borrowed against, repaid and taken back; fresh offers for the next three Thursdays; and a lender paid out after two settles. It also records why `claimRewards` was refused there (F36), the reason the Wave 2 claim checks `isReward` instead.
 
 ## Before you start
 
@@ -18,7 +25,7 @@ git submodule update --init
 
 ## 1. The prove-it command (live testnet)
 
-One command exercises the main promise against the deployed contracts on Mezo testnet: lock a little test BTC, borrow the 10 MUSD minimum at a fixed rate, check the loan on chain, attack it as a stranger, repay in full and take the position back.
+One command exercises the main promise against the deployed contracts on Mezo testnet: lock a little test BTC, borrow the 10 MUSD minimum at a fixed rate, check the loan on chain, attack it as a stranger, repay in full and take the position back. It acts on the 20 October pair in `deployments/31611.json`.
 
 It sends real testnet transactions from a borrower wallet you control, and needs bash, Python 3 and Foundry. Make a fresh testnet wallet with `cast wallet new`. Copy `packages/contracts/.env.example` to `packages/contracts/.env` and fill in only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` for that wallet; the other wallets in the file belong to the deploy and seed scripts. It needs at least 0.0008 test BTC (0.0005 to lock, the rest for gas) from the [faucet](https://faucet.test.mezo.org), and a few cents of MUSD for the interest. The faucet gives only BTC, so get the MUSD by borrowing 10 MUSD on [Borrow](/borrow) with the same wallet, or by swapping BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). The script checks both balances before it sends anything.
 
@@ -48,7 +55,7 @@ If a run stops after the borrow, it prints the position and block, and `bash pac
 
 Each run costs gas, a few cents of MUSD interest, and 0.0005 test BTC that stays locked in the returned veBTC position until the loan date. It does not prove auctions, settle or redemption, or behaviour while the oracle is stale. The mainnet fork tests and the example loans cover those.
 
-## 2. The fork tests (real Mezo mainnet state)
+## 2. The fork tests (real Mezo state)
 
 From `packages/contracts`:
 
@@ -56,31 +63,60 @@ From `packages/contracts`:
 forge test --match-path "test/fork/*" -vv
 ```
 
-They fork Mezo mainnet and testnet through the public RPCs named in `foundry.toml`, so they need no key.
+They fork Mezo mainnet and testnet through the public RPCs named in `foundry.toml`, so they need no key. Public nodes fail at times: a dropped request shows as an HTTP error such as 504 or a reset connection, or as `EvmError: Revert` when it was inside a call to a Mezo contract. To switch node for one run, set `MEZO_MAINNET_RPC` (or `MEZO_TESTNET_RPC` for the testnet suites):
+
+```bash
+MEZO_MAINNET_RPC=https://mezo.drpc.org forge test --match-path "test/fork/*"
+```
+
+Other public mainnet nodes are `https://mezo-mainnet.boar.network` (the default) and `https://mainnet.mezo.public.validationcloud.io`. A value in the shell wins over `packages/contracts/.env`, only the node's host is logged, and each suite checks the chain id after the switch, so a mainnet variable pointed at testnet fails at once. The run of 4 November 2026 on dRPC ended with:
+
+```text
+Ran 6 test suites in 128.50s (235.35s CPU time): 18 tests passed, 0 failed, 0 skipped (18 total tests)
+```
 
 | Suite | What it proves |
 | --- | --- |
 | [ForkSmoke.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/ForkSmoke.t.sol) | The tests can read a live veBTC position and the MUSD BTC price on mainnet and testnet, with the right `locked()` layout on each. |
 | [CoreSliceFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/CoreSliceFork.t.sol) | A real mainnet position's owner deposits, borrows, repays, withdraws and borrows again from a lender's offer, and after the date the lender redeems the full face. |
 | [ResolutionFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/ResolutionFork.t.sol) | An unsafe loan sells half way down its curve; an unsold auction settles the real lock and lenders redeem Bitcoin; a real vote is cleared through the real PoolsVoter once the epoch turns; a loan rolls. |
-| [PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol) | The borrower votes, collects a real incentive, extends the lock and claims from the real fee distributor through LoanManager; a BoostVoter vote leaves veBTC's voted flag alone; a permanent position voted on both voters is cleared and settled; `lockAndBorrow` mints a real testnet position into LoanManager; real pool fees reach the borrower. |
+| [PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol) | The borrower votes, collects a real incentive, extends the lock and claims from the real fee distributor through LoanManager; a BoostVoter vote leaves veBTC's voted flag alone; a permanent position voted on both voters (mainnet, where ValidatorsVoter exists) is cleared and settled; `lockAndBorrow` mints a real testnet position into LoanManager; real pool fees reach the borrower. |
+| [SavingsFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/SavingsFork.t.sol) | On mainnet, a lender parks two offers in the real sMUSD vault; a real position's owner borrows from the first and is paid exactly the principal out of the vault, and the lender cancels the second and gets exactly its amount back. |
+| [PayDownFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PayDownFork.t.sol) | On testnet, against Mezo's real Router and pools: a harvest sells a BTC reward through the real BTC/MUSD pool at or above the oracle floor, and reverts once a large swap pushes that pool 5% under the oracle; a borrower's `harvestAndSwap` sells an mT reward at the borrower's minimum, and reverts once that pool is pushed 5%. |
 
 Each suite ends with a line that starts "Suite result: ok." when every test in it passes, and prints FAIL with the reason when one does not.
 
-What they do not cover: the live Skip oracle and Mezo's BTC precompile cannot run inside a local fork, so the price is read from the node once at the fork block and then mocked or moved by hand, and a stand-in replaces the BTC token wherever BTC moves. Real buyers and keepers, positions owned by contracts, and grant or managed positions are not covered either.
+What they do not cover: the live Skip oracle and Mezo's BTC precompile cannot run inside a local fork, so the price is read from the node once at the fork block and then mocked or moved by hand, and a stand-in replaces the BTC token wherever BTC moves. PayDownFork uses stand-ins for veBTC, PoolsVoter and the reward contract so a week of rewards can be owed at once. Yield arriving in the vault between a post and a fill, a vault owner changing its strategy, real buyers and keepers, positions owned by contracts, and grant or managed positions are not covered either.
 
 ## 3. Unit, fuzz, invariant and audit tests
 
 From `packages/contracts`:
 
 ```bash
-forge test --match-path "test/unit/*"
+forge test --no-match-path "test/fork/*"
 forge test --match-path "test/audit/*" -vv
 ```
 
-Fuzz tests run 1,000 cases each and invariant tests 256 runs of depth 64 (`foundry.toml`). The audit suite holds the tests written for the [audit findings](/docs/security/audit). Every test file opens with a comment that says what it does not cover.
+The first runs everything that needs no network. On 4 November 2026 it ended with:
 
-## 4. The website test
+```text
+Ran 22 test suites in 19.87s (43.27s CPU time): 391 tests passed, 0 failed, 0 skipped (391 total tests)
+```
+
+Fuzz tests run 1,000 cases each and invariant tests 256 runs of depth 64 (`foundry.toml`). The audit suite holds the tests written for the [audit findings](/docs/security/audit) of both reviews. Every test file opens with a comment that says what it does not cover.
+
+## 4. The explorer verification of both pairs
+
+Every Doji contract is verified on Mezo's testnet explorer, and one script checks it from the deployment record. From `packages/contracts`:
+
+```bash
+bash script/verify-testnet.sh deployments/31611-wave2.json
+bash script/verify-testnet.sh                 # the 20 October pair, deployments/31611.json
+```
+
+It encodes each contract's constructor arguments from the record, compares them byte for byte with the contract's real creation transaction, and submits CreditMarkets, LoanManager, PayDown and UnitMarket (when the record lists them) and then PassThrough. A contract the explorer already shows as verified is skipped, so it is safe to run again, and it exits non-zero if any contract ends unverified. It needs no key.
+
+## 5. The website test
 
 The site itself was driven in a headless Chrome against Mezo testnet with a test wallet, clicking through Borrow, My loans and Lend. Every transaction was sent from the page and checked on chain through both the RPC and the explorer. The record, with every transaction link, is [docs/proof/ui-live-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/ui-live-2026-10-20.md). To repeat it, follow the [Quick start](/docs/getting-started) with your own wallet and open each transaction on the explorer.
 

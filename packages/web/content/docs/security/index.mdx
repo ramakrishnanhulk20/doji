@@ -1,6 +1,6 @@
 ---
 title: Security overview
-description: Custody first, the October 5 incident, the 29 rules the contracts keep, and what Doji does not defend against.
+description: Custody first, the October 5 incident, the 52 rules the contracts keep (C30 to C52 for Wave 2), static analysis, and what Doji does not defend against.
 ---
 
 Doji holds other people's veBTC positions. Custody comes first, because a contract that holds many positions concentrates one kind of risk: a single flaw can reach every one of them at once.
@@ -9,9 +9,11 @@ Doji holds other people's veBTC positions. Custody comes first, because a contra
 On 5 October 2026 an attacker moved 37 veBTC positions on Mezo mainnet through a trusted-forwarder (meta-transaction) sender-check flaw ([Mezo's incident report](https://mezo.org/blog/incident-report-october-5-2026)). Meta-transactions on veBTC are now disabled. Doji has no meta-transaction or forwarder path at all, and it names a flaw in veBTC itself as a non-goal: the guardian can stop new borrows, but cannot reverse a theft.
 </Callout>
 
-The full standard is [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md). It was written before any contract code, from a plain description of the system, and section C is the definition of done: a contract is finished only when every rule is upheld and a test shows it. The contracts cannot be upgraded, so a bug or a Mezo change cannot be fixed in place; the only answer is to pause new risk and launch a new deployment that users move to themselves.
+The full standard is [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md). It was written before any contract code, from a plain description of the system, and written again the same way for Wave 2 before any Wave 2 code. Section C is the definition of done: a contract is finished only when every rule is upheld and a test shows it. The contracts cannot be upgraded, so a bug or a Mezo change cannot be fixed in place; the only answer is to pause new risk and launch a new deployment that users move to themselves. That is what Wave 2 is: a new pair, deployed on 4 November 2026, that takes new offers and loans while the 20 October pair keeps serving what was opened on it.
 
 ## The rules, as the threat model groups them
+
+C1 to C29 cover both pairs. The Wave 2 rules, C30 to C52, follow them.
 
 ### Custody and identity
 
@@ -71,13 +73,61 @@ The full standard is [docs/security/threat-model.md](https://github.com/ramakris
 4. Fail closed: revert on an unknown lock layout, a zero or stale price, a bad date, a short fill or a custody mismatch. Exits and resolutions are the deliberate exception and are never paused.
 5. Name the non-goals, below.
 
+## The Wave 2 rules, by feature
+
+Each rule links to its full text in the threat model.
+
+### Offers that earn in sMUSD while they wait
+
+- [C30](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c30). Parked principal is exactly accounted for and never topped up from anyone else: a deposit must mint exactly the amount, a withdraw must burn exactly the principal and return at least that much, and a borrower is paid exactly the principal.
+- [C31](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c31). Makers are paid yield only from yield the vault actually delivered, never from escrow or collections. If booked yield ever runs ahead of delivered, by a few wei of rounding or a vault that reports more than it pays, the last makers to withdraw are short, never lenders.
+- [C32](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c32). An offer is parked or plain from the moment it is posted, and its yield clock stops for good when its MUSD leaves the vault. The guardian's pull-out runs in fixed gas with no loop.
+- [C33](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c33). Fills and cancels book yield and cut the remainder before the vault is called, under the reentrancy lock.
+- [C34](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c34). No standing permission reaches parked money: the vault is approved for exactly the deposit and the approval is reset, and rescue never moves sMUSD.
+- [C35](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c35). A vault fault stays inside parked principal. Plain offers, repay, redemption, early payouts, finalize and every resolution never call the vault, and every keeper run checks that the vault would return the whole parked principal.
+
+### The reward operator
+
+- [C36](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c36). Only the borrower names or clears the operator, which can call `claimRewards` for that position and nothing else, and it is deleted with the position.
+- [C37](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c37). Rewards go to whoever calls the claim, and naming an operator never takes away the borrower's own claim, clear or repay. LoanManager relies on no PayDown code.
+
+### PayDown
+
+- [C38](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c38). A harvest moves only what it received, inside one call that cannot be re-entered, and everything not repaid goes to the borrower in the same call.
+- [C39](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c39). No harvest sells BTC below the oracle price less the slippage allowance (1% now, never above 3%), checked on the MUSD measured arriving. A token with no reference price is sold only in a harvest the borrower runs, at the borrower's own minimum.
+- [C40](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c40). A harvest sells only what the debt needs, and with no loan it sells nothing.
+- [C41](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c41). A harvest changes a loan only by repaying it, also during an auction, so a harvest that covers the debt cures it, and it reverts whole if any step fails.
+- [C42](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c42). PayDown's addresses are fixed at deployment. The owner can set only the capped slippage allowance, the guardian and an unpause, and rescue strays; the guardian can only pause harvests, which never touches the borrower's own claim or repay.
+
+### UnitMarket
+
+- [C43](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c43). A listing exists only for real units of the Wave 2 CreditMarkets, created by the holder's own transfer, so no approval for all units is ever needed.
+- [C44](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c44). A listing's terms, its fee rate included, never change after it is posted, and ids are never reused.
+- [C45](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c45). A buy is exact and paid in full: never a part fill, never at zero cost, never above the buyer's maximum price.
+- [C46](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c46). Exits are never blocked: the seller can cancel at any time and anyone can return an expired listing, whatever the pause or fee.
+- [C47](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c47). A listing price is the seller's ask and never a value: no contract, keeper or screen uses it as the worth of a unit or of collateral.
+
+### The keeper, the website and the two pairs
+
+- [C48](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c48). Every resolution job runs before any harvest, harvests have their own capped budget, and every harvest is simulated before it is sent.
+- [C49](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c49). Every offer, loan, unit, date, listing and harvest is identified by its contract and its id, never by the id alone, and every write goes to the pair that holds the object.
+- [C50](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c50). The website shows an offer's yield and whether its MUSD is in the vault from contract views, names only the address-book PayDown, and asks for an exact allowance for a buy.
+- [C51](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c51). The deploy checked the vault, the Router and every fixed address before sending anything.
+- [C52](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c52). During a vault outage the website builds borrows and rolls from plain offers only. If the guardian's pull-out cannot run, parking stops and lenders cancel parked offers one by one.
+
+Wave 2 also changes a few earlier rules: the borrower check (C4) now lets the operator claim, and a claim runs during an auction; a reward claim (C10) pays the caller; the guardian (C19) can also stop parking and pull out; and CreditMarkets never rescues sMUSD (C25). The [threat model](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md) lists every change.
+
+## Static analysis
+
+Slither 0.11.6 on the Wave 2 code found 57 results at the deploy gate, and a wider run that also covers Doji's own libraries finds 13 more. Every one, with where it is and why it is safe, is in [docs/security/slither-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/slither-2026-11-04.md).
+
 ## What Doji does not defend against
 
 - A malicious or broken Mezo contract or upgrade: veBTC, PoolsVoter, BoostVoter, the fee distributor, MUSD or PriceFeed. A veBTC flaw reaches all collateral at once.
 - Wrong prices inside the oracle's 60-second window, MUSD trading away from 1 USD, or an oracle outage longer than the time limit.
 - Bitcoin price moves after a settle. Lenders paid in BTC carry that risk until they sell.
 - Losses shared across a date. Every unit at that date shares a shortfall, including units of lenders who never chose that loan.
-- An exit before the date. Units can be sent, but Doji provides no buyer and no price.
+- A unit buyer's risks. Wave 2 units can be listed on UnitMarket at a price of at most 1 MUSD a unit, but UnitMarket gives no price, no buyer and no guarantee, and a buyer takes on that date's shared losses. 20 October units can be sent but not listed.
 - Interest after the date. The face is fixed while a late loan resolves.
 - Mempool griefing that only makes a borrow revert, such as a cancel or another fill landing first.
 - Keeper uptime. The hosted keeper is best effort, and anyone can run it.
@@ -85,12 +135,20 @@ The full standard is [docs/security/threat-model.md](https://github.com/ramakris
 - Mezo's PoolsVoter trusts an ERC-2771 forwarder. A flaw there could act as LoanManager on PoolsVoter; the worst outcome is a delayed settle.
 - A secondary voter Mezo adds to veBTC after deployment, whose votes would block settle until reset by other means.
 - BTC that a stranger's fee-distributor claim delivers for an expired lock is credited to nobody. The owner can move it with `rescueToken` and is trusted to return it to that position's borrower.
-- A whitelisted reward token whose own code calls out during a claim. At most it can move value that is credited to nobody.
+- A reward token whose own code calls out during a claim (on Wave 2, any token the gauge's reward contract lists; on the 20 October pair, a whitelisted one). At most it can move value that is credited to nobody.
 - A compromised wallet or RPC, or an npm or Vercel supply-chain attack beyond lockfile pinning.
 - An owner key compromise beyond the hard bounds, or a settings change inside them that lands just before your borrow or roll. The setters have no timelock; the site shows the terms a loan will get.
 - A delay, not a loss, on the share of a date still owed by an unpaid loan, up to about 5 weeks. Everything already collected can be withdrawn from the date.
 
+Added for Wave 2:
+
+- A failure, loss, pause, fee or upgrade in Mezo's sMUSD vault. While it refuses withdrawals, parked offers cannot be cancelled or filled, and a pull-out also needs it to work. The vault trusts an ERC-2771 forwarder, and a flaw there would reach every parked dollar at once. A plain offer is the choice that nothing outside Doji can block.
+- No cap on the total parked in one vault, and deposits timed around the vault's yield payments, which dilute every holder equally as the vault is designed. On testnet the vault has no fee collector wired, so anyone can trigger a payment and take a share of it inside one transaction.
+- Price moves and ordering profits inside PayDown's slippage allowance and the oracle's window, thin pools (a harvest that cannot meet its floor reverts and waits), and reward tokens with no reference price, which are sold only when the borrower runs the harvest with their own minimum.
+- A borrower who names a hostile operator: they lose that position's rewards, never its collateral or debt. A borrower who wants MUSD-only pay-down without BTC sales has no switch for it today, other than naming no operator.
+- One key holding every role at deployment. That is a testnet setup: before any mainnet use the owner becomes a multisig and the guardian a separate key.
+
 ## More
 
-- [Audit](/docs/security/audit): the findings of the independent review and how each was fixed.
+- [Audit](/docs/security/audit): the findings of both independent reviews, 4 November and 20 October, and how each was settled.
 - [Try to break it](/docs/security/try-to-break-it): twelve attacks you can run against the live contracts.

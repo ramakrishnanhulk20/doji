@@ -1,9 +1,9 @@
 ---
 title: Architecture
-description: How the pieces connect, a loan's life and where the money goes, in three diagrams.
+description: How the pieces connect, a loan's life and where the money goes, in three diagrams, with PayDown, UnitMarket, the sMUSD vault and Mezo's Router.
 ---
 
-Doji lends MUSD against veBTC on Mezo at a fixed rate until a fixed Thursday. Two immutable contracts hold everything: `CreditMarkets` (lender offers and one market per Thursday, with ERC-1155 credit units) and `LoanManager` (custody of veBTC positions, loans, auctions and settlement). A keeper script on GitHub Actions calls the same public functions anyone can call. The website reads the chain directly; there is no backend and no database.
+Doji lends MUSD against veBTC on Mezo at a fixed rate until a fixed Thursday. Each deployment is a pair of immutable contracts: `CreditMarkets` (lender offers and one market per Thursday, with ERC-1155 credit units) and `LoanManager` (custody of veBTC positions, loans, auctions and settlement). The Wave 2 pair, deployed on 4 November 2026, adds two more: `PayDown` (a position's pool rewards repay its loan) and `UnitMarket` (credit units for sale before their date), and its CreditMarkets can park an offer's waiting MUSD in Mezo's sMUSD vault. New offers and new loans go to the Wave 2 pair; the 20 October pair keeps serving every loan, offer, unit and auction opened on it. A keeper script on GitHub Actions calls the same public functions anyone can call, for both pairs. The website reads the chain directly; there is no backend and no database. Addresses for both pairs are on [Contracts](/docs/developers/contracts).
 
 ## 1. How the pieces connect
 
@@ -12,41 +12,57 @@ flowchart LR
   subgraph People
     B[Borrower wallet]
     L[Lender wallet]
-    X[Anyone: buyer or keeper]
+    X["Anyone: buyer, unit buyer or keeper"]
   end
 
-  subgraph Doji["Doji on Mezo"]
-    LM[LoanManager<br/>custody, loans,<br/>auctions, settle]
-    CM[CreditMarkets<br/>offers, Thursday markets,<br/>credit units]
-    PT[PassThrough library<br/>votes, rewards,<br/>clear before settle]
+  subgraph Doji["Doji on Mezo, the Wave 2 pair"]
+    LM["LoanManager: custody, loans, auctions, settle"]
+    CM["CreditMarkets: offers, Thursday markets, credit units"]
+    PT["PassThrough library: votes, rewards, clear before settle"]
+    PD["PayDown: rewards repay the loan"]
+    UM["UnitMarket: credit units for sale"]
   end
 
   subgraph Mezo["Mezo contracts"]
     VE[veBTC]
     PV[PoolsVoter]
-    VV[ValidatorsVoter]
+    RW["Pool fee and incentive reward contracts"]
+    VV["ValidatorsVoter, mainnet only"]
     FD[veBTC fee distributor]
-    PF[MUSD PriceFeed<br/>Skip BTC/USD oracle]
+    PF["MUSD PriceFeed, Skip BTC/USD oracle"]
+    SV["sMUSD vault, MUSDSavingsRate"]
+    RT["Router and the BTC/MUSD pool"]
     MUSD[MUSD]
     BTC[BTC ERC-20]
   end
 
-  B -- "deposit, lockAndBorrow, borrow,<br/>repay, roll, withdraw, vote, claim" --> LM
-  L -- "postOffer, cancelOffer, claimUnits,<br/>withdrawCollected, redeem" --> CM
-  X -- "startAuction, purchase,<br/>prepareSettle, settle" --> LM
+  B -- "deposit, lockAndBorrow, borrow, repay, roll, withdraw, vote, claim, setRewardOperator" --> LM
+  L -- "postOffer, postParkedOffer, cancelOffer, withdrawOfferYield, claimUnits, withdrawCollected, redeem" --> CM
+  L -- "safeTransferFrom with a price lists units" --> CM
+  CM -- "onERC1155Received" --> UM
+  X -- "buy, returnExpired" --> UM
+  X -- "startAuction, purchase, prepareSettle, settle" --> LM
   X -- finalize --> CM
+  X -- harvest --> PD
+  PD -- "claimRewards as the operator, repay" --> LM
+  PD -- "sell BTC, only what the debt needs" --> RT
+  PD -- fetchPrice --> PF
   LM -- "fill, credit, creditBtc" --> CM
+  CM -- "deposit, withdraw, claimYield" --> SV
   LM -. delegatecall .-> PT
-  LM -- "transferFrom, createLockFor,<br/>withdraw, locked" --> VE
-  PT -- "vote, reset" --> PV
-  PT -- reset --> VV
-  PT -- "claimFees, claimBribes" --> PV
+  LM -- "transferFrom, createLockFor, withdraw, locked" --> VE
+  PT -- "vote, reset, claimFees, claimBribes" --> PV
+  PV -- "claim for this position" --> RW
+  PT -- isReward --> RW
+  PT -- "reset, mainnet only" --> VV
   LM -- claim --> FD
   LM -- fetchPrice --> PF
   CM -- "escrow and pay out" --> MUSD
   LM -- "pull and pay out" --> MUSD
   LM -- "lock and settle" --> BTC
 ```
+
+The 20 October pair has the same LoanManager, CreditMarkets and PassThrough without the Wave 2 parts: no PayDown, no UnitMarket, no sMUSD vault and no reward operator, and its reward claims accept only PoolsVoter's whitelisted tokens. ValidatorsVoter exists only on Mezo mainnet: both testnet records hold the zero address for it, so on testnet Doji passes votes to PoolsVoter only.
 
 ## 2. A loan's life
 
@@ -56,10 +72,12 @@ stateDiagram-v2
   InCustody --> Active: borrow
   [*] --> Active: lockAndBorrow
   Active --> Active: roll to a later Thursday
-  Active --> Repaid: repay in full
+  Active --> Active: a PayDown harvest repays part of the debt
+  Active --> Repaid: repay in full, or a harvest that covers the debt
   Active --> Auction: startAuction (overdue or unsafe)
+  Auction --> Auction: reward claims and harvests still run
   Auction --> Active: cancelAuction (an LTV auction, safe again)
-  Auction --> Repaid: repay in full
+  Auction --> Repaid: repay in full, or a harvest that covers the debt
   Auction --> Sold: purchase at the auction price
   Auction --> Settled: settle, after the floor time and the lock end
   Active --> WrittenOff: writeOff, only if custody is lost
@@ -71,16 +89,23 @@ stateDiagram-v2
   WrittenOff --> [*]
 ```
 
-Every ending reduces its Thursday market's open-loan count by exactly one. When the Thursday has passed and that count is zero, anyone can call `finalize` and the market's lenders can redeem.
+Every ending reduces its Thursday market's open-loan count by exactly one. When the Thursday has passed and that count is zero, anyone can call `finalize` and the market's lenders can redeem. A harvest changes a loan only by repaying it: as the reward operator, PayDown can call `claimRewards` for that position and nothing else (C36, C41).
 
 ## 3. Where the money goes
 
 ```mermaid
 flowchart TB
-  O[Lender posts an offer:<br/>MUSD held in CreditMarkets] -->|a borrower takes it| P[Principal to the borrower]
-  P --> U[Lender gets credit units<br/>1 unit = 1 MUSD due on the Thursday<br/>protocol fee = units too, 10% of the interest]
+  O["Lender posts an offer: MUSD held in CreditMarkets"] -->|a borrower takes it| P[Principal to the borrower]
+  OP["Lender posts a parked offer: MUSD waits in the sMUSD vault"] -->|a borrower takes it, withdrawn in the same call| P
+  OP -->|while it waits| Y["Vault yield, booked to the offer, paid by withdrawOfferYield"]
+  P --> U["Lender gets credit units: 1 unit = 1 MUSD due on the Thursday, protocol fee = units too, 10% of the interest"]
+  U -->|sold before the date| UM["UnitMarket: a buyer pays the seller's price, at most 1 MUSD a unit"]
+  UM --> UM1["Seller: the price less the listing's fee"]
+  UM --> UM2["Treasury: the fee, 0.25% now, claimed later"]
   P --> R{How does the loan end?}
+  RW["Pool rewards of a position that named PayDown"] -->|harvest| H["MUSD repays the loan, BTC sold on Mezo's pool only as far as the debt needs, the rest to the borrower"]
   R -->|repay or roll| C1[MUSD to the Thursday market]
+  H --> C1
   R -->|auction sale| S[Buyer pays the price P]
   S --> S1[Market: min of P and the debt]
   S --> S2[Protocol: the penalty, from what is left]
@@ -89,26 +114,36 @@ flowchart TB
   T --> T1[Market: BTC worth the debt at the oracle price]
   T --> T2[Protocol: the penalty in BTC]
   T --> T3[Borrower: the rest of the BTC]
-  C1 --> M[Thursday market:<br/>collected MUSD and BTC]
+  C1 --> M["Thursday market: collected MUSD and BTC"]
   S1 --> M
   T1 --> M
-  M -->|after the Thursday| W[Lenders withdraw their share of<br/>what is collected so far]
+  M -->|after the Thursday| W[Lenders withdraw their share of what is collected so far]
   M -->|after the last loan ends| F[finalize, then redeem the rest]
 ```
 
-Each Thursday is its own market, so a loss on one date never touches another. Inside a date, every unit (lenders' and the protocol's) shares collections pro rata.
+Each Thursday is its own market, so a loss on one date never touches another. Inside a date, every unit (lenders' and the protocol's) shares collections pro rata. Vault yield never enters a market or an offer's escrow, and it is paid only out of yield the vault actually delivered (C31). A unit sold on UnitMarket carries its whole claim on the date to the buyer.
 
 ## What the website reads and writes
 
-The app talks to the chain through wagmi and viem, reads addresses from a book keyed by chain id (generated from the deployment record) and simulates every write before the wallet sees it. Every sent transaction is confirmed from the RPC and Mezo's explorer together.
+The app talks to the chain through wagmi and viem, reads addresses from a book keyed by chain id, generated from the deployment records of both pairs, and simulates every write before the wallet sees it. Every sent transaction is confirmed from the RPC and Mezo's explorer together. New offers and new loans are built only on the Wave 2 pair. Everything a user already has (offers, loans, units, claims, auctions, loan pages) is read from both pairs, each item tagged with its pair, and written back to the pair that holds it. Nothing is identified by a maturity or a token id alone (C49).
 
 | Screen | Reads | Writes |
 | --- | --- | --- |
 | Landing | veBTC `supply` and PriceFeed `fetchPrice` on Mezo mainnet; open offers (`nextOfferId`, `offerOf`), `marketOf` per Thursday, risk settings, open auctions, explorer verification | none |
 | Borrow | offers, `quoteFill`, `fetchPrice`, risk settings, the wallet's veBTC (`balanceOf`, `ownerToNFTokenIdList`, `escrowType`, `grantManager`, `lockOf`) and positions Doji holds for it | BTC `approve`, `lockAndBorrow`; or veBTC `approve`, `deposit`, `borrow` |
-| Lend | offers, `quoteFill`, the wallet's offers (OfferPosted logs), units per Thursday (`balanceOf`, `pendingUnits`, `claimOf`, `marketOf`) | MUSD `approve`, `postOffer`, `cancelOffer`, `claimUnits`, `safeTransferFrom`, `withdrawCollected`, `finalize`, `redeem` |
-| My loans | positions from Deposited logs with `positionOf`, `loanOf`, `owedOf`, `collateralValue`, `lockOf`, `isUnsafe`, `isOverdue`, veBTC `voted`, fee distributor `claimable`, `claimableMusd`, `claimableBtc` | MUSD `approve`, `repay`, `roll`, `withdrawCollateral`, `claim` |
-| Loan page | the same for any id, plus `auctionOf` and `auctionPrice` | `purchase`, `startAuction`, `cancelAuction`, `prepareSettle`, `settle` |
+| Lend | offers, `quoteFill`, the wallet's offers (OfferPosted logs, each kept only if `offerOf` names the wallet as maker), units per Thursday (`balanceOf`, `pendingUnits`, `claimOf`, `marketOf`) | MUSD `approve`, `postOffer`, `cancelOffer`, `claimUnits`, `safeTransferFrom`, `withdrawCollected`, `finalize`, `redeem` |
+| My loans | positions from Deposited logs with `positionOf`, `loanOf`, `owedOf`, `collateralValue`, `lockOf`, `isUnsafe`, `isOverdue`, veBTC `voted`, fee distributor `claimable`, `claimableMusd`, `claimableBtc` | MUSD `approve`, `repay`, `roll`, `extendLock`, `vote`, `resetVotes`, `claimRewards`, `claimRebase`, `withdrawCollateral`, `claim` |
+| Loan page | the same for any id, plus `auctionOf` and `auctionPrice` | MUSD `approve` and `purchase`, `startAuction`, `cancelAuction`, `prepareSettle`, `settle`; for the loan's borrower, the My loans writes |
 | Try to break it | live targets | none: twelve simulated calls that the contracts refuse |
+
+The Wave 2 parts of those screens, under rules C49 and C50:
+
+| Screen | Reads | Writes |
+| --- | --- | --- |
+| Lend: "Earn in sMUSD while it waits" | `parkingOn`; for each parked offer `offerOf` (its `parked` flag), `isInVault` and `pendingOfferYield`; the wallet's `yieldOwedOf` | `postParkedOffer` instead of `postOffer` when the switch is on; `withdrawOfferYield` |
+| Lend: "Credit units for sale" | UnitMarket `Listed` events, each listing re-read with `listingOf`; `quoteBuy` for the exact cost | listing by CreditMarkets `safeTransferFrom` to UnitMarket with `abi.encode(uint128 pricePerUnit, uint64 expiry)`; MUSD `approve` for exactly the quoted cost, then `buy`; `cancel`; `returnExpired` |
+| My loans and the loan page: pay-down | `positionOf` (its `rewardOperator`); PayDown `Harvested` events for the position, re-read from the chain | `setRewardOperator(tokenId, PayDown)` to opt in, `setRewardOperator(tokenId, 0)` to stop |
+
+The pay-down switch only ever names the PayDown in the address book, and a position whose operator is any other address shows a warning (C50).
 
 The source of these diagrams is [ARCHITECTURE.md](https://github.com/ramakrishnanhulk20/doji/blob/main/ARCHITECTURE.md).

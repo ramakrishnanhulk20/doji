@@ -21,8 +21,9 @@ The live numbers, Bitcoin locked as veBTC on Mezo, MUSD on offer and the best ra
 | Borrowers | Interest at the lender's fixed rate, from the moment the offer is taken to the Thursday | In the fixed amount owed on the date. Repaying early still costs the full amount. |
 | The protocol's share | 10% of that interest, issued as the protocol's own credit units at the same date | At each fill. The units are paid like any lender's and share any loss at that date pro rata, so the protocol is paid in full only when its lenders are. |
 | A borrower whose loan is auctioned or settled | A penalty of 5% of the debt | Only out of what is left above the debt, after lenders are paid. In BTC when the loan settles in BTC. |
+| A lender who sells credit units before the date | A fee of 0.25% of the sale, at most 1% | Out of what the buyer pays, at the rate fixed when the units were listed. Wave 2 units only. |
 
-There is no other fee. Posting, cancelling, repaying, rolling, withdrawing, claiming and redeeming cost only Mezo gas, paid in BTC.
+There is no other fee. Posting, parking, cancelling, repaying, rolling, withdrawing, claiming, harvesting, listing and redeeming cost only Mezo gas, paid in BTC. The sMUSD yield a parked offer earns goes to its lender in full.
 
 For example, 1,000 MUSD lent at 6% for 28 days earns 4.60 MUSD of interest. The lender is owed 1,004.14 MUSD and the protocol holds 0.46 units at that date.
 
@@ -37,9 +38,12 @@ For example, 1,000 MUSD lent at 6% for 28 days earns 4.60 MUSD of interest. The 
 
 The limits come from nine years of Bitcoin prices ([Risk settings](/docs/concepts/risk-settings)). A failing loan is sold in a protected auction or settled in Bitcoin, never dumped on a thin market ([If a loan goes wrong](/docs/concepts/if-a-loan-goes-wrong)). The contracts cannot be upgraded, and every setting the owner can touch sits inside hard bounds and is copied into each loan ([Security](/docs/security)).
 
+## Live since 4 November 2026
+
+- Idle offer money earning in sMUSD, Mezo's MUSD savings vault, while it waits for a borrower. Each lender chooses per offer, and the borrower still receives plain MUSD. It runs on Mezo testnet's vault and is also proven against the mainnet vault on a fork.
+- A place to sell credit units before their date, so lenders can exit early: UnitMarket, for Wave 2 units, at a price of at most 1 MUSD a unit.
+- Rewards that pay the loan down: a borrower who names PayDown has the position's MUSD rewards repay the loan, and BTC rewards sold on Mezo's own pool only as far as the debt needs.
+
 ## What comes next
 
-- Idle offer money earning in sMUSD, Mezo's MUSD savings vault, while it waits for a borrower. sMUSD exists only on mainnet, so this part will be proven against mainnet state.
-- A place to sell credit units before their date, so lenders can exit early.
-- Rewards that pay the loan down: a borrower's rewards applied to what they owe.
 - A proposal to Mezo for a gauge on Doji's markets, so veBTC votes can steer MEZO emissions toward them.

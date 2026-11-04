@@ -5,9 +5,25 @@ description: Every claim Doji makes, with a screen, a file and a transaction you
 
 Doji asks you to take nothing on trust. Each answer below points to a screen on this site, a file in the open source repository, and a transaction on Mezo's testnet explorer where one exists.
 
+## What went live on 4 November 2026?
+
+The Wave 2 pair: offers that earn in Mezo's sMUSD vault while they wait, loans whose pool rewards pay them down, and a market for credit units before their date. The same day the 20 October pair, which keeps serving what was opened on it, was used end to end from a veBTC made on Mezo itself.
+
+| Where | What it shows |
+| --- | --- |
+| File [docs/proof/wave2-live-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md) | The Wave 2 deploy, all five contracts verified; two offers parked in the sMUSD vault and a borrow paid out of it; the pay-down loan 411 with PayDown as its reward operator; a sale of credit units. Every transaction and the chain reads that check it. |
+| File [docs/proof/live-paths-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/live-paths-2026-11-04.md) | On the 20 October pair: a veBTC locked directly on Mezo, deposited, borrowed against, repaid and taken back; fresh offers for three Thursdays; a lender paid out after two settles. |
+| Screen [/loans/411](/loans/411) | The pay-down loan: PayDown named as the reward operator, and its harvests once the first one runs after the epoch turns on 5 November. |
+| Transaction [0x626c46cc...1d7a](https://explorer.test.mezo.org/tx/0x626c46ccb4d1ec64e9eda76e1ac367f455506e3e9fcd627ff1c8857055841d7a) | An offer of 40 MUSD at 6.00% to Thu 12 Nov, parked in the sMUSD vault. |
+| Transaction [0xbec0ffd1...c210](https://explorer.test.mezo.org/tx/0xbec0ffd154bb4531e6fdc56175e179fda620936e0393ac36a6fb5fade517c210) | `lockAndBorrow` on the Wave 2 pair: 0.01 BTC locked as veBTC #411, 10 MUSD taken from a parked offer and paid out of the vault in the same transaction. |
+| Transaction [0x314b4d90...833a](https://explorer.test.mezo.org/tx/0x314b4d909072e09ec677d8dd3fad07fd8b1f296cf650117a33fe81530c76833a) | `setRewardOperator(411, PayDown)`: the borrower opts in to pay-down. |
+| Transaction [0xdd1881b9...b037](https://explorer.test.mezo.org/tx/0xdd1881b9a1f4c1b952fa3c8c5bb902fc5724d4e1d0a960f2519d653d90b86037) | 5 credit units listed at 0.99 MUSD each by sending them to UnitMarket. |
+| Transaction [0xd6c5abb1...f6c2](https://explorer.test.mezo.org/tx/0xd6c5abb1611b64ea6892669fa4f8b591c0482ab3e78e889dac28fb9e3117f6c2) | A second wallet buys 2 of those units for exactly 1.98 MUSD. |
+| Transaction [0xe1e46a08...819c](https://explorer.test.mezo.org/tx/0xe1e46a081f24aaf9489b8e09074e49929ca8efadfa0e37c9bd8c84352274228b) | `deposit(410)` on the 20 October pair: a veBTC locked on Mezo's own contract enters Doji. |
+
 ## Does it really run on Mezo?
 
-veBTC is the collateral and MUSD is the loan. Doji calls veBTC, PoolsVoter, ValidatorsVoter, the veBTC fee distributor, MUSD, MUSD's PriceFeed and the BTC token, and does nothing without them.
+veBTC is the collateral and MUSD is the loan. Doji calls veBTC, PoolsVoter, the veBTC fee distributor, MUSD, MUSD's PriceFeed and the BTC token, ValidatorsVoter on mainnet (it does not exist on testnet, so there Doji passes votes to PoolsVoter only), and on the Wave 2 pair Mezo's sMUSD vault and pool Router. It does nothing without them.
 
 | Where | What it shows |
 | --- | --- |
@@ -37,14 +53,16 @@ A two-sided market that extends what MUSD can do: veBTC holders borrow without e
 
 ## Is my Bitcoin safe in it?
 
-Two immutable contracts, a written rulebook with 29 rules each pointing to the code that keeps it, fuzz and invariant tests, fork tests against Mezo mainnet, an independent review with every finding fixed, and one command that proves the main promise live.
+Immutable contracts, a written rulebook with 52 rules each pointing to the code that keeps it, fuzz and invariant tests, fork tests against real Mezo state, two independent reviews with every finding settled, and one command that proves the main promise live.
 
 | Where | What it shows |
 | --- | --- |
 | Screen [/break](/break) | Twelve attacks simulated against the live contracts, each refused. |
 | Docs [/docs/developers/run-the-proof](/docs/developers/run-the-proof) | The prove-it command, the fork tests and the website test. |
-| File [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md) | The threat model: risks, attacker goals, the 29 rules and the non-goals. |
-| File [docs/audit/findings-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-10-20.md) | The review's findings and the failing tests behind them. |
+| File [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md) | The threat model: risks, attacker goals, the 52 rules (C30 to C52 for Wave 2) and the non-goals. |
+| File [docs/audit/findings-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-11-04.md) | The Wave 2 review's findings, each fixed, accepted or documented, and the failing tests behind the Low. |
+| File [docs/audit/findings-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-10-20.md) | The first review's findings and the failing tests behind them. |
+| File [docs/security/slither-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/slither-2026-11-04.md) | Every static-analysis result on the Wave 2 code, where it is and why it is safe. |
 | File [CreditInvariants.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/CreditInvariants.t.sol) | Randomised sequences of posts, fills, repays, rolls, sales, settles and redemptions, with the accounting checked after every step. |
 | File [prove-it.sh](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/script/prove-it.sh) and its [run](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-20.md) | "Doji promise proven: 8 of 8 checks passed". |
 | File [keeper.yml](https://github.com/ramakrishnanhulk20/doji/blob/main/.github/workflows/keeper.yml) | The keeper on GitHub Actions: main only, read-only token, actions pinned by commit. |
