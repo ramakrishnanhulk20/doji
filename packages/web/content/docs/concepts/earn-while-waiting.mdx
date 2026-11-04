@@ -37,7 +37,7 @@ Two rules keep this from ever touching other people's money:
 
 Under "Your offers", a parked offer still in the vault carries an "sMUSD" tag next to its amount left. The "Earned" column is the contract's own `pendingOfferYield` for that offer: what its waiting MUSD has earned since its yield was last booked. A plain offer, or one from the 20 October contracts, shows a dash.
 
-Above the table, "Earned in sMUSD" adds those figures up, and "Withdraw earnings" sends one `withdrawOfferYield` for every offer with something earned. When it lands the app says, for example, "0.0123 MUSD of sMUSD earnings sent to your wallet." If Mezo's vault has not paid out all of it yet, it adds "... MUSD more arrives once Mezo's vault pays it out." and the rest stays booked to you.
+A fill or a cancel books an offer's yield to its maker (`yieldOwedOf`) and its own figure starts again from zero. Above the table, "Earned in sMUSD" adds the offers' figures and that booked yield, and "Withdraw earnings" sends one `withdrawOfferYield` that books up to eight offers and pays everything booked. When it lands the app says, for example, "0.0123 MUSD of sMUSD earnings sent to your wallet." If Mezo's vault has not paid out all of it yet, it adds "... MUSD more arrives once Mezo's vault pays it out." and the rest stays booked to you.
 
 ## What can go wrong, and what Doji does
 

@@ -18,6 +18,7 @@ import {
   earnedNumber,
   fitsOffer,
   formatEarned,
+  MAX_YIELD_IDS,
   lendProblemText,
   parseRateBps,
   postOfferCall,
@@ -229,12 +230,19 @@ export function LendScreen({ initialDate }: { initialDate: number | null }) {
 
   const earnings = data.yields.data ?? NO_YIELDS;
   const yieldById = useMemo(() => new Map(earnings.map((entry) => [entry.id, entry])), [earnings]);
-  const earnedTotal = data.yields.data ? earnings.reduce((sum, entry) => sum + entry.pending, 0n) : null;
+  const owed = data.owed.data;
+  const earnedTotal =
+    data.yields.data && owed !== undefined ? earnings.reduce((sum, entry) => sum + entry.pending, owed) : null;
   const hasParkedOffer = (data.offers.data ?? []).some((offer) => offer.pair === "wave2" && offer.parked);
 
   const withdrawEarnings = async () => {
-    const ids = earnings.filter((entry) => entry.pending > 0n).map((entry) => entry.id);
-    if (ids.length === 0) return;
+    // The largest earners first, up to the contract's limit; an empty list still pays what is already booked.
+    const ids = earnings
+      .filter((entry) => entry.pending > 0n)
+      .sort((a, b) => (a.pending > b.pending ? -1 : a.pending < b.pending ? 1 : 0))
+      .slice(0, MAX_YIELD_IDS)
+      .map((entry) => entry.id);
+    if (ids.length === 0 && !owed) return;
     setRunningKey("withdraw-earnings");
     await send(withdrawOfferYieldCall(ids), (receipt) => {
       const paid = withdrawnYield(receipt.logs);

@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { PublicClient } from "viem";
+import type { Address, PublicClient } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
-import { readCreditUnits, readLendSettings, readMusdWallet, readMyOffers, readOfferYields, readParking } from "../lib/lend";
+import { readCreditUnits, readLendSettings, readMusdWallet, readMyOffers, readOfferYields, readParking, readYieldOwed } from "../lib/lend";
 import { readThursdayBoard } from "../lib/stats";
 import { APP_CHAIN_ID } from "../lib/wagmi";
 
@@ -78,6 +78,13 @@ export function useLendData() {
     refetchInterval: POLL_MS,
     retry: false,
   });
+  const owed = useQuery({
+    queryKey: ["lend", "owed", address],
+    queryFn: () => readYieldOwed(client as PublicClient, address as Address),
+    enabled: client !== undefined && walletReady && address !== undefined && parkedIds.length > 0,
+    refetchInterval: POLL_MS,
+    retry: false,
+  });
 
   const maxTermSeconds = settings.data?.maxTermSeconds;
   const units = useQuery({
@@ -88,5 +95,5 @@ export function useLendData() {
     retry: false,
   });
 
-  return { client, address, walletReady, isConnected, chainId, settings, dates, musd, offers, units, parking, yields };
+  return { client, address, walletReady, isConnected, chainId, settings, dates, musd, offers, units, parking, yields, owed };
 }

@@ -73,7 +73,7 @@ Any offer with MUSD left has a "Cancel" button. It asks "Cancel offer #7? 20.00 
 
 For a parked offer, "Earned" shows what the contract's `pendingOfferYield` says its waiting MUSD has earned since its yield was last booked, in MUSD with four decimals. Plain offers and 20 October offers show a dash.
 
-Once the wallet has a parked offer, "Earned in sMUSD" above the table adds those figures up, and "Withdraw earnings" collects them in one transaction. When it lands: "0.0123 MUSD of sMUSD earnings sent to your wallet." If Mezo's vault has not paid out all of it yet, the line adds "... MUSD more arrives once Mezo's vault pays it out." and the rest stays owed to you. Withdrawing earnings is never paused, and it does not touch the offer or its credit units.
+Once the wallet has a parked offer, "Earned in sMUSD" above the table adds those figures up, plus any yield already booked to you when a borrower took from a parked offer or you cancelled one, and "Withdraw earnings" collects it all in one transaction (up to eight offers at a time; press it again for more). When it lands: "0.0123 MUSD of sMUSD earnings sent to your wallet." If Mezo's vault has not paid out all of it yet, the line adds "... MUSD more arrives once Mezo's vault pays it out." and the rest stays owed to you. Withdrawing earnings is never paused, and it does not touch the offer or its credit units.
 
 <Callout type="info">
 The guardian can pause new offers. The screen then says "New offers are paused right now. Cancelling still works." No pause can stop a cancel. A parked offer's cancel can still wait on Mezo's vault: see [Earn while an offer waits](/docs/concepts/earn-while-waiting#what-can-go-wrong-and-what-doji-does).

@@ -55,7 +55,11 @@ const vaultWithdrawRead = parseAbi(["function withdraw(uint256 amount)"]);
 const yieldReads = parseAbi([
   "function pendingOfferYield(uint256 offerId) view returns (uint256 earned)",
   "function isInVault(uint256 offerId) view returns (bool)",
+  "function yieldOwedOf(address maker) view returns (uint256)",
 ]);
+
+/** withdrawOfferYield books at most this many offers per call (MAX_FILLS); more ids revert BadFillCount. */
+export const MAX_YIELD_IDS = 8;
 
 const quoteRead = parseAbi([
   "function quoteFill(uint128 principal, uint16 aprBps, uint64 maturity) view returns (uint256 face, uint256 makerUnits, uint256 treasuryUnits)",
@@ -209,6 +213,14 @@ export async function readOfferYields(client: PublicClient, ids: readonly bigint
     pending: reads[index * 2] as bigint,
     inVault: reads[index * 2 + 1] as boolean,
   }));
+}
+
+/**
+ * Yield already booked to the maker and not paid: a fill or a cancel books an offer's yield, after which the offer's
+ * own pendingOfferYield restarts from zero, so a lender whose parked offers were all taken is owed only this.
+ */
+export async function readYieldOwed(client: PublicClient, maker: Address): Promise<bigint> {
+  return client.readContract({ address: wave2Pair.creditMarkets, abi: yieldReads, functionName: "yieldOwedOf", args: [maker] });
 }
 
 export const earnedNumber = (wei: bigint): number => Number(formatUnits(wei, 18));
