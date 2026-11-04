@@ -13,13 +13,19 @@ import { useReducedMotion } from "../../lib/motion-mode";
 import {
   buildPayDownPlan,
   fixedText,
+  harvestAndSwapCall,
   harvestCall,
   harvestedLine,
   ledgerShares,
   nextThursday,
   parseHarvested,
+  parseSwapped,
+  quoteSale,
+  readOtherRewards,
   slippageText,
+  soldLine,
   sumRepaid,
+  tokenFixedText,
   turnOffCall,
   turnOnCall,
 } from "../../lib/paydown";
@@ -43,6 +49,10 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 const unavailable = <span className="loan-unavailable">unavailable</span>;
 
 const NOTHING_LINE = "Nothing to claim for this position yet. Rewards arrive after the week they were earned ends.";
+const VOTER_LINE = "Doji could not read the voter right now. Try again in a moment.";
+const NO_QUOTE_LINE = "Mezo's pools do not quote those rewards right now. Try again in a moment.";
+const SALE_NOTE =
+  "Each sale accepts at most 1% below what Mezo's pools pay now. If the price moves further before the transaction lands, nothing is sold and nothing changes.";
 
 const listVariants = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const rowVariants = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } } };
@@ -74,16 +84,19 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
   const gate = useLoanGate();
   const client = usePublicClient({ chainId: APP_CHAIN_ID }) as PublicClient | undefined;
   const { write, busy: writing } = useWrite();
-  const [acting, setActing] = useState<"toggle" | "harvest" | null>(null);
+  const [acting, setActing] = useState<"toggle" | "harvest" | "sell" | null>(null);
   const [seen, setSeen] = useState(false);
+  // Tokens the borrower has unticked. A token with a quote is ticked until it is listed here, so a quote that appears
+  // on a later refresh starts ticked too.
+  const [unticked, setUnticked] = useState<ReadonlySet<string>>(new Set());
 
   const loanOpen = view.loan.state === STATE_ACTIVE || view.loan.state === STATE_AUCTION;
-  const { state, harvests, quote, refresh } = usePayDown(id, true, loanOpen);
+  const isBorrower = gate.address !== undefined && view.borrower !== null && sameAddress(gate.address, view.borrower);
+  const { state, harvests, quote, others, refresh } = usePayDown(id, true, loanOpen, isBorrower);
   const current = state.data;
   const on = current?.isPayDown === true;
   const shown = reduced || seen;
   const off = busy || writing;
-  const isBorrower = gate.address !== undefined && view.borrower !== null && sameAddress(gate.address, view.borrower);
 
   const stop = (detail: string) => {
     showToast({ id: `paydown-note-${(noteCounter += 1)}`, kind: "problem", title: "Not sent", detail });
@@ -113,7 +126,7 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
       try {
         plan = await buildPayDownPlan(client, id);
       } catch {
-        stop("Doji could not read the voter right now. Try again in a moment.");
+        stop(VOTER_LINE);
         return;
       }
       if (plan.gauges.length === 0) {
@@ -132,6 +145,115 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
       setActing(null);
     }
   };
+
+  const flipTick = (token: string) => {
+    setUnticked((before) => {
+      const next = new Set(before);
+      if (!next.delete(token)) next.add(token);
+      return next;
+    });
+  };
+
+  const otherRows = others.data ?? [];
+  const tickedTokens = otherRows
+    .filter((row) => row.quote !== null && !unticked.has(row.reward.token.toLowerCase()))
+    .map((row) => row.reward.token.toLowerCase());
+  const showOthers = isBorrower && !gate.wrongChain && on && loanOpen && otherRows.length > 0;
+
+  // The quotes on screen can be 30 seconds old, so the sale asks Mezo's pools again for the ticked tokens and sends the
+  // fresh minimums. A ticked token that lost its quote is left out and stays with the wallet.
+  const sell = async () => {
+    if (client === undefined) return;
+    setActing("sell");
+    try {
+      let plan;
+      let fresh;
+      try {
+        plan = await buildPayDownPlan(client, id);
+        const pending = (await readOtherRewards(client, id, plan)).filter((reward) =>
+          tickedTokens.includes(reward.token.toLowerCase()),
+        );
+        fresh = await Promise.all(
+          pending.map(async (reward) => ({ reward, quote: await quoteSale(client, reward.token, reward.amount) })),
+        );
+      } catch {
+        stop(VOTER_LINE);
+        return;
+      }
+      const swaps = fresh.flatMap((row) =>
+        row.quote === null ? [] : [{ token: row.quote.token, amountOutMin: row.quote.amountOutMin, routes: row.quote.routes }],
+      );
+      if (swaps.length === 0) {
+        stop(NO_QUOTE_LINE);
+        return;
+      }
+      const labels = fresh.map((row) => row.reward);
+      const result = await write({
+        ...harvestAndSwapCall(id, plan, swaps),
+        successLine: (receipt) => {
+          const found = parseHarvested(receipt, id);
+          return found === null ? "Confirmed on Mezo." : soldLine(id, found, parseSwapped(receipt, id, labels));
+        },
+      });
+      if (result.ok) await refresh();
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const othersSection = showOthers ? (
+    <section className="paydown-others" aria-labelledby="paydown-others-title">
+      <h3 id="paydown-others-title" className="fact-label">
+        Other rewards waiting
+      </h3>
+      <ul className="paydown-other-rows">
+        {otherRows.map(({ reward, quote: sale }) => {
+          const key = reward.token.toLowerCase();
+          const amount = (
+            <span className="paydown-other-amount">
+              {tokenFixedText(reward.amount, reward.decimals, 4)} {reward.symbol}
+            </span>
+          );
+          if (sale === null) {
+            return (
+              <li key={key}>
+                <div className="paydown-other-row">
+                  <span aria-hidden="true" />
+                  {amount}
+                  <span className="paydown-other-out">no Mezo pool to MUSD, goes to your wallet</span>
+                </div>
+              </li>
+            );
+          }
+          return (
+            <li key={key}>
+              <label className="paydown-other-row" data-pick>
+                <input
+                  type="checkbox"
+                  className="paydown-check"
+                  checked={!unticked.has(key)}
+                  onChange={() => flipTick(key)}
+                />
+                {amount}
+                <span className="paydown-other-out">at least {fixedText(sale.amountOutMin, 4)} MUSD</span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="paydown-other-action">
+        <Button
+          variant="secondary"
+          disabled={tickedTokens.length === 0 || !gate.ready || off || acting !== null}
+          loading={acting === "sell"}
+          onClick={() => void sell()}
+        >
+          Pay down and sell
+        </Button>
+      </div>
+      <p className="paydown-other-note">{SALE_NOTE}</p>
+    </section>
+  ) : null;
 
   // While the switch is unread the title is a bar, and when the read fails it falls back to the invitation, which
   // claims nothing about the switch.
@@ -277,6 +399,7 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
           </p>
           <p className="paydown-text paydown-text-next">Other reward tokens are sold only when the borrower asks.</p>
           {controls}
+          {othersSection}
         </div>
 
         <div className="paydown-right">

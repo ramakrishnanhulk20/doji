@@ -1287,3 +1287,124 @@
     transition: none;
   }
 }
+
+.paydown-others {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.paydown-others .fact-label {
+  margin: 0;
+  font-weight: 400;
+}
+
+.paydown-other-rows {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.paydown-other-row {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.paydown-other-row[data-pick] {
+  cursor: pointer;
+}
+
+.paydown-other-row[data-pick]:hover {
+  background: color-mix(in srgb, var(--ink-3) 60%, transparent);
+}
+
+.paydown-check {
+  appearance: none;
+  position: relative;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.paydown-check:checked {
+  border-color: var(--beni);
+  background: var(--beni);
+}
+
+.paydown-check:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 6px;
+  height: 10px;
+  border-right: 2px solid var(--paper);
+  border-bottom: 2px solid var(--paper);
+  transform: rotate(45deg);
+}
+
+.paydown-check:focus-visible {
+  outline: 2px solid var(--beni-text);
+  outline-offset: 2px;
+}
+
+.paydown-other-row:hover .paydown-check:not(:checked) {
+  border-color: var(--paper-dim);
+}
+
+.paydown-other-amount {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--paper);
+}
+
+.paydown-other-out {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--paper-dim);
+}
+
+.paydown-other-action {
+  margin-top: 14px;
+}
+
+.paydown-other-note {
+  max-width: 56ch;
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+@media (max-width: 639px) {
+  .paydown-other-row {
+    grid-template-columns: 20px 1fr;
+  }
+
+  .paydown-other-out {
+    grid-column: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paydown-other-row,
+  .paydown-check {
+    transition: none;
+  }
+}

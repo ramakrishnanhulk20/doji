@@ -2,15 +2,21 @@ import { createPublicClient, http } from "viem";
 import { addressBook } from "../src/lib/addresses";
 import { mezoTestnetChain } from "../src/lib/chains";
 import {
+  buildPayDownPlan,
   fixedText,
+  harvestAndSwapCall,
   harvestedLine,
   ledgerShares,
   nextThursday,
   quoteHarvest,
+  quoteSale,
   readHarvests,
+  readOtherRewards,
   readPayDownState,
   slippageText,
+  soldLine,
   sumRepaid,
+  tokenFixedText,
 } from "../src/lib/paydown";
 import { formatDate } from "../src/lib/stats";
 
@@ -46,3 +52,31 @@ console.log(`next harvest day: ${formatDate(nextThursday(now))}`);
 console.log("\n== quoteHarvest from the zero address");
 const quote = await quoteHarvest(client, tokenId, zero);
 console.log(quote.kind === "ready" ? { kind: quote.kind, repaid: `${fixedText(quote.repaid, 4)} MUSD` } : quote);
+
+// Fees and incentives count in `earned` only after their week finishes, so before Thu 5 Nov 00:00 UTC these lists can be empty.
+console.log("\n== readOtherRewards");
+for (const id of [412n, 411n]) {
+  const plan = await buildPayDownPlan(client, id);
+  const others = await readOtherRewards(client, id, plan);
+  console.log(`#${id}: ${others.length} other reward token${others.length === 1 ? "" : "s"}${others.length === 0 ? " (none earned yet)" : ""}`);
+  for (const reward of others) {
+    console.log(`  ${tokenFixedText(reward.amount, reward.decimals, 4)} ${reward.symbol} (${reward.token})`);
+  }
+}
+
+console.log("\n== quoteSale, 0.1 mT");
+const mT = "0xdd8Bf5ACa0579bEE7e6cd20AC7683E279a5f7d48";
+const sale = await quoteSale(client, mT, 100_000_000_000_000_000n);
+if (sale === null) {
+  console.log("no route pays anything");
+} else {
+  const hops = sale.routes.map((route) => `${route.from} -> ${route.to} (${route.stable ? "stable" : "volatile"}, factory ${route.factory})`);
+  console.log(`route: ${hops.join(" then ")}`);
+  console.log(`quoted ${fixedText(sale.quotedOut, 4)} MUSD, minimum ${fixedText(sale.amountOutMin, 4)} MUSD (${sale.amountOutMin} wei)`);
+  const plan = await buildPayDownPlan(client, 412n);
+  const call = harvestAndSwapCall(412n, plan, [sale]);
+  console.log(`harvestAndSwap call: ${call.functionName}, ${call.args.length} arguments, ${(call.args[4] as unknown[]).length} swap`);
+  console.log(
+    `sample done line: ${soldLine(412n, { musdRepaid: 12_345_678_000_000_000_000n, btcSold: 0n, musdFromBtc: 0n }, [{ token: mT, symbol: "mT", decimals: 18, amountIn: 100_000_000_000_000_000n, musdOut: sale.quotedOut }])}`,
+  );
+}
