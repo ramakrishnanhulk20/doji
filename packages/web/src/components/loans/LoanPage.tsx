@@ -7,18 +7,47 @@ import type { Hex } from "viem";
 import { useAccount } from "wagmi";
 import { useLoan } from "../../hooks/useLoan";
 import { useLoanClock } from "../../hooks/useLoanClock";
+import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanWrite } from "../../hooks/useLoanWrite";
-import { EXPLORER, STATE_AUCTION, STATE_NONE, anyoneActions, describeLoan, musdText } from "../../lib/loans";
+import { useClaimPlan, useVoteActions } from "../../hooks/useVotes";
+import { EXPLORER, STATE_AUCTION, STATE_NONE, anyoneActions, describeLoan, musdText, type PositionView } from "../../lib/loans";
 import { useReducedMotion } from "../../lib/motion-mode";
 import { formatDate } from "../../lib/stats";
+import { Button } from "../Button";
 import { Seal } from "../Seal";
 import "../borrow/borrow.css";
 import "./loans.css";
 import { AnyoneActions } from "./AnyoneActions";
 import { BuyCard } from "./BuyCard";
 import { Facts } from "./Facts";
-import { PayDownPanel } from "./PayDownPanel";
+import { PayDownPanel, RewardOperatorCard } from "./PayDownPanel";
+import type { SendCall } from "./RepaySheet";
 import { VotesAndRewards } from "./VotesAndRewards";
+
+/**
+ * L-01: on Wave 2 the borrower may claim pool rewards while the loan is in auction, and they go to the borrower, so
+ * the claim stays on the page. Hidden until the claim plan is read and has a gauge to claim from.
+ */
+function AuctionClaimCard({ view, send, busy }: { view: PositionView; send: SendCall; busy: boolean }) {
+  const actions = useVoteActions(send);
+  const plan = useClaimPlan(view.id, view.pair, true);
+  if (plan.data === undefined || plan.data.gauges.length === 0) return null;
+  return (
+    <section className="paydown-card paydown-slim" aria-label="Pool rewards during the auction">
+      <p className="paydown-slim-text">Pool rewards can still be claimed during the auction, and they go to you.</p>
+      <div className="paydown-slim-action">
+        <Button
+          variant="secondary"
+          disabled={busy || actions.acting !== null}
+          loading={actions.acting === `rewards:${view.id}`}
+          onClick={() => void actions.claimRewards(view.id, view.pair)}
+        >
+          Claim pool rewards
+        </Button>
+      </div>
+    </section>
+  );
+}
 
 export function LoanPage({ id }: { id: string }) {
   const tokenId = BigInt(id);
@@ -27,6 +56,7 @@ export function LoanPage({ id }: { id: string }) {
   const { view, opened, market, musd } = useLoan(tokenId);
   const { send, busy } = useLoanWrite();
   const { address } = useAccount();
+  const gate = useLoanGate();
   const [boughtHash, setBoughtHash] = useState<Hex | null>(null);
 
   const loan = view.data;
@@ -57,7 +87,15 @@ export function LoanPage({ id }: { id: string }) {
 
             {isBorrower && loan.loan.state !== STATE_AUCTION && <VotesAndRewards view={loan} now={now} send={send} busy={busy} />}
 
+            {isBorrower && !gate.wrongChain && loan.pair === "wave2" && loan.loan.state === STATE_AUCTION && (
+              <AuctionClaimCard view={loan} send={send} busy={busy} />
+            )}
+
             {loan.borrower !== null && loan.loan.state !== STATE_NONE && <PayDownPanel view={loan} now={now} busy={busy} />}
+
+            {loan.borrower !== null && loan.pair === "wave2" && loan.loan.state === STATE_NONE && (
+              <RewardOperatorCard view={loan} busy={busy} />
+            )}
 
             {boughtHash !== null ? (
               <section className="success-card">

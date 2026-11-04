@@ -13,6 +13,7 @@ import {
   readHarvests,
   readOtherRewards,
   readPayDownState,
+  saleSwaps,
   slippageText,
   soldLine,
   sumRepaid,
@@ -76,6 +77,12 @@ if (sale === null) {
   const plan = await buildPayDownPlan(client, 412n);
   const call = harvestAndSwapCall(412n, plan, [sale]);
   console.log(`harvestAndSwap call: ${call.functionName}, ${call.args.length} arguments, ${(call.args[4] as unknown[]).length} swap`);
+  const key = mT.toLowerCase();
+  const raised = saleSwaps([sale], new Map([[key, sale.amountOutMin + 1n]]))[0];
+  const kept = saleSwaps([sale], new Map([[key, sale.amountOutMin - 1n]]))[0];
+  console.log(
+    `saleSwaps: a higher minimum on screen is sent ${raised?.amountOutMin === sale.amountOutMin + 1n}, a lower one keeps the fresh minimum ${kept?.amountOutMin === sale.amountOutMin}, a token not on screen is left out ${saleSwaps([sale], new Map()).length === 0}`,
+  );
   console.log(
     `sample done line: ${soldLine(412n, { musdRepaid: 12_345_678_000_000_000_000n, btcSold: 0n, musdFromBtc: 0n }, [{ token: mT, symbol: "mT", decimals: 18, amountIn: 100_000_000_000_000_000n, musdOut: sale.quotedOut }])}`,
   );

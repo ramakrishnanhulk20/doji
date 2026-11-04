@@ -16,6 +16,7 @@ import {
   buyCall,
   fmtFourDecimals,
   fmtUnitsAmount,
+  listingStage,
   quoteBuy,
   unitYield,
   unitsFieldText,
@@ -45,7 +46,17 @@ type BuySheetProps = {
 
 const dash = <span className="summary-empty">-</span>;
 
-export function BuySheet({ listing, now, paused, onClose }: BuySheetProps) {
+/** Opens only while the listing is open: past its Thursday a unit is no longer worth 1 MUSD, so no buy is offered. */
+export function BuySheet(props: BuySheetProps) {
+  const open = listingStage(props.listing, props.now) === "open";
+  const { onClose } = props;
+  useEffect(() => {
+    if (!open) onClose();
+  }, [open, onClose]);
+  return open ? <BuyForm {...props} /> : null;
+}
+
+function BuyForm({ listing, now, paused, onClose }: BuySheetProps) {
   const gate = useLoanGate();
   const engine = useStepFlow<RunStep>();
   const { write, busy } = useWrite();

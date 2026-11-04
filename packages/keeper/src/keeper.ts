@@ -912,16 +912,15 @@ async function harvestPair(pass: Pass, payDown: Address, head: bigint): Promise<
     line(pass, "harvest", "none", `harvest skipped: PayDown ${payDown} is paused`, "-");
     return;
   }
-  let price: bigint;
+  // PayDown reads the price only when a harvest sells BTC (C7), so an outage must not stop the harvests that repay
+  // with MUSD alone. BTC counts as worth nothing this run, and a harvest that does need the price is refused in its
+  // simulation with PriceUnavailable and reported as refused.
+  let price = 0n;
   try {
     price = await reader.readContract({ address: feed, abi: priceFeedAbi, functionName: "fetchPrice" });
+    if (price === 0n) line(pass, "harvest", "none", "the BTC price feed returned zero: BTC rewards count as 0 MUSD this run", "-");
   } catch (err) {
-    line(pass, "harvest", "none", `harvest skipped: BTC price unavailable (${describeError(err)})`, "-");
-    return;
-  }
-  if (price === 0n) {
-    line(pass, "harvest", "none", "harvest skipped: the price feed returned zero", "-");
-    return;
+    line(pass, "harvest", "none", `BTC price unavailable (${describeError(err)}): BTC rewards count as 0 MUSD this run`, "-");
   }
 
   const scan = await collectOperatorLogs(pass, head);

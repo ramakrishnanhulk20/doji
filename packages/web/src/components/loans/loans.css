@@ -1408,3 +1408,42 @@
     transition: none;
   }
 }
+
+/* The slim pay-down cards: the reward claimer with no loan open, and the claim during an auction */
+.paydown-card.paydown-slim {
+  padding: 20px 24px;
+}
+
+.paydown-slim-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: var(--display-headline-weight);
+  line-height: 1.15;
+  color: var(--paper);
+}
+
+.paydown-slim-text {
+  max-width: 56ch;
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.paydown-slim-text:first-child {
+  margin-top: 0;
+}
+
+.paydown-slim .paused-strip {
+  margin: 0;
+}
+
+.paydown-slim-action {
+  margin-top: 16px;
+}
+
+.paydown-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}

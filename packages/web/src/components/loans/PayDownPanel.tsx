@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import type { PublicClient } from "viem";
+import { zeroAddress, type PublicClient } from "viem";
 import { usePublicClient } from "wagmi";
 import { useLoanGate } from "../../hooks/useLoanGate";
 import { usePayDown } from "../../hooks/usePayDown";
@@ -22,6 +22,8 @@ import {
   parseSwapped,
   quoteSale,
   readOtherRewards,
+  saleSwaps,
+  setRewardOperatorCall,
   slippageText,
   soldLine,
   sumRepaid,
@@ -53,6 +55,8 @@ const VOTER_LINE = "Doji could not read the voter right now. Try again in a mome
 const NO_QUOTE_LINE = "Mezo's pools do not quote those rewards right now. Try again in a moment.";
 const SALE_NOTE =
   "Each sale accepts at most 1% below what Mezo's pools pay now. If the price moves further before the transaction lands, nothing is sold and nothing changes.";
+const OFF_LINE = "Pay-down is off. Rewards go to your wallet when you claim them.";
+const REMOVED_LINE = "Removed. Only you can claim this position's rewards now.";
 
 const listVariants = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const rowVariants = { hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } } };
@@ -78,13 +82,73 @@ export function PayDownPanel(props: PayDownPanelProps) {
   return props.view.pair === "legacy" ? <LegacyCard /> : <LivePanel {...props} />;
 }
 
+/**
+ * C50 with no loan open: a Wave 2 position Doji holds keeps its reward claimer after a repay, so the page still says
+ * who it is, and the borrower can clear it. Renders nothing when no claimer is named.
+ */
+export function RewardOperatorCard({ view, busy }: { view: PositionView; busy: boolean }) {
+  const gate = useLoanGate();
+  const { write, busy: writing } = useWrite();
+  const [acting, setActing] = useState(false);
+  const operator = view.rewardOperator;
+  if (operator === null) return null;
+
+  const isBorrower = gate.address !== undefined && view.borrower !== null && sameAddress(gate.address, view.borrower);
+  const canAct = isBorrower && !gate.wrongChain;
+  const off = busy || writing;
+
+  const clear = async (successLine: string) => {
+    setActing(true);
+    try {
+      await write({ ...setRewardOperatorCall(view.id, zeroAddress), successLine });
+    } finally {
+      setActing(false);
+    }
+  };
+
+  if (sameAddress(operator, book.payDown)) {
+    return (
+      <section className="paydown-card paydown-slim" data-on aria-labelledby="operator-title">
+        <h2 id="operator-title" className="paydown-slim-title display-face">
+          Pay-down is on
+        </h2>
+        <p className="paydown-slim-text">
+          PayDown can claim this position&apos;s pool rewards. With no loan open, a harvest sends all of them to you.
+        </p>
+        {canAct && (
+          <div className="paydown-slim-action">
+            <Button variant="secondary" disabled={off} loading={acting} onClick={() => void clear(OFF_LINE)}>
+              Turn off pay-down
+            </Button>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="paydown-card paydown-slim" aria-label="Who can claim this position's rewards">
+      <div className="paused-strip paydown-strip">
+        Another address, {shortAddress(operator)}, can claim this position&apos;s rewards.
+      </div>
+      {canAct && (
+        <div className="paydown-slim-action">
+          <Button variant="primary" disabled={off} loading={acting} onClick={() => void clear(REMOVED_LINE)}>
+            Remove it
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function LivePanel({ view, now, busy }: PayDownPanelProps) {
   const id = view.id;
   const reduced = useReducedMotion();
   const gate = useLoanGate();
   const client = usePublicClient({ chainId: APP_CHAIN_ID }) as PublicClient | undefined;
   const { write, busy: writing } = useWrite();
-  const [acting, setActing] = useState<"toggle" | "harvest" | "sell" | null>(null);
+  const [acting, setActing] = useState<"toggle" | "remove" | "harvest" | "sell" | null>(null);
   const [seen, setSeen] = useState(false);
   // Tokens the borrower has unticked. A token with a quote is ticked until it is listed here, so a quote that appears
   // on a later refresh starts ticked too.
@@ -108,10 +172,18 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
       const call = turnOn ? turnOnCall(id) : turnOffCall(id);
       const result = await write({
         ...call,
-        successLine: turnOn
-          ? `Pay-down is on. Rewards now go to loan #${id} first.`
-          : "Pay-down is off. Rewards go to your wallet when you claim them.",
+        successLine: turnOn ? `Pay-down is on. Rewards now go to loan #${id} first.` : OFF_LINE,
       });
+      if (result.ok) await refresh();
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const removeOperator = async () => {
+    setActing("remove");
+    try {
+      const result = await write({ ...setRewardOperatorCall(id, zeroAddress), successLine: REMOVED_LINE });
       if (result.ok) await refresh();
     } finally {
       setActing(null);
@@ -160,19 +232,24 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
     .map((row) => row.reward.token.toLowerCase());
   const showOthers = isBorrower && !gate.wrongChain && on && loanOpen && otherRows.length > 0;
 
-  // The quotes on screen can be 30 seconds old, so the sale asks Mezo's pools again for the ticked tokens and sends the
-  // fresh minimums. A ticked token that lost its quote is left out and stays with the wallet.
+  // The quotes on screen can be 30 seconds old, so the sale asks Mezo's pools again for the ticked tokens. Each minimum
+  // sent is never below the one on screen at the press, so a pool that fell meanwhile makes the dry run refuse rather
+  // than sell for less. A ticked token that lost its quote is left out and stays with the wallet.
   const sell = async () => {
     if (client === undefined) return;
+    const shownMinimums = new Map(
+      otherRows.flatMap((row) => {
+        const key = row.reward.token.toLowerCase();
+        return row.quote !== null && tickedTokens.includes(key) ? [[key, row.quote.amountOutMin] as const] : [];
+      }),
+    );
     setActing("sell");
     try {
       let plan;
       let fresh;
       try {
         plan = await buildPayDownPlan(client, id);
-        const pending = (await readOtherRewards(client, id, plan)).filter((reward) =>
-          tickedTokens.includes(reward.token.toLowerCase()),
-        );
+        const pending = (await readOtherRewards(client, id, plan)).filter((reward) => shownMinimums.has(reward.token.toLowerCase()));
         fresh = await Promise.all(
           pending.map(async (reward) => ({ reward, quote: await quoteSale(client, reward.token, reward.amount) })),
         );
@@ -180,8 +257,9 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
         stop(VOTER_LINE);
         return;
       }
-      const swaps = fresh.flatMap((row) =>
-        row.quote === null ? [] : [{ token: row.quote.token, amountOutMin: row.quote.amountOutMin, routes: row.quote.routes }],
+      const swaps = saleSwaps(
+        fresh.map((row) => row.quote),
+        shownMinimums,
       );
       if (swaps.length === 0) {
         stop(NO_QUOTE_LINE);
@@ -280,6 +358,14 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
     if (state.isError) return <p className="paydown-note">{unavailable}</p>;
     if (current === undefined) return <span className="shimmer paydown-button-skeleton" aria-hidden="true" />;
     if (!isBorrower) {
+      // C50: anyone looking at the position learns that another address can take its rewards, not only the borrower.
+      if (current.operator !== null && !on) {
+        return (
+          <div className="paused-strip paydown-strip">
+            Another address, {shortAddress(current.operator)}, can claim this position&apos;s rewards.
+          </div>
+        );
+      }
       return <p className="paydown-note">{on ? "The borrower has turned pay-down on." : "The borrower has not turned pay-down on."}</p>;
     }
     if (gate.wrongChain) return null;
@@ -300,9 +386,16 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
             Turn off pay-down
           </Button>
         ) : (
-          <Button variant="primary" disabled={off} loading={acting === "toggle"} onClick={() => void toggle(true)}>
-            Turn on pay-down
-          </Button>
+          <div className="paydown-buttons">
+            <Button variant="primary" disabled={off} loading={acting === "toggle"} onClick={() => void toggle(true)}>
+              Turn on pay-down
+            </Button>
+            {current.operator !== null && (
+              <Button variant="secondary" disabled={off} loading={acting === "remove"} onClick={() => void removeOperator()}>
+                Remove it
+              </Button>
+            )}
+          </div>
         )}
       </div>
     );

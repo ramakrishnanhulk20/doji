@@ -7,7 +7,8 @@ import { useLoanGate } from "../../hooks/useLoanGate";
 import { useLoanWrite } from "../../hooks/useLoanWrite";
 import { useMyLoans } from "../../hooks/useLoans";
 import { useVoteActions } from "../../hooks/useVotes";
-import { STATE_ACTIVE, btcText, claimCall, musdText, withdrawCall, type PositionView } from "../../lib/loans";
+import { addressBook } from "../../lib/addresses";
+import { STATE_ACTIVE, btcText, claimCall, musdText, shortAddress, withdrawCall, type PositionView } from "../../lib/loans";
 import { useReducedMotion } from "../../lib/motion-mode";
 import { formatDate } from "../../lib/stats";
 import { Button } from "../Button";
@@ -27,6 +28,7 @@ type OpenSheet =
   | { kind: "extend"; id: bigint };
 
 const OUTAGE_WARNING_SECONDS = 14 * 86_400;
+const book = addressBook[31611];
 
 /**
  * C52: a Wave 2 loan due within two weeks may need a roll while parked offers cannot fill one. A 20 October loan
@@ -40,6 +42,29 @@ function outageNotice(view: PositionView, vaultDown: boolean, now: number) {
     <p className="paused-strip">
       {`Mezo's sMUSD vault is not paying out right now. Until it recovers, offers earning in it cannot fill a roll, so plan to repay or roll into the other offers before ${formatDate(due)}.`}
     </p>
+  );
+}
+
+/** C50: a Wave 2 position that names a reward claimer other than PayDown says so, in every loan state. */
+function operatorNotice(view: PositionView) {
+  const operator = view.rewardOperator;
+  if (view.pair !== "wave2" || operator === null || operator.toLowerCase() === book.payDown.toLowerCase()) return null;
+  return (
+    <p className="paused-strip">
+      {`Another address, ${shortAddress(operator)}, can claim this position's rewards. Open the loan to remove it.`}
+    </p>
+  );
+}
+
+function notices(view: PositionView, vaultDown: boolean, now: number) {
+  const operator = operatorNotice(view);
+  const outage = outageNotice(view, vaultDown, now);
+  if (operator === null || outage === null) return operator ?? outage;
+  return (
+    <>
+      {operator}
+      {outage}
+    </>
   );
 }
 
@@ -145,7 +170,7 @@ export function MyLoans() {
                     acting={acting}
                     busy={busy}
                     voteActions={voteActions}
-                    notice={outageNotice(view, data.vault.down, now)}
+                    notice={notices(view, data.vault.down, now)}
                     onVote={() => setSheet({ kind: "vote", id: view.id })}
                     onExtend={() => setSheet({ kind: "extend", id: view.id })}
                     onRepay={(fullOnly) => setSheet({ kind: "repay", id: view.id, fullOnly })}

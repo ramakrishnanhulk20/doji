@@ -119,6 +119,8 @@ const REVERTS: Record<string, (args: Args) => string> = {
   RenounceDisabled: () => "Ownership can never be given up.",
   NotLoanManager: () => "Only Doji's LoanManager can do that.",
   NotGuardianOrOwner: () => "Only the guardian or the owner can do that.",
+  InsufficientOutputAmount: () =>
+    "Mezo's pool now pays less than the minimum you saw, so nothing was sold. Check the new figures and try again.",
   ERC20InsufficientAllowance: () => "Doji is not approved to move that much of your token yet. Approve the amount first, then try again.",
   ERC20InsufficientBalance: () => "Your wallet does not hold enough of that token for this step.",
   ERC1155InsufficientBalance: () => "You don't hold that many credit units.",
@@ -182,6 +184,8 @@ const REFRESH = new Set(["AprAboveMax", "InsufficientRemaining", "OfferEmpty", "
 // Mezo's voter answers a second vote in the same week with this error, which no Doji ABI declares.
 const voterErrorsAbi = parseAbi(["error AlreadyVotedOrDeposited()"]);
 // MUSD reports a short allowance or balance with the OpenZeppelin 5 token errors, which no Doji ABI declares.
+// Mezo's Router refuses a sale below its minimum with its own error before PayDown's floor check runs.
+const routerErrorsAbi = parseAbi(["error InsufficientOutputAmount()"]);
 const tokenErrorsAbi = parseAbi([
   "error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)",
   "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
@@ -197,6 +201,7 @@ const knownAbi = [
   ...legacyCreditMarketsAbi,
   ...voterErrorsAbi,
   ...tokenErrorsAbi,
+  ...routerErrorsAbi,
 ] as unknown as Abi;
 
 export type Revert = { name: string; args: Args; reason?: string };

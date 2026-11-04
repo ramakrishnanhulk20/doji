@@ -13,6 +13,7 @@ import {
   cancelListingCall,
   fmtUnitsAmount,
   fmtPrice,
+  listingStage,
   returnExpiredCall,
   unitYield,
   type Listing,
@@ -42,7 +43,10 @@ type CardProps = {
 
 function ListingCard({ listing, index, now, wallet, connected, paused, disabled, runningKey, reduced, onBuy, onConnect, onCancel, onReturn }: CardProps) {
   const date = formatDate(listing.maturity);
-  const expired = now >= listing.expiry;
+  const stage = listingStage(listing, now);
+  const expired = stage === "expired";
+  // An expired listing can be past its Thursday too, and then it promises no yield either.
+  const pastDate = stage === "dated" || (expired && listing.maturity <= now);
   const mine = wallet !== undefined && sameAddress(listing.seller, wallet);
   const yieldNow = unitYield(listing.pricePerUnit, listing.maturity, now);
 
@@ -60,9 +64,15 @@ function ListingCard({ listing, index, now, wallet, connected, paused, disabled,
           <span className="units-card-price-value">{fmtPrice(listing.pricePerUnit)}</span>
           <span className="units-card-price-unit"> MUSD a unit</span>
         </p>
-        <p className="units-card-yield">
-          Earns {yieldNow.toMaturityPct.toFixed(2)}% by {date} · about {yieldNow.perYearPct.toFixed(1)}% a year
-        </p>
+        {pastDate ? (
+          <p className="units-card-dated">
+            This date has passed. A unit now pays what its loans returned, shown in Your credit units.
+          </p>
+        ) : (
+          <p className="units-card-yield">
+            Earns {yieldNow.toMaturityPct.toFixed(2)}% by {date} · about {yieldNow.perYearPct.toFixed(1)}% a year
+          </p>
+        )}
         <div className="units-card-facts">
           <p>{fmtUnitsAmount(listing.unitsLeft)} units left</p>
           <p>
@@ -77,21 +87,23 @@ function ListingCard({ listing, index, now, wallet, connected, paused, disabled,
             <p>Seller {shortAddress(listing.seller)}</p>
           )}
         </div>
-        <div className="units-card-action">
-          {mine ? (
-            <Button variant="secondary" className="units-card-button" disabled={disabled} loading={runningKey === `cancel:${listing.id}`} onClick={onCancel}>
-              Cancel listing
-            </Button>
-          ) : expired ? (
-            <Button variant="secondary" className="units-card-button" disabled={disabled} loading={runningKey === `return:${listing.id}`} onClick={connected ? onReturn : onConnect}>
-              Return to seller
-            </Button>
-          ) : (
-            <Button className="units-card-button" disabled={paused || disabled} onClick={connected ? onBuy : onConnect}>
-              {connected ? "Buy units" : "Connect a wallet to buy"}
-            </Button>
-          )}
-        </div>
+        {(mine || stage !== "dated") && (
+          <div className="units-card-action">
+            {mine ? (
+              <Button variant="secondary" className="units-card-button" disabled={disabled} loading={runningKey === `cancel:${listing.id}`} onClick={onCancel}>
+                Cancel listing
+              </Button>
+            ) : expired ? (
+              <Button variant="secondary" className="units-card-button" disabled={disabled} loading={runningKey === `return:${listing.id}`} onClick={connected ? onReturn : onConnect}>
+                Return to seller
+              </Button>
+            ) : (
+              <Button className="units-card-button" disabled={paused || disabled} onClick={connected ? onBuy : onConnect}>
+                {connected ? "Buy units" : "Connect a wallet to buy"}
+              </Button>
+            )}
+          </div>
+        )}
       </article>
     </motion.div>
   );

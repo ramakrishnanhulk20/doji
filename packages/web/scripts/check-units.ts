@@ -1,7 +1,7 @@
 import { createPublicClient, formatUnits, http, parseUnits } from "viem";
 import { mezoTestnetChain } from "../src/lib/chains";
 import { formatDate } from "../src/lib/stats";
-import { quoteBuy, readListings, readMarketSettings, unitYield } from "../src/lib/units";
+import { listingStage, quoteBuy, readListings, readMarketSettings, unitYield } from "../src/lib/units";
 
 // Read-only: every call below is a view, and no key is involved.
 const client = createPublicClient({ chain: mezoTestnetChain, transport: http(undefined, { batch: true }) });
@@ -30,4 +30,12 @@ if (first === undefined) {
   console.log(
     `unitYield(listing 1) at ${now}: ${earned.toMaturityPct.toFixed(2)}% by ${formatDate(first.maturity)}, about ${earned.perYearPct.toFixed(1)}% a year`,
   );
+
+  console.log(`listingStage(listing 1) now ${now}: ${listingStage(first, now)}`);
+  console.log(`listingStage(listing 1) at its maturity ${first.maturity}: ${listingStage(first, first.maturity)}`);
+  console.log(`listingStage(listing 1) at its expiry ${first.expiry}: ${listingStage(first, first.expiry)}`);
+  // Listing 1 closes the day before its Thursday, so it is already expired there. A copy that stays open a day past
+  // the Thursday shows the dated stage, which UnitMarket allows because it never ties expiry to maturity.
+  const lateExpiry = { ...first, expiry: first.maturity + 86_400 };
+  console.log(`listingStage(copy of listing 1, expiry ${lateExpiry.expiry}) at its maturity: ${listingStage(lateExpiry, first.maturity)}`);
 }

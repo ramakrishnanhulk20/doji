@@ -74,6 +74,20 @@ export async function readListings(client: PublicClient): Promise<Listing[]> {
     .sort((a, b) => a.maturity - b.maturity || (a.pricePerUnit < b.pricePerUnit ? -1 : a.pricePerUnit > b.pricePerUnit ? 1 : 0));
 }
 
+export type ListingStage = "open" | "dated" | "expired";
+
+/**
+ * Where a listing stands at `now`. A unit is worth 1 MUSD only before its Thursday; after it, what the unit pays is
+ * whatever its loans returned, which the chain decides. So a listing past its Thursday ("dated") promises no yield and
+ * is not offered for buying, even though UnitMarket would still take a buy until the listing's own last day. "expired"
+ * is from that last day on, when the units can only go back to the seller.
+ */
+export function listingStage(listing: Pick<Listing, "maturity" | "expiry">, now: number): ListingStage {
+  if (now >= listing.expiry) return "expired";
+  if (listing.maturity <= now) return "dated";
+  return "open";
+}
+
 export type MarketSettings = { feeBps: number; paused: boolean };
 
 export async function readMarketSettings(client: PublicClient): Promise<MarketSettings> {

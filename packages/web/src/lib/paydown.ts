@@ -252,11 +252,28 @@ export async function quoteSale(client: PublicClient, token: Address, amountIn: 
   return { token, amountIn, routes: chosen.routes, quotedOut: chosen.out, amountOutMin };
 }
 
+export type SaleSwap = { token: Address; amountOutMin: bigint; routes: Route[] };
+
+/**
+ * The swaps the borrower's sale sends. Each one takes its fresh quote's route, and its minimum is the higher of the
+ * fresh minimum and the one on screen when the button was pressed, keyed by lowercase token. So the sale never accepts
+ * less than the borrower saw: if the pools now pay less, the dry run refuses it. A fresh quote for a token that was not
+ * on screen is left out, and so is a token that lost its quote.
+ */
+export function saleSwaps(fresh: readonly SwapQuote[], shown: ReadonlyMap<string, bigint>): SaleSwap[] {
+  return fresh.flatMap((quote) => {
+    if (quote === null) return [];
+    const seen = shown.get(quote.token.toLowerCase());
+    if (seen === undefined) return [];
+    return [{ token: quote.token, amountOutMin: quote.amountOutMin > seen ? quote.amountOutMin : seen, routes: quote.routes }];
+  });
+}
+
 /** The borrower's own harvest: as harvestCall, and it also sells the listed reward tokens at the borrower's minimums. */
 export function harvestAndSwapCall(
   tokenId: bigint,
   plan: ClaimPlan,
-  swaps: readonly { token: Address; amountOutMin: bigint; routes: Route[] }[],
+  swaps: readonly SaleSwap[],
 ): PayDownCall {
   if (plan.pair !== "wave2") throw new Error(`Pay-down works on the Wave 2 pair, not ${plan.pair}`);
   return {

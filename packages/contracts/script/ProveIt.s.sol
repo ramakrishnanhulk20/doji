@@ -545,11 +545,15 @@ contract ProveIt is Script {
     }
 
     function _attackSettle(Live memory live, uint256 tokenId, address stranger) internal {
+        bytes memory expected = abi.encodeWithSelector(ILoanManager.NoAuction.selector, tokenId);
         vm.prank(stranger);
         try live.lm.settle(tokenId) {
             _check(false, "settle on a healthy, on-time loan went through");
         } catch (bytes memory reason) {
-            _check(true, string.concat("settle on a healthy, on-time loan is refused: ", _errorName(reason)));
+            _check(
+                keccak256(reason) == keccak256(expected),
+                string.concat("settle on a healthy, on-time loan is refused: ", _errorName(reason))
+            );
         }
     }
 

@@ -44,7 +44,7 @@ export function EarnedTotal({ total, disabled, loading, onWithdraw }: EarnedTota
   const reduced = useReducedMotion();
   return (
     <div className="lend-earned-total">
-      <p>
+      <p title="Booked to you. Mezo's vault pays it out as its yield arrives, so a withdrawal can pay part now and the rest later.">
         Earned in sMUSD{" "}
         {total === null ? (
           <span>-</span>

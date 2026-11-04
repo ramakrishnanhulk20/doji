@@ -28,7 +28,8 @@ const shortAddress = (address: Address): string => `${address.slice(0, 6)}...${a
 
 export function EarnSwitch({ choice, onChange, state, vault, reduced }: EarnSwitchProps) {
   const ready = state === "ready";
-  const on = state === "loading" ? true : ready ? choice : false;
+  // Off until the vault is read: an offer posted before then is plain, so the switch never shows earning that is not.
+  const on = ready ? choice : false;
   const line = ready
     ? on
       ? "Your MUSD sits in Mezo's sMUSD savings vault and earns its rate until a borrower takes it. The borrower still receives plain MUSD."
