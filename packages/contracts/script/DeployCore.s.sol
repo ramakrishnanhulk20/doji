@@ -25,8 +25,8 @@ import {IPriceFeed} from "../src/interfaces/IPriceFeed.sol";
 ///      Before deploying anything, the script refuses a PassThrough address with no code or whose runtime code
 ///      differs from the compiled artifact, and records the library and its code hash.
 ///      Rehearse first on an anvil fork with script/rehearse-live.sh, which uses the same flags.
-///      Reads DEPLOYER_PRIVATE_KEY and DEPLOYER_ADDRESS from .env, and DEPLOYMENTS_DIR if set (the rehearsal
-///      only). The deployer is owner, guardian and treasury. Risk settings are the drawdown study's
+///      Reads DEPLOYER_PRIVATE_KEY and DEPLOYER_ADDRESS from .env, DEPLOYMENTS_DIR if set (the rehearsal
+///      only), and SAVINGS_VAULT if set, else the chain's own sMUSD vault. The deployer is owner, guardian and treasury. Risk settings are the drawdown study's
 ///      (docs/risk/parameters.md): 40% borrow limit, 65% line, auction floor 70% of the start value over 72 hours,
 ///      and a 5% penalty. A vote may list up to 30 pools, PoolsVoter's own limit. ValidatorsVoter is read from
 ///      what testnet's veBTC really has (none today). The credit units start with an
@@ -44,9 +44,13 @@ contract DeployCore is Script {
         address validatorsVoter;
         address feeDistributor;
         uint256 lockLayoutWords;
+        address savingsVault;
     }
 
     uint256 internal constant TESTNET_CHAIN_ID = 31_611;
+    uint256 internal constant MAINNET_CHAIN_ID = 31_612;
+    address internal constant TESTNET_SAVINGS_VAULT = 0x6f461c68B2c5492C0F5CCEc5a264d692aA7A8e16;
+    address internal constant MAINNET_SAVINGS_VAULT = 0xb4D498029af77680cD1eF828b967f010d06C51CC;
     uint256 internal constant WEEK = 604_800;
     uint16 internal constant MAX_LTV_BPS = 4_000;
     uint16 internal constant LIQ_LTV_BPS = 6_500;
@@ -99,8 +103,18 @@ contract DeployCore is Script {
             poolsVoter: 0x72F8dd7F44fFa19E45955aa20A5486E8EB255738,
             validatorsVoter: _testnetValidatorsVoter(veBTC),
             feeDistributor: _veBTCDistributor(veBTC),
-            lockLayoutWords: 3
+            lockLayoutWords: 3,
+            savingsVault: _savingsVault()
         });
+    }
+
+    /// @dev Testnet's vault is not the address Mezo's docs list; it is the one testnet PCV pays (feeRecipient()),
+    ///      read on 2026-11-03. CreditMarkets' constructor refuses a vault whose musdToken() is not this MUSD.
+    function _savingsVault() internal view returns (address) {
+        address chainDefault = block.chainid == TESTNET_CHAIN_ID
+            ? TESTNET_SAVINGS_VAULT
+            : block.chainid == MAINNET_CHAIN_ID ? MAINNET_SAVINGS_VAULT : address(0);
+        return vm.envOr("SAVINGS_VAULT", chainDefault);
     }
 
     /// @dev veBTC cannot list its secondary voters, so this asks whether testnet's veBTC has any at all. Its older
@@ -146,7 +160,17 @@ contract DeployCore is Script {
         vm.startBroadcast(key);
         address predicted = vm.computeCreateAddress(deployer, vm.getNonce(deployer) + 1);
         cm = new CreditMarkets(
-            cfg.musd, cfg.btc, predicted, deployer, deployer, deployer, FEE_SHARE_BPS, MIN_OFFER, MAX_TERM_SECONDS, UNITS_URI
+            cfg.musd,
+            cfg.btc,
+            predicted,
+            deployer,
+            deployer,
+            deployer,
+            FEE_SHARE_BPS,
+            MIN_OFFER,
+            MAX_TERM_SECONDS,
+            UNITS_URI,
+            cfg.savingsVault
         );
         lm = new LoanManager(
             cfg.veBTC,

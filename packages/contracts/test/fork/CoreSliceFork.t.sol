@@ -31,6 +31,7 @@ contract CoreSliceForkTest is Test {
     address internal constant POOLS_VOTER = 0x48233cCC97B87Ba93bCA212cbEe48e3210211f03;
     address internal constant FEE_DISTRIBUTOR = 0xb58477e074265BdC7F7ca6100eD0f7De264F74A2;
     address internal constant VALIDATORS_VOTER = 0xe99a9ad5Ed26BD30e4DB25397f378817e9b9515a;
+    address internal constant SMUSD = 0xb4D498029af77680cD1eF828b967f010d06C51CC;
     uint256 internal constant MAINNET_LAYOUT_WORDS = 4;
 
     uint256 internal constant WEEK = 604_800;
@@ -131,7 +132,7 @@ contract CoreSliceForkTest is Test {
 
     function _deploy() internal {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-        cm = new CreditMarkets(MUSD, BTC, predicted, owner, owner, treasury, 1_000, 10e18, uint32(4 * WEEK), "");
+        cm = new CreditMarkets(MUSD, BTC, predicted, owner, owner, treasury, 1_000, 10e18, uint32(4 * WEEK), "", SMUSD);
         ILoanManager.Settings memory settings = ILoanManager.Settings({
             owner: owner,
             guardian: owner,

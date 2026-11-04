@@ -227,7 +227,8 @@ contract RescueTest is LoanFixture {
         string memory initial = "ipfs://doji-units/{id}.json";
         vm.recordLogs();
         CreditMarkets markets = new CreditMarkets(
-            address(musd), address(btc), makeAddr("someManager"), owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), initial
+            address(musd), address(btc), makeAddr("someManager"), owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), initial,
+            address(vault)
         );
         assertEq(markets.uri(m1), initial);
         Vm.Log[] memory logs = vm.getRecordedLogs();

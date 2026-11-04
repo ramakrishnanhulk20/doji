@@ -10,6 +10,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ICreditMarkets} from "./interfaces/ICreditMarkets.sol";
+import {IMUSDSavingsRate} from "./interfaces/IMUSDSavingsRate.sol";
 import {Quote} from "./libraries/Quote.sol";
 
 /// @title CreditMarkets
@@ -18,15 +19,17 @@ import {Quote} from "./libraries/Quote.sol";
 ///         maturity, one unit = one MUSD due) and redeem them pro rata once every loan at that date is closed,
 ///         for MUSD from repayments and auctions and for BTC from settled loans. Once the date has passed, a
 ///         lender can also withdraw its share of what has been collected so far and more as each loan closes.
-/// @dev All MUSD and BTC sit in this one balance. Isolation between offers and maturities is bookkeeping, and
-///      every inflow is booked from a measured balance change, so a direct donation never reaches any record.
+/// @dev All MUSD and BTC sit in this one balance, except the unfilled MUSD of parked offers, which this contract
+///      holds as sMUSD in Mezo's savings vault. Isolation between offers and maturities is bookkeeping, and every
+///      inflow is booked from a measured balance change, so a direct donation never reaches any record.
 contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
 
     uint256 public constant WEEK = 604_800;
     /// @dev A listed offer costs about 60k gas at worst (offer slot, two cold pending-unit slots, one event),
-    ///      so 8 offers stay near 0.5M gas against Mezo's 10M block gas limit.
+    ///      so 8 offers stay near 0.5M gas against Mezo's 10M block gas limit. A fill that takes parked offers adds
+    ///      one vault withdraw for all of them together (about 240k on mainnet), not one per offer.
     uint256 public constant MAX_FILLS = 8;
     uint16 public constant MAX_APR_BPS = 5_000;
     uint16 public constant MAX_FEE_SHARE_BPS = 2_000;
@@ -40,6 +43,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     address public immutable musd;
     address public immutable btc;
     address public immutable loanManager;
+    address public immutable savingsVault;
 
     address public guardian;
     address public treasury;
@@ -48,6 +52,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     uint32 public maxTermSeconds;
     bool public offersPaused;
     uint256 public nextOfferId = 1;
+    uint256 public parkedPrincipal;
 
     /// @dev What one market has paid out through redeem and withdrawCollected together.
     struct PaidOut {
@@ -66,10 +71,12 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         _;
     }
 
-    /// @notice Fixes MUSD, BTC and LoanManager for the life of the contract and sets the starting parameters.
+    /// @notice Fixes MUSD, BTC, LoanManager and the sMUSD vault for the life of the contract and sets the starting
+    ///         parameters.
     /// @dev `loanManager_` is precomputed from the deployer's nonce; LoanManager's own constructor then
     ///      refuses to deploy unless this contract points at it. Reverts ZeroAddress, OwnableInvalidOwner,
-    ///      or a parameter bound error. Emits one event per parameter.
+    ///      VaultTokenMismatch if the vault takes another token than `musd_`, or a parameter bound error. A vault
+    ///      address with no code reverts without data. Emits one event per parameter.
     /// @param musd_ The MUSD token lenders post and borrowers repay in.
     /// @param btc_ The BTC ERC-20 that settled loans pay markets in.
     /// @param loanManager_ The only address allowed to fill offers and credit markets.
@@ -80,6 +87,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
     /// @param minOffer_ Smallest offer, 1 to 1,000,000 MUSD.
     /// @param maxTermSeconds_ Furthest a maturity may be from now, 1 to 4 weeks.
     /// @param uri_ ERC-1155 metadata URI template for the credit units; may be empty until metadata is served.
+    /// @param savingsVault_ Mezo's sMUSD vault that parked offers wait in.
     constructor(
         address musd_,
         address btc_,
@@ -90,12 +98,18 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         uint16 feeShareBps_,
         uint128 minOffer_,
         uint32 maxTermSeconds_,
-        string memory uri_
+        string memory uri_,
+        address savingsVault_
     ) ERC1155(uri_) Ownable(owner_) {
-        if (musd_ == address(0) || btc_ == address(0) || loanManager_ == address(0)) revert ZeroAddress();
+        if (musd_ == address(0) || btc_ == address(0) || loanManager_ == address(0) || savingsVault_ == address(0)) {
+            revert ZeroAddress();
+        }
+        address vaultToken = IMUSDSavingsRate(savingsVault_).musdToken();
+        if (vaultToken != musd_) revert VaultTokenMismatch(vaultToken);
         musd = musd_;
         btc = btc_;
         loanManager = loanManager_;
+        savingsVault = savingsVault_;
         _setGuardian(guardian_);
         _setTreasury(treasury_);
         _setFeeShareBps(feeShareBps_);
@@ -110,16 +124,33 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         nonReentrant
         returns (uint256 offerId)
     {
-        if (offersPaused) revert OffersPaused();
-        if (!isValidMaturity(maturity)) revert InvalidMaturity(maturity);
-        if (aprBps > MAX_APR_BPS) revert AprTooHigh(aprBps);
-        if (amount < minOffer) revert OfferTooSmall(amount, minOffer);
+        _checkNewOffer(maturity, aprBps, amount);
 
         offerId = nextOfferId++;
-        _offers[offerId] = Offer({maker: msg.sender, maturity: maturity, aprBps: aprBps, remaining: amount});
+        _offers[offerId] =
+            Offer({maker: msg.sender, maturity: maturity, aprBps: aprBps, remaining: amount, parked: false});
         emit OfferPosted(offerId, msg.sender, maturity, aprBps, amount);
 
         _pullExactly(musd, msg.sender, amount);
+    }
+
+    /// @inheritdoc ICreditMarkets
+    function postParkedOffer(uint64 maturity, uint16 aprBps, uint128 amount)
+        external
+        nonReentrant
+        returns (uint256 offerId)
+    {
+        _checkNewOffer(maturity, aprBps, amount);
+
+        offerId = nextOfferId++;
+        _offers[offerId] =
+            Offer({maker: msg.sender, maturity: maturity, aprBps: aprBps, remaining: amount, parked: true});
+        parkedPrincipal += amount;
+        emit OfferPosted(offerId, msg.sender, maturity, aprBps, amount);
+        emit OfferParked(offerId, amount);
+
+        _pullExactly(musd, msg.sender, amount);
+        _parkInVault(amount);
     }
 
     /// @inheritdoc ICreditMarkets
@@ -134,6 +165,10 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         offer.remaining = 0;
         emit OfferCancelled(offerId, maker, refund);
 
+        if (offer.parked) {
+            parkedPrincipal -= refund;
+            _takeFromVault(refund);
+        }
         IERC20(musd).safeTransfer(maker, refund);
     }
 
@@ -151,16 +186,18 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         if (recipient == address(0)) revert ZeroAddress();
         if (!isValidMaturity(maturity)) revert InvalidMaturity(maturity);
 
-        uint256 secondsToMaturity = maturity - block.timestamp;
-        for (uint256 i; i < count; ++i) {
-            face += _takeOffer(offerIds[i], amounts[i], maturity, maxAprBps, secondsToMaturity);
-            principal += amounts[i];
-        }
+        uint256 parkedTaken;
+        (principal, face, parkedTaken) = _takeOffers(maturity, offerIds, amounts, maxAprBps);
 
         Market storage market = _markets[maturity];
         market.faceTotal = (uint256(market.faceTotal) + face).toUint128();
         market.openLoans += 1;
 
+        // Every remainder is already cut, so the one vault call runs on settled books, under the lock (C33).
+        if (parkedTaken != 0) {
+            parkedPrincipal -= parkedTaken;
+            _takeFromVault(parkedTaken);
+        }
         IERC20(musd).safeTransfer(recipient, principal);
     }
 
@@ -366,7 +403,7 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
 
     /// @inheritdoc ICreditMarkets
     function rescueToken(address token, address to, uint256 amount) external nonReentrant onlyOwner {
-        if (token == musd || token == btc) revert TokenNotRescuable(token);
+        if (token == musd || token == btc || token == savingsVault) revert TokenNotRescuable(token);
         if (to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
         emit Rescued(token, to, amount);
@@ -380,10 +417,29 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         revert RenounceDisabled();
     }
 
+    /// @dev Takes every listed offer in order and returns the total principal, the total face, and the part of
+    ///      the principal that came from parked offers. Its own function so fill stays within the stack limit.
+    function _takeOffers(
+        uint64 maturity,
+        uint256[] calldata offerIds,
+        uint128[] calldata amounts,
+        uint16 maxAprBps
+    ) private returns (uint256 principal, uint256 face, uint256 parkedTaken) {
+        uint256 secondsToMaturity = maturity - block.timestamp;
+        for (uint256 i; i < offerIds.length; ++i) {
+            (uint256 fillFace, bool parked) =
+                _takeOffer(offerIds[i], amounts[i], maturity, maxAprBps, secondsToMaturity);
+            face += fillFace;
+            principal += amounts[i];
+            if (parked) parkedTaken += amounts[i];
+        }
+    }
+
     /// @dev Checks one listed offer against the borrow's terms, cuts its remainder before anything else, and
     ///      records the maker's and treasury's units in storage. Nothing is minted, so no maker code runs.
     ///      Each listed offer must pass on its own (C8), so its checks run per iteration of a loop capped at
     ///      MAX_FILLS; the only call before the event is the internal Quote library, not an outside contract.
+    ///      Returns whether the offer is parked, so fill knows how much to take back from the vault.
     // forge-lint: disable-next-item(require-revert-in-loop,reentrancy-events)
     function _takeOffer(
         uint256 offerId,
@@ -391,10 +447,11 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         uint64 maturity,
         uint16 maxAprBps,
         uint256 secondsToMaturity
-    ) private returns (uint256 fillFace) {
+    ) private returns (uint256 fillFace, bool parked) {
         Offer storage offer = _offers[offerId];
         address maker = offer.maker;
         uint16 aprBps = offer.aprBps;
+        parked = offer.parked;
         if (maker == address(0)) revert OfferNotFound(offerId);
         if (offer.maturity != maturity) revert WrongMaturity(offerId, offer.maturity, maturity);
         if (aprBps > maxAprBps) revert AprAboveMax(offerId, aprBps, maxAprBps);
@@ -411,6 +468,14 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         emit Filled(offerId, maker, maturity, amount, fillFace);
     }
 
+    /// @dev The one gate for both kinds of offer, so the pause and the bounds can never differ between them (C19).
+    function _checkNewOffer(uint64 maturity, uint16 aprBps, uint128 amount) private view {
+        if (offersPaused) revert OffersPaused();
+        if (!isValidMaturity(maturity)) revert InvalidMaturity(maturity);
+        if (aprBps > MAX_APR_BPS) revert AprTooHigh(aprBps);
+        if (amount < minOffer) revert OfferTooSmall(amount, minOffer);
+    }
+
     /// @dev Records are written for `amount` before this runs, so the measured arrival must match it exactly.
     ///      Reading the balance change, not the balance, means a donation sitting here changes nothing (C14).
     ///      `asset` is always one of the two immutables, MUSD or BTC.
@@ -420,6 +485,40 @@ contract CreditMarkets is ICreditMarkets, ERC1155, Ownable2Step, ReentrancyGuard
         token.safeTransferFrom(from, address(this), amount);
         uint256 received = token.balanceOf(address(this)) - before;
         if (received != amount) revert TransferMismatch(amount, received);
+    }
+
+    /// @dev The vault's code can change behind its proxy, so its deposit is judged by the sMUSD it actually minted,
+    ///      never trusted. The approval covers exactly this deposit and is cleared in the same call, so no standing
+    ///      allowance ever reaches the MUSD held here (C34).
+    function _parkInVault(uint256 amount) private {
+        IMUSDSavingsRate vault = IMUSDSavingsRate(savingsVault);
+        uint256 sharesBefore = vault.balanceOf(address(this));
+        IERC20(musd).forceApprove(address(vault), amount);
+        vault.deposit(amount);
+        IERC20(musd).forceApprove(address(vault), 0);
+        uint256 minted = _rise(sharesBefore, vault.balanceOf(address(this)));
+        if (minted != amount) revert VaultShortfall(amount, minted);
+    }
+
+    /// @dev Accepted only if exactly `amount` sMUSD was burned and at least `amount` MUSD arrived, so a short
+    ///      payment can never be topped up from plain escrow or collected funds (C30). The vault sends accrued
+    ///      yield with every withdraw; MUSD above `amount` is that yield and stays here, credited to nobody.
+    function _takeFromVault(uint256 amount) private {
+        IMUSDSavingsRate vault = IMUSDSavingsRate(savingsVault);
+        IERC20 token = IERC20(musd);
+        uint256 sharesBefore = vault.balanceOf(address(this));
+        uint256 musdBefore = token.balanceOf(address(this));
+        vault.withdraw(amount);
+        uint256 burned = _rise(vault.balanceOf(address(this)), sharesBefore);
+        if (burned != amount) revert VaultShortfall(amount, burned);
+        uint256 received = _rise(musdBefore, token.balanceOf(address(this)));
+        if (received < amount) revert VaultShortfall(amount, received);
+    }
+
+    /// @dev How far `later` is above `earlier`, or zero if it is not, so a balance that moved the wrong way fails
+    ///      the caller's exact check with VaultShortfall instead of an arithmetic panic.
+    function _rise(uint256 earlier, uint256 later) private pure returns (uint256) {
+        return later > earlier ? later - earlier : 0;
     }
 
     /// @dev The one paid-out record, shared by redeem and withdrawCollected, so paidOutOf counts both paths.

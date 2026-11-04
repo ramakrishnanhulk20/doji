@@ -11,9 +11,11 @@ import {MockVeBTC} from "./MockVeBTC.sol";
 import {MockPriceFeed} from "./MockPriceFeed.sol";
 import {MockPoolsVoter} from "./MockPoolsVoter.sol";
 import {MockFeeDistributor} from "./MockFeeDistributor.sol";
+import {MockSavingsVault} from "./MockSavingsVault.sol";
 
 /// @notice Shared deployment for the LoanManager resolution and roll tests: the real CreditMarkets and
-/// LoanManager on mocks for veBTC, PriceFeed, PoolsVoter, ValidatorsVoter, MUSD and BTC, at the risk study's settings
+/// LoanManager on mocks for veBTC, PriceFeed, PoolsVoter, ValidatorsVoter, MUSD, BTC and the sMUSD vault, at the risk
+/// study's settings
 /// (40% borrow limit, 65% line, 70% floor, 72-hour auction, 5% penalty). One 1 BTC position worth 80,000 MUSD
 /// belongs to alice and locks until the third maturity; a lender has 100,000 MUSD on offer at each maturity.
 abstract contract LoanFixture is Test {
@@ -41,6 +43,7 @@ abstract contract LoanFixture is Test {
     MockPoolsVoter internal voter;
     MockPoolsVoter internal validators;
     MockFeeDistributor internal dist;
+    MockSavingsVault internal vault;
     CreditMarkets internal cm;
     LoanManager internal lm;
 
@@ -72,6 +75,7 @@ abstract contract LoanFixture is Test {
         validators = new MockPoolsVoter(ve);
         dist = new MockFeeDistributor(ve, btc);
         feed = new MockPriceFeed(PRICE);
+        vault = new MockSavingsVault(address(musd));
         (cm, lm) = _deploy();
 
         musd.mint(lender, 1_000_000e18);
@@ -110,7 +114,17 @@ abstract contract LoanFixture is Test {
     function _deploy() internal returns (CreditMarkets markets, LoanManager manager) {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         markets = new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK), ""
+            address(musd),
+            address(btc),
+            predicted,
+            owner,
+            guardian,
+            treasury,
+            FEE_SHARE,
+            10e18,
+            uint32(4 * WEEK),
+            "",
+            address(vault)
         );
         manager = new LoanManager(
             address(ve), address(feed), address(musd), address(btc), address(voter), address(markets), 4, _settings()

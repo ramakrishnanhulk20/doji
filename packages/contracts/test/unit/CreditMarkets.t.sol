@@ -15,6 +15,7 @@ import {ICreditMarkets} from "../../src/interfaces/ICreditMarkets.sol";
 import {Quote} from "../../src/libraries/Quote.sol";
 import {MockMUSD} from "../utils/MockMUSD.sol";
 import {MockBTC} from "../utils/MockBTC.sol";
+import {MockSavingsVault} from "../utils/MockSavingsVault.sol";
 import {RevertingReceiver} from "../utils/RevertingReceiver.sol";
 
 contract CreditMarketsTest is Test {
@@ -26,6 +27,7 @@ contract CreditMarketsTest is Test {
 
     MockMUSD internal musd;
     MockBTC internal btc;
+    MockSavingsVault internal vault;
     CreditMarkets internal cm;
 
     address internal owner = makeAddr("owner");
@@ -44,8 +46,9 @@ contract CreditMarketsTest is Test {
         vm.warp(T0);
         musd = new MockMUSD();
         btc = new MockBTC();
+        vault = new MockSavingsVault(address(musd));
         cm = new CreditMarkets(
-            address(musd), address(btc), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""
+            address(musd), address(btc), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, "", address(vault)
         );
         m1 = uint64((T0 / WEEK + 1) * WEEK);
         m2 = m1 + uint64(WEEK);
@@ -121,27 +124,27 @@ contract CreditMarketsTest is Test {
     function test_RevertWhen_ConstructorZeroAddress() public {
         address b = address(btc);
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        this.newMarkets(abi.encode(address(0), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
+        this.newMarkets(abi.encode(address(0), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, "", address(vault)));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        this.newMarkets(abi.encode(address(musd), address(0), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
+        this.newMarkets(abi.encode(address(musd), address(0), loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, "", address(vault)));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        this.newMarkets(abi.encode(address(musd), b, address(0), owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
+        this.newMarkets(abi.encode(address(musd), b, address(0), owner, guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, "", address(vault)));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, address(0), treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, address(0), treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, "", address(vault)));
         vm.expectRevert(ICreditMarkets.ZeroAddress.selector);
-        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, address(0), FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, address(0), FEE_SHARE, MIN_OFFER, MAX_TERM, "", address(vault)));
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        this.newMarkets(abi.encode(address(musd), b, loanManager, address(0), guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, ""));
+        this.newMarkets(abi.encode(address(musd), b, loanManager, address(0), guardian, treasury, FEE_SHARE, MIN_OFFER, MAX_TERM, "", address(vault)));
     }
 
     function test_RevertWhen_ConstructorParamsOutOfBounds() public {
         address b = address(btc);
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.FeeShareOutOfBounds.selector, 2_001));
-        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, 2_001, MIN_OFFER, MAX_TERM, ""));
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, 2_001, MIN_OFFER, MAX_TERM, "", address(vault)));
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MinOfferOutOfBounds.selector, 1e18 - 1));
-        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, 1e18 - 1, MAX_TERM, ""));
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, 1e18 - 1, MAX_TERM, "", address(vault)));
         vm.expectRevert(abi.encodeWithSelector(ICreditMarkets.MaxTermOutOfBounds.selector, uint32(WEEK - 1)));
-        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, uint32(WEEK - 1), ""));
+        this.newMarkets(abi.encode(address(musd), b, loanManager, owner, guardian, treasury, FEE_SHARE, MIN_OFFER, uint32(WEEK - 1), "", address(vault)));
     }
 
     function test_PostOffer_EscrowsAndRecords() public {

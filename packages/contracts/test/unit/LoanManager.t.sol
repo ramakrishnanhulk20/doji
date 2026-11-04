@@ -22,6 +22,7 @@ import {MockVeBTC} from "../utils/MockVeBTC.sol";
 import {MockPriceFeed} from "../utils/MockPriceFeed.sol";
 import {MockPoolsVoter} from "../utils/MockPoolsVoter.sol";
 import {MockFeeDistributor} from "../utils/MockFeeDistributor.sol";
+import {MockSavingsVault} from "../utils/MockSavingsVault.sol";
 import {RevertingReceiver} from "../utils/RevertingReceiver.sol";
 
 contract LoanManagerTest is Test {
@@ -43,6 +44,7 @@ contract LoanManagerTest is Test {
     MockPriceFeed internal feed;
     MockPoolsVoter internal voter;
     MockFeeDistributor internal dist;
+    MockSavingsVault internal vault;
     CreditMarkets internal cm;
     LoanManager internal lm;
 
@@ -69,6 +71,7 @@ contract LoanManagerTest is Test {
         voter = new MockPoolsVoter(ve);
         dist = new MockFeeDistributor(ve, btc);
         feed = new MockPriceFeed(PRICE);
+        vault = new MockSavingsVault(address(musd));
         (cm, lm) = _deploy(4);
 
         musd.mint(lender, 1_000_000e18);
@@ -90,7 +93,7 @@ contract LoanManagerTest is Test {
     function _deploy(uint256 layoutWords) internal returns (CreditMarkets markets, LoanManager manager) {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         markets = new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK), ""
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK), "", address(vault)
         );
         manager = _newManager(address(ve), address(feed), address(musd), address(markets), layoutWords, _settings());
         assertEq(address(manager), predicted);
@@ -99,7 +102,7 @@ contract LoanManagerTest is Test {
     function _marketsForNextDeploy() internal returns (CreditMarkets) {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         return new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK), ""
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(4 * WEEK), "", address(vault)
         );
     }
 
@@ -201,7 +204,7 @@ contract LoanManagerTest is Test {
 
     function test_C27_ConstructorRevertsWhenMarketsPointElsewhere() public {
         CreditMarkets elsewhere = new CreditMarkets(
-            address(musd), address(btc), makeAddr("someoneElse"), owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
+            address(musd), address(btc), makeAddr("someoneElse"), owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), "", address(vault)
         );
         vm.expectRevert(ILoanManager.CreditMarketsMismatch.selector);
         _newManager(address(ve), address(feed), address(musd), address(elsewhere), 4, _settings());
@@ -209,9 +212,10 @@ contract LoanManagerTest is Test {
 
     function test_RevertWhen_ConstructorMusdMismatch() public {
         MockMUSD other = new MockMUSD();
+        MockSavingsVault otherVault = new MockSavingsVault(address(other));
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         CreditMarkets markets = new CreditMarkets(
-            address(other), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
+            address(other), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), "", address(otherVault)
         );
         vm.expectRevert(ILoanManager.MusdMismatch.selector);
         _newManager(address(ve), address(feed), address(musd), address(markets), 4, _settings());
@@ -539,7 +543,7 @@ contract LoanManagerTest is Test {
         LoanManager lmOnNothing;
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         CreditMarkets markets = new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), "", address(vault)
         );
         lmOnNothing = _newManager(makeAddr("noCode"), address(feed), address(musd), address(markets), 4, _settings());
         vm.expectRevert(LockReader.LockReadFailed.selector);

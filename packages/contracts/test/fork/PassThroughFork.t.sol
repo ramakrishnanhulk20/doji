@@ -98,6 +98,7 @@ contract PassThroughForkTest is Test {
     address internal constant BOOST_VOTER = 0x2Ba614a598Cffa5a19d683cDCA97bac3a49313d1;
     address internal constant VALIDATORS_VOTER = 0xe99a9ad5Ed26BD30e4DB25397f378817e9b9515a;
     address internal constant VEMEZO = 0xb90fdAd3DFD180458D62Cc6acedc983D78E20122;
+    address internal constant SMUSD = 0xb4D498029af77680cD1eF828b967f010d06C51CC;
     // The mUSDC/mUSDT pool: a live gauge whose fee and incentive tokens are ordinary ERC-20s, not MUSD or BTC.
     address internal constant POOL = 0x2a1ab0224a7a608d3A992Cb15594a2934F74f4C0;
     address internal constant MUSDC = 0x04671C72Aab5AC02A03c1098314b1BB6B560c197;
@@ -108,6 +109,7 @@ contract PassThroughForkTest is Test {
     address internal constant T_MUSD = 0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503;
     address internal constant T_PRICE_FEED = 0x86bCF0841622a5dAC14A313a15f96A95421b9366;
     address internal constant T_POOLS_VOTER = 0x72F8dd7F44fFa19E45955aa20A5486E8EB255738;
+    address internal constant T_SMUSD = 0x6f461c68B2c5492C0F5CCEc5a264d692aA7A8e16;
     uint256 internal constant TESTNET_LAYOUT_WORDS = 3;
 
     uint256 internal constant WEEK = 604_800;
@@ -525,7 +527,8 @@ contract PassThroughForkTest is Test {
         uint256 words
     ) internal {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
-        cm = new CreditMarkets(musd_, BTC, predicted, owner, owner, treasury, 1_000, 10e18, uint32(4 * WEEK), "");
+        address vault = musd_ == T_MUSD ? T_SMUSD : SMUSD;
+        cm = new CreditMarkets(musd_, BTC, predicted, owner, owner, treasury, 1_000, 10e18, uint32(4 * WEEK), "", vault);
         ILoanManager.Settings memory settings = ILoanManager.Settings({
             owner: owner,
             guardian: owner,

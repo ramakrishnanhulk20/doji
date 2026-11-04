@@ -5,11 +5,14 @@ pragma solidity 0.8.28;
 /// @notice Fixed-rate MUSD offers and one credit market per Thursday maturity. Lenders hold ERC-1155
 ///         credit units whose token id is the maturity; one unit is one MUSD due on that date.
 interface ICreditMarkets {
+    /// @dev `parked` is fixed at posting: a parked offer's unfilled MUSD waits in the sMUSD vault, a plain one's in
+    ///      this contract.
     struct Offer {
         address maker;
         uint64 maturity;
         uint16 aprBps;
         uint128 remaining;
+        bool parked;
     }
 
     struct Market {
@@ -35,6 +38,8 @@ interface ICreditMarkets {
     event OfferPosted(
         uint256 indexed offerId, address indexed maker, uint64 indexed maturity, uint16 aprBps, uint128 amount
     );
+    /// @notice A new offer's `amount` MUSD was deposited in the sMUSD vault, where it waits until filled or cancelled.
+    event OfferParked(uint256 indexed offerId, uint128 amount);
     /// @notice An offer's unfilled MUSD went back to its maker.
     event OfferCancelled(uint256 indexed offerId, address indexed maker, uint128 refunded);
     /// @notice An offer lent `principal` MUSD to a loan owing `face` at `maturity`.
@@ -68,7 +73,7 @@ interface ICreditMarkets {
     event OffersPausedSet(bool paused);
     /// @notice The metadata URI for every credit unit changed; clients replace {id} with the maturity.
     event UriSet(string uri);
-    /// @notice The owner moved a stray ERC-20 that is neither MUSD nor BTC.
+    /// @notice The owner moved a stray ERC-20 that is not MUSD, BTC or sMUSD.
     event Rescued(address indexed token, address indexed to, uint256 amount);
 
     /// @notice An address argument or setting was the zero address.
@@ -125,8 +130,13 @@ interface ICreditMarkets {
     error MinOfferOutOfBounds(uint128 minOffer);
     /// @notice The maximum term is outside 1 to 4 weeks, veBTC's 28-day maximum lock.
     error MaxTermOutOfBounds(uint32 maxTermSeconds);
-    /// @notice MUSD and BTC are recorded per market, so they are never rescued.
+    /// @notice MUSD and BTC are recorded per market and sMUSD holds parked offers, so none of them is ever rescued.
     error TokenNotRescuable(address token);
+    /// @notice The sMUSD vault moved a different amount than asked: sMUSD minted or burned other than `expected`,
+    ///         or less than `expected` MUSD returned by a withdraw.
+    error VaultShortfall(uint256 expected, uint256 actual);
+    /// @notice The sMUSD vault takes another token than this contract's MUSD.
+    error VaultTokenMismatch(address vaultToken);
     /// @notice Ownership can never be given up, so the treasury, pause and rescue settings always keep an owner.
     error RenounceDisabled();
 
@@ -141,8 +151,27 @@ interface ICreditMarkets {
     /// @return offerId New offer id. Ids start at 1 and are never reused.
     function postOffer(uint64 maturity, uint16 aprBps, uint128 amount) external returns (uint256 offerId);
 
-    /// @notice Refunds the unfilled part of an offer to its maker. Works at any time and is never paused.
-    /// @dev Reverts OfferNotFound, NotMaker, or OfferEmpty if nothing is left. Emits OfferCancelled.
+    /// @notice Escrows `amount` MUSD from the caller as a fixed-rate offer for `maturity` and deposits it in the
+    ///         sMUSD vault until it is filled or cancelled.
+    /// @dev Same checks, pull and OfferPosted event as postOffer, then adds `amount` to parkedPrincipal, emits
+    ///      OfferParked, approves the vault for exactly `amount`, deposits, and resets the approval to zero. Fills
+    ///      and cancels of a parked offer withdraw from the vault, so they need the vault to work; the borrower
+    ///      is paid exactly the principal, and any yield the vault pays with a withdraw stays in this contract,
+    ///      credited to nobody. Reverts like postOffer, and VaultShortfall unless this contract's sMUSD balance
+    ///      rose by exactly `amount`. A vault that reverts makes this revert too. Emits OfferPosted and
+    ///      OfferParked.
+    /// @param maturity Thursday 00:00 UTC timestamp the loans repay on.
+    /// @param aprBps Yearly rate in basis points.
+    /// @param amount MUSD to lend, 18 decimals.
+    /// @return offerId New offer id, from the same sequence as postOffer.
+    function postParkedOffer(uint64 maturity, uint16 aprBps, uint128 amount) external returns (uint256 offerId);
+
+    /// @notice Refunds the unfilled part of an offer to its maker. Works at any time and is never paused. A parked
+    ///         offer's refund is withdrawn from the sMUSD vault first, so it also needs the vault to pay.
+    /// @dev Reverts OfferNotFound, NotMaker, or OfferEmpty if nothing is left. For a parked offer the remainder is
+    ///      cut and parkedPrincipal lowered before the vault is called, and it reverts VaultShortfall unless the
+    ///      withdraw burned exactly the refund in sMUSD and returned at least the refund in MUSD; MUSD above the
+    ///      refund is vault yield and stays here. Emits OfferCancelled.
     /// @param offerId Offer to cancel.
     function cancelOffer(uint256 offerId) external;
 
@@ -150,7 +179,10 @@ interface ICreditMarkets {
     /// @dev Only LoanManager. Every offer must exist, be for exactly `maturity`, charge at most `maxAprBps`
     ///      and have at least the listed amount left; each amount must be above zero. The remainder is cut
     ///      before anything else. Units are recorded in storage and minted later by claimUnits, so no maker
-    ///      code runs here. Adds one open loan to the market. Emits Filled once per offer.
+    ///      code runs here. Adds one open loan to the market. The amounts taken from parked offers are then
+    ///      withdrawn from the sMUSD vault in one call, which reverts VaultShortfall unless it burned exactly
+    ///      that sum in sMUSD and returned at least that sum in MUSD; plain offers never call the vault. The
+    ///      recipient gets exactly the principal and never the vault's yield. Emits Filled once per offer.
     /// @param maturity The loan's maturity.
     /// @param offerIds Offers to take, 1 to MAX_FILLS entries.
     /// @param amounts MUSD to take from each offer, same length as `offerIds`.
@@ -239,7 +271,8 @@ interface ICreditMarkets {
         view
         returns (uint256 face, uint256 makerUnits, uint256 treasuryUnits);
 
-    /// @notice An offer's maker, maturity, rate and unfilled amount. A zero maker means no such offer.
+    /// @notice An offer's maker, maturity, rate, unfilled amount and whether it is parked in the sMUSD vault. A
+    ///         zero maker means no such offer.
     function offerOf(uint256 offerId) external view returns (Offer memory);
 
     /// @notice A market's totals and finalization snapshot.
@@ -269,6 +302,13 @@ interface ICreditMarkets {
 
     /// @notice The BTC ERC-20 that settled loans pay markets in, fixed at deployment.
     function btc() external view returns (address);
+
+    /// @notice Mezo's sMUSD vault that parked offers wait in, fixed at deployment. Its musdToken() is musd().
+    function savingsVault() external view returns (address);
+
+    /// @notice MUSD principal of parked offers still unfilled, which is the sum of their remaining amounts. This
+    ///         contract's sMUSD balance is always at least this; sMUSD sent here unasked is never counted.
+    function parkedPrincipal() external view returns (uint256);
 
     /// @notice Furthest a maturity may be from now, in seconds.
     function maxTermSeconds() external view returns (uint32);
@@ -309,7 +349,7 @@ interface ICreditMarkets {
     /// @notice Owner only. Sets the guardian. Reverts ZeroAddress. Emits GuardianSet.
     function setGuardian(address newGuardian) external;
 
-    /// @notice Guardian or owner. Pauses or resumes postOffer only; cancel, fills, credits, claims,
+    /// @notice Guardian or owner. Pauses or resumes postOffer and postParkedOffer only; cancel, fills, credits, claims,
     /// finalize and redeem are never paused. Reverts NotGuardianOrOwner. Emits OffersPausedSet.
     function setOffersPaused(bool paused) external;
 
@@ -319,10 +359,11 @@ interface ICreditMarkets {
     /// @param newUri The new URI template.
     function setURI(string calldata newUri) external;
 
-    /// @notice Owner only. Sends a stray ERC-20 that is neither MUSD nor BTC.
-    /// @dev MUSD and BTC are refused outright: their records are per offer and per market, so a share of
-    ///      them is never free to move. CreditMarkets keeps no record in any other token. Reverts
-    ///      OwnableUnauthorizedAccount, ZeroAddress, ZeroAmount or TokenNotRescuable. Emits Rescued.
+    /// @notice Owner only. Sends a stray ERC-20 that is not MUSD, BTC or sMUSD.
+    /// @dev MUSD, BTC and the sMUSD vault's token are refused outright: their records are per offer and per
+    ///      market, and sMUSD stands for every parked offer, so a share of them is never free to move. CreditMarkets
+    ///      keeps no record in any other token. Reverts OwnableUnauthorizedAccount, ZeroAddress, ZeroAmount or
+    ///      TokenNotRescuable. Emits Rescued.
     /// @param token ERC-20 to send.
     /// @param to Receiver.
     /// @param amount Amount to send.

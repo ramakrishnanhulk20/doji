@@ -116,7 +116,7 @@ contract ResolutionTest is LoanFixture {
         MockBTC other = new MockBTC();
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         CreditMarkets markets = new CreditMarkets(
-            address(musd), address(other), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
+            address(musd), address(other), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), "", address(vault)
         );
         vm.expectRevert(ILoanManager.BtcMismatch.selector);
         new LoanManager(address(ve), address(feed), address(musd), address(btc), address(voter), address(markets), 4, _settings());
@@ -132,7 +132,7 @@ contract ResolutionTest is LoanFixture {
     function test_RevertWhen_ConstructorAuctionParamsOutOfBounds() public {
         address predicted = vm.computeCreateAddress(address(this), vm.getNonce(address(this)) + 1);
         CreditMarkets markets = new CreditMarkets(
-            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), ""
+            address(musd), address(btc), predicted, owner, guardian, treasury, FEE_SHARE, 10e18, uint32(WEEK), "", address(vault)
         );
         ILoanManager.Settings memory settings = _settings();
         settings.penaltyBps = 1_001;
