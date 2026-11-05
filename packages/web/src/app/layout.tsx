@@ -45,6 +45,16 @@ const dojiKanji = localFont({
   variable: "--font-doji-kanji",
 });
 
+// A subset of Yuji Boku (SIL OFL) for the brush kanji on the ledger: only the characters the quest pages write.
+const ledgerBrush = localFont({
+  src: "../fonts/ledger-brush.woff2",
+  weight: "400",
+  style: "normal",
+  display: "swap",
+  preload: false,
+  variable: "--font-ledger-brush",
+});
+
 export const metadata: Metadata = {
   title: { default: "Doji", template: "%s | Doji" },
   description: "Fixed-rate MUSD loans on Mezo",
@@ -57,7 +67,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const fontVariables = [shippori, fraunces, plexSans, plexMono, dojiKanji].map((font) => font.variable).join(" ");
+  const fontVariables = [shippori, fraunces, plexSans, plexMono, dojiKanji, ledgerBrush].map((font) => font.variable).join(" ");
 
   return (
     <html lang="en" className={fontVariables}>
