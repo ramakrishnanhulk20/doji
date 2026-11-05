@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.104.5",
+    "@walletconnect/ethereum-provider": "2.26.0",
     "fumadocs-core": "16.17.7",
     "fumadocs-mdx": "15.4.9",
     "fumadocs-ui": "16.17.7",
