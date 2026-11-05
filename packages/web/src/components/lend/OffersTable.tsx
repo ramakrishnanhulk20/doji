@@ -175,7 +175,7 @@ export function OffersTable({ state, offers, now, runningKey, busy, onCancel, yi
               <td data-label="Left">
                 <span>
                   {fmtMusd(offer.remaining)} MUSD
-                  {earned?.inVault && (
+                  {earned?.inVault && offer.remaining > 0n && (
                     <span className="lend-tag" title="This MUSD is earning in Mezo's sMUSD vault">
                       sMUSD
                     </span>
