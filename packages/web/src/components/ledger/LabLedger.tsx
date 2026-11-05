@@ -1,14 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { WalletProgress } from "../../lib/quests/exp";
+import type { QuestId } from "../../lib/quests/table";
 import { useReducedMotion } from "../../lib/motion-mode";
 import { Button } from "../Button";
 import { Seal } from "../Seal";
 import { BrushProgress } from "./BrushProgress";
+import { CHAPTERS, entriesOf } from "./chapters";
+import { InstructionSlip } from "./InstructionSlip";
+import labSample from "./lab-sample.json";
+import { LedgerCover } from "./LedgerCover";
+import { LedgerSpread } from "./LedgerSpread";
 import { PaperSheet } from "./PaperSheet";
 import { RANK_KANJI, RankSeal, type Rank } from "./RankSeal";
 import { StampPress } from "./StampPress";
 import "./ledger.css";
+
+// A real wallet read from the chain by scripts/save-lab-sample.ts, so the lab shows real hashes and dates.
+const SAMPLE = labSample as WalletProgress;
+const ENTRIES = entriesOf(SAMPLE);
 
 const RANKS: { rank: Rank; name: string; meaning: string; exp: string; tilt: number }[] = [
   { rank: "decchi", name: "Decchi", meaning: "the apprentice", exp: "0 EXP", tilt: -2 },
@@ -80,6 +91,14 @@ function PressDemo({ buttonLabel, size, outline, reduced, children }: PressDemoP
 
 export function LabLedger() {
   const reduced = useReducedMotion();
+  const [slipId, setSlipId] = useState<QuestId | null>(null);
+  const [slipOpen, setSlipOpen] = useState(false);
+  const openSlip = useCallback((id: QuestId) => {
+    setSlipId(id);
+    setSlipOpen(true);
+  }, []);
+  const closeSlip = useCallback(() => setSlipOpen(false), []);
+  const slipEntry = ENTRIES.find((entry) => entry.id === slipId);
 
   return (
     <main className="ledger ledger-lab">
@@ -161,7 +180,39 @@ export function LabLedger() {
             <BrushProgress value={0.6} reduced={reduced} tone="paper" />
           </PaperSheet>
         </section>
+
+        <section className="ledger-lab-section">
+          <h2 className="label-mono ledger-lab-label">The cover</h2>
+          <div className="ledger-lab-cover">
+            <LedgerCover rank={SAMPLE.rank.id} />
+          </div>
+        </section>
+
+        <section className="ledger-lab-section">
+          <h2 className="label-mono ledger-lab-label">The pages</h2>
+          <div className="ledger-lab-pages">
+            {CHAPTERS.map((chapter) => (
+              <LedgerSpread
+                key={chapter.id}
+                chapter={chapter}
+                entries={ENTRIES.filter((entry) => entry.chapter === chapter.id)}
+                onOpen={openSlip}
+              />
+            ))}
+          </div>
+        </section>
       </div>
+
+      {slipEntry && (
+        <InstructionSlip
+          id={slipEntry.id}
+          open={slipOpen}
+          onClose={closeSlip}
+          done={slipEntry.done}
+          at={slipEntry.at}
+          hash={slipEntry.hash}
+        />
+      )}
     </main>
   );
 }

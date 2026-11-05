@@ -262,3 +262,728 @@
 .ledger-stroke-paper {
   margin-top: 40px;
 }
+
+/* The thread that binds the book. It sits flush right and is as wide as the ticks are long, so the line itself is 16px
+   in from the edge. */
+.ledger-thread {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 16px;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The closed book. Every length is in --u: one pixel on desktop, 1/420 of the cover's width on a phone, so a narrow
+   cover is the same drawing, smaller. */
+.ledger-cover-wrap {
+  container-type: inline-size;
+  width: 420px;
+  max-width: 100%;
+}
+
+.ledger-cover-book {
+  --u: 1px;
+  position: relative;
+  transition: transform 400ms var(--ease-settle);
+}
+
+.ledger-cover-book:hover {
+  transform: rotate(-0.6deg);
+}
+
+@media (max-width: 639.98px) {
+  .ledger-cover-wrap {
+    width: 100%;
+  }
+
+  .ledger-cover-book {
+    --u: calc(100cqw / 420);
+  }
+}
+
+.ledger .ledger-cover {
+  width: 100%;
+  aspect-ratio: 7 / 10;
+  padding: 0;
+  background: #d9c8a8;
+}
+
+.ledger .ledger-cover .ledger-thread {
+  width: calc(16 * var(--u));
+}
+
+/* The page block shows under the cover at the left and the bottom. */
+.ledger-cover-edge {
+  position: absolute;
+  background: var(--washi-deep);
+}
+
+.ledger-cover-edge-left {
+  left: -3px;
+  top: 3px;
+  bottom: 0;
+  width: 3px;
+}
+
+.ledger-cover-edge-bottom {
+  left: -3px;
+  right: 3px;
+  bottom: -3px;
+  height: 3px;
+}
+
+.ledger .ledger-cover-slip {
+  position: absolute;
+  left: calc(56 * var(--u));
+  top: calc(56 * var(--u));
+  width: calc(110 * var(--u));
+  height: calc(380 * var(--u));
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  box-shadow: 0 1px 2px rgba(70, 50, 25, 0.25);
+}
+
+.ledger-cover-title {
+  writing-mode: vertical-rl;
+  font-family: var(--font-ledger-brush), var(--font-shippori), serif;
+  font-size: calc(84 * var(--u));
+  line-height: 1;
+  color: var(--sumi);
+}
+
+.ledger-cover-name {
+  position: absolute;
+  left: calc(56 * var(--u));
+  top: calc(444 * var(--u));
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: max(11px, calc(13 * var(--u)));
+  line-height: 1.3;
+  color: var(--sumi-soft);
+}
+
+.ledger-cover-seal {
+  position: absolute;
+  left: calc(40 * var(--u));
+  bottom: calc(40 * var(--u));
+  width: calc(96 * var(--u));
+  height: calc(96 * var(--u));
+  line-height: 0;
+  transform: rotate(-4deg);
+}
+
+.ledger-cover-seal svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ledger-cover-cord {
+  position: absolute;
+  left: calc(30% - 20 * var(--u));
+  top: calc(-92 * var(--u));
+  width: calc(40 * var(--u));
+  height: calc(94 * var(--u));
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The chapter block: numeral, name, one line. */
+.ledger-chapter-numeral {
+  display: block;
+  font-family: var(--font-ledger-brush), var(--font-shippori), serif;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--sumi);
+}
+
+.ledger-chapter-name {
+  margin: 8px 0 0;
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: var(--display-headline-weight);
+  color: var(--sumi);
+}
+
+.ledger-chapter-line {
+  margin: 4px 0 0;
+  max-width: 34ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sumi-soft);
+}
+
+.ledger-exp-note {
+  margin: 0 0 0 auto;
+  max-width: 60ch;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+  color: var(--sumi-soft);
+}
+
+/* Below 1024 the chapter is one sheet of rows. From 1024 it is a two page spread. */
+.ledger-spread-wide {
+  display: none;
+}
+
+.ledger .ledger-stack {
+  display: block;
+  padding: 28px 36px 24px 20px;
+}
+
+.ledger-stack-rows {
+  margin-top: 20px;
+}
+
+.ledger-stack .ledger-exp-note {
+  margin-top: 16px;
+}
+
+@media (min-width: 1024px) {
+  .ledger-spread-wide {
+    display: flex;
+    width: 100%;
+    max-width: 1120px;
+  }
+
+  .ledger .ledger-stack {
+    display: none;
+  }
+}
+
+.ledger .ledger-page {
+  flex: 0 1 560px;
+  min-width: 0;
+  height: 680px;
+  display: flex;
+  flex-direction: column;
+  padding: 36px 32px 28px;
+  border-radius: 0;
+}
+
+.ledger-page-rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--rule);
+}
+
+.ledger-page-rule-top {
+  top: 20px;
+}
+
+.ledger-page-rule-bottom {
+  bottom: 20px;
+}
+
+/* The shadow in the fold, drawn on both pages so it reads as one gutter. */
+.ledger-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+}
+
+.ledger-page-left .ledger-gutter {
+  right: 0;
+  background: linear-gradient(to left, rgba(70, 50, 25, 0.28), transparent);
+}
+
+.ledger-page-right .ledger-gutter {
+  left: 0;
+  background: linear-gradient(to right, rgba(70, 50, 25, 0.28), transparent);
+}
+
+/* The head has the same height on both pages, so the columns start at one y. */
+.ledger-page-head {
+  flex: none;
+  height: 136px;
+  margin-bottom: 20px;
+}
+
+.ledger-page-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* A column is a size container so the entry's drawing can shrink with it on a narrow spread. */
+.ledger-page-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  container-type: inline-size;
+  border-left: 1px solid var(--rule);
+}
+
+/* On a right page with no entries the chapter numeral stands in. It sits over the ruled columns and is faint enough
+   that they read through it. */
+.ledger-page-numeral {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-ledger-brush), var(--font-shippori), serif;
+  font-size: 340px;
+  line-height: 1;
+  color: var(--sumi-ghost);
+  pointer-events: none;
+}
+
+/* Of type, because the faint numeral can come before the columns inside the body. */
+.ledger-page-column:first-of-type {
+  border-left: 0;
+}
+
+.ledger-page-foot {
+  flex: none;
+  min-height: 36px;
+  margin-top: 12px;
+}
+
+/* A quest entry. */
+.ledger-entry {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 16px 8px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--sumi);
+  text-align: center;
+  cursor: pointer;
+}
+
+.ledger-entry:focus-visible {
+  outline: 2px solid var(--beni-deep);
+  outline-offset: 2px;
+}
+
+.ledger-entry-number,
+.ledger-entry-exp,
+.ledger-entry-date {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--sumi-soft);
+}
+
+.ledger-entry-number,
+.ledger-entry-exp {
+  display: block;
+}
+
+.ledger-entry-kanji {
+  display: block;
+  font-family: var(--font-ledger-brush), var(--font-shippori), serif;
+  line-height: 1;
+  color: var(--sumi);
+  transition: color 180ms ease-out;
+}
+
+.ledger-entry[data-done="false"] .ledger-entry-kanji {
+  color: var(--sumi-ghost);
+}
+
+.ledger-entry-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--sumi);
+}
+
+.ledger-entry-seal {
+  display: block;
+  line-height: 0;
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform 180ms ease-out;
+}
+
+.ledger-entry-outline {
+  display: block;
+  box-sizing: border-box;
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  transform: rotate(var(--tilt, 0deg));
+  transition: border-color 180ms ease-out;
+}
+
+.ledger-entry[data-done="true"]:hover .ledger-entry-seal {
+  transform: rotate(var(--tilt, 0deg)) scale(1.04);
+}
+
+.ledger-entry[data-done="false"]:is(:hover, :focus-visible) .ledger-entry-kanji {
+  color: rgba(28, 24, 21, 0.34);
+}
+
+.ledger-entry[data-done="false"]:is(:hover, :focus-visible) .ledger-entry-outline {
+  border-color: var(--beni-deep);
+}
+
+/* Column: the entry fills its column and spreads number, drawing, title and EXP down it. Every length of the drawing is
+   in --k, one pixel on a full width spread and smaller when the column is narrower than 160px. The kanji is 108px
+   and the seal's red square is 76px: its box is 76 * 64 / 56 wide because the red square is 56 of the Seal's 64 units.
+   The seal overlaps the kanji's lower right by 34px and multiplies, so the brush shows through the red. */
+.ledger-entry-column {
+  --k: min(1px, calc(100cqw / 160));
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 10px 18px;
+}
+
+/* The height is held for the date line too, so a not-done entry spreads like a done one and titles line up across columns. */
+.ledger-entry-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: calc(108 * var(--k) + 21.6px);
+}
+
+.ledger-entry-cluster {
+  position: relative;
+  display: block;
+  width: calc(150 * var(--k));
+  height: calc(108 * var(--k));
+}
+
+.ledger-entry-column .ledger-entry-kanji {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: calc(108 * var(--k));
+}
+
+.ledger-entry-column .ledger-entry-seal {
+  position: absolute;
+  left: calc(68.5715 * var(--k));
+  top: calc(26.5715 * var(--k));
+  width: calc(86.857 * var(--k));
+  height: calc(86.857 * var(--k));
+  mix-blend-mode: multiply;
+}
+
+.ledger-entry-column .ledger-entry-seal svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ledger-entry-column .ledger-entry-outline {
+  position: absolute;
+  left: calc(74 * var(--k));
+  top: calc(32 * var(--k));
+  width: calc(76 * var(--k));
+  height: calc(76 * var(--k));
+}
+
+.ledger-entry-column .ledger-entry-date {
+  white-space: nowrap;
+}
+
+.ledger-entry-column .ledger-entry-title {
+  min-height: 3.9em;
+  font-size: 16px;
+}
+
+/* Row: the stacked layout below 1024. */
+.ledger-entry-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 72px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+  text-align: left;
+}
+
+.ledger-entry-row .ledger-entry-kanji {
+  font-size: 48px;
+  text-align: center;
+}
+
+.ledger-entry-row .ledger-entry-exp {
+  margin-top: 2px;
+}
+
+.ledger-entry-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.ledger-entry-row .ledger-entry-seal,
+.ledger-entry-row .ledger-entry-outline {
+  flex: none;
+  width: 56px;
+  height: 56px;
+}
+
+.ledger-entry-row .ledger-entry-date {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* The instruction slip. It stays in the page once opened and is hidden by visibility, so it can slide out. */
+.ledger-slip-root {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  visibility: hidden;
+  transition: visibility 0s linear 300ms;
+}
+
+.ledger-slip-root[data-state="open"] {
+  pointer-events: auto;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.ledger-slip-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 8, 7, 0.55);
+  opacity: 0;
+  transition: opacity 300ms ease-out;
+}
+
+.ledger-slip-root[data-state="open"] .ledger-slip-scrim {
+  opacity: 1;
+}
+
+.ledger-slip-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 260ms var(--ease-settle);
+}
+
+.ledger-slip-root[data-state="open"] .ledger-slip-panel {
+  transform: none;
+  transition-duration: 460ms;
+}
+
+.ledger .ledger-slip {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border-radius: 0;
+}
+
+.ledger-slip-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 36px 32px;
+  color: var(--sumi);
+}
+
+@media (min-width: 640px) {
+  .ledger-slip-panel {
+    left: auto;
+    top: 0;
+    width: 440px;
+    max-height: none;
+    transform: translateX(100%);
+  }
+
+  .ledger .ledger-slip {
+    border-left: 1px solid var(--line-strong);
+  }
+}
+
+.ledger-slip-close {
+  position: absolute;
+  top: 28px;
+  right: 24px;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--sumi-soft);
+  cursor: pointer;
+  transition: color 180ms ease-out;
+}
+
+.ledger-slip-close:hover {
+  color: var(--sumi);
+}
+
+.ledger-slip-close:focus-visible {
+  outline: 2px solid var(--beni-deep);
+  outline-offset: 2px;
+}
+
+.ledger-slip-glyph {
+  position: relative;
+  display: block;
+  width: max-content;
+}
+
+.ledger-slip-kanji {
+  display: block;
+  font-family: var(--font-ledger-brush), var(--font-shippori), serif;
+  font-size: 96px;
+  line-height: 1;
+  color: var(--sumi);
+}
+
+.ledger-slip-title {
+  margin: 12px 0 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: var(--display-headline-weight);
+  color: var(--sumi);
+}
+
+.ledger-slip-exp {
+  margin: 8px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--sumi-soft);
+}
+
+.ledger-slip-done {
+  margin-top: 20px;
+}
+
+/* The Seal's red square starts 4px inside its 64px box, so the box sits 38px in from the kanji's right edge to overlap
+   the brush by 34px. */
+.ledger-slip-seal {
+  position: absolute;
+  left: calc(100% - 38px);
+  bottom: 0;
+  display: block;
+  line-height: 0;
+  mix-blend-mode: multiply;
+  transform: rotate(var(--tilt, 0deg));
+}
+
+.ledger-slip-done-line {
+  margin: 0 0 4px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--sumi);
+}
+
+.ledger .ledger-slip .link-draw {
+  padding-bottom: 1px;
+  font-size: 14px;
+  color: var(--sumi);
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition:
+    color 200ms ease-out,
+    background-size 200ms ease-out;
+}
+
+.ledger .ledger-slip .link-draw:hover,
+.ledger .ledger-slip .link-draw:focus-visible {
+  color: var(--beni-deep);
+  background-size: 100% 1px;
+}
+
+.ledger-slip-rule {
+  height: 0;
+  margin: 24px 0 8px;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.ledger-slip-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledger-slip-steps li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  margin: 12px 0;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--sumi);
+}
+
+.ledger-slip-step-number {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 24px;
+  color: var(--beni-deep);
+}
+
+.ledger-slip-label {
+  margin: 24px 0 4px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sumi-soft);
+}
+
+.ledger-slip-need {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--sumi);
+}
+
+.ledger .ledger-slip-button {
+  width: 100%;
+  margin-top: 28px;
+}
+
+.ledger-lab-cover {
+  padding-top: 100px;
+}
+
+.ledger-lab-pages {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 48px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ledger-cover-book,
+  .ledger-entry-kanji,
+  .ledger-entry-seal,
+  .ledger-entry-outline,
+  .ledger-slip-root,
+  .ledger-slip-scrim,
+  .ledger-slip-panel,
+  .ledger-slip-close,
+  .ledger .ledger-slip .link-draw {
+    transition: none;
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "address": "0x92DcCb70C33300848Da555eDe8597d3F7037AE2b",
+  "exp": 750,
+  "rank": {
+    "id": "tedai",
+    "kanji": "手代",
+    "exp": 300
+  },
+  "next": {
+    "id": "banto",
+    "kanji": "番頭",
+    "exp": 800
+  },
+  "quests": [
+    {
+      "id": "kit",
+      "done": false
+    },
+    {
+      "id": "borrow",
+      "done": true,
+      "at": 1793782817,
+      "hash": "0xbec0ffd154bb4531e6fdc56175e179fda620936e0393ac36a6fb5fade517c210"
+    },
+    {
+      "id": "vote",
+      "done": true,
+      "at": 1793782831,
+      "hash": "0x35514ac414a31b5fa144cbfe562ba8215da939d2c9d45d7f3469a4fa4aa3ed31"
+    },
+    {
+      "id": "paydown",
+      "done": true,
+      "at": 1793782846,
+      "hash": "0x314b4d909072e09ec677d8dd3fad07fd8b1f296cf650117a33fe81530c76833a"
+    },
+    {
+      "id": "repay",
+      "done": true,
+      "at": 1793787536,
+      "hash": "0xad69a1a1ae5246e711e47644b7ab200163ef724a8a94fcd649e3cff292868325"
+    },
+    {
+      "id": "home",
+      "done": true,
+      "at": 1793787539,
+      "hash": "0xe395858b27dbb319589988fe41b36d2d827b9257b27209bc6c8ab748b4dcba2b"
+    },
+    {
+      "id": "parked",
+      "done": false
+    },
+    {
+      "id": "stranger",
+      "done": false
+    },
+    {
+      "id": "units",
+      "done": false
+    },
+    {
+      "id": "sell",
+      "done": false
+    },
+    {
+      "id": "buy",
+      "done": false
+    },
+    {
+      "id": "payout",
+      "done": false
+    },
+    {
+      "id": "harvest",
+      "done": true,
+      "at": 1793886529,
+      "hash": "0xd17b64b04444c79f56df266f79bd6e6a625c237588ae4ffef5f4912d57d8a1cd"
+    },
+    {
+      "id": "roll",
+      "done": false
+    },
+    {
+      "id": "auction",
+      "done": false
+    },
+    {
+      "id": "bug",
+      "done": false
+    }
+  ],
+  "complete": true,
+  "reachedBlock": 16589999
+}
