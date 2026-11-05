@@ -1,0 +1,13 @@
+{
+  "block": 16590419,
+  "broadcast": true,
+  "btcPerClaim": 1000000000000000,
+  "chainId": 31611,
+  "dailyLimit": 40,
+  "deployer": "0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e",
+  "faucet": "0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa",
+  "musd": "0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503",
+  "musdPerClaim": "25000000000000000000",
+  "owner": "0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e",
+  "relayer": "0x837Fbb9E11f47293fF31F4F79AD5D5E3EC29aEbA"
+}
