@@ -1,4 +1,14 @@
-import { formatEther, getAddress, isAddressEqual, zeroAddress, type Address, type Hash } from "viem";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  formatEther,
+  getAddress,
+  isAddressEqual,
+  parseAbi,
+  zeroAddress,
+  type Address,
+  type Hash,
+} from "viem";
 import { loadDeployments, MEZO_TESTNET_CHAIN_ID, type Config, type DeploymentRecord } from "./config.js";
 import {
   creditMarketsAbi,
@@ -48,6 +58,22 @@ const MAX_HARVEST_TOKENS = 16;
 // HARVEST_MAX_POSITIONS, moves with the clock: one window per 30-minute slot.
 const HARVEST_ROTATION_SECONDS = 1_800n;
 const PRICE_SCALE = 10n ** 18n;
+// Mezo's Router refuses a sale below its minimum with its own error, before PayDown's floor check runs, and PayDown's
+// ABI names neither that nor LoanManager's claim error. Both are added so a refused harvest always decodes to a name.
+const harvestAbi = [
+  ...payDownAbi,
+  ...parseAbi(["error InsufficientOutputAmount()", "error NothingToClaim(address account)"]),
+] as const;
+// A harvest refused with one of these failed on its BTC sale, so the same claim without BTC can still repay (C39,
+// C48). They are matched by decoded error name, because a node's message text is not something to decide on.
+const BTC_REFUSALS: ReadonlyMap<string, string> = new Map([
+  ["InsufficientOutputAmount", "Mezo's pool pays below the oracle floor"],
+  ["BelowFloor", "Mezo's pool pays below the oracle floor"],
+  ["PriceUnavailable", "Mezo's BTC price is unavailable"],
+]);
+// Refusals a healthy system produces. Any other revert means the keeper and the contracts disagree, so it fails the
+// run. NotBorrower is the operator changing mid-run, HarvestsPaused a pause landing mid-run.
+const EXPECTED_REFUSALS: ReadonlySet<string> = new Set([...BTC_REFUSALS.keys(), "NotBorrower", "HarvestsPaused", "NothingToClaim"]);
 
 async function plausibleGas(estimate: () => Promise<bigint>): Promise<bigint> {
   for (let tries = 0; tries < ESTIMATE_TRIES; tries++) {
@@ -82,6 +108,7 @@ export interface PassSummary {
   failedSends: number;
   vaultAlerts: number;
   pairFailures: number;
+  unexpectedRefusals: number;
 }
 
 // What every pair in one run shares: one key, one gas wallet, one write budget.
@@ -160,42 +187,44 @@ function decideMarket(m: { faceTotal: bigint; openLoans: bigint; isFinal: boolea
   return { action: "finalize", reason: "matured and every loan closed" };
 }
 
-interface HarvestCall {
-  kind: "harvest";
-  payDown: Address;
-  tokenId: bigint;
-  gauges: Address[];
-  feeTokens: Address[][];
-  bribeTokens: Address[][];
+// Sends what a simulation accepted and waits for the receipt. `say` prints how it ended.
+async function deliver(pass: Pass, say: (outcome: string) => void, send: () => Promise<Hash>): Promise<void> {
+  const { reader, writer } = pass.clients;
+  if (pass.config.dry || writer === undefined) {
+    say("simulated");
+    return;
+  }
+  let hash: Hash;
+  try {
+    hash = await send();
+  } catch (err) {
+    pass.summary.failedSends += 1;
+    say(`send failed: ${describeError(err)}`);
+    return;
+  }
+  try {
+    const receipt = await reader.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+    if (receipt.status !== "success") pass.summary.failedSends += 1;
+    const status = receipt.status === "success" ? "" : " REVERTED";
+    say(`${hash}${status} https://explorer.test.mezo.org/tx/${hash}`);
+  } catch {
+    // Nodes behind rpc.test.mezo.org trailed by up to 494 s on 2026-10-20, so a missing receipt is not a failure: the
+    // next pass reads the chain again and acts only if the call is still due.
+    say(`${hash} sent, no receipt within ${RECEIPT_TIMEOUT_MS / 1000} s yet https://explorer.test.mezo.org/tx/${hash}`);
+  }
 }
 
-// Simulates first (C20, C48) and sends only what the simulation accepted, then waits for the receipt. Harvests
-// count against their own budget, never against MAX_ACTIONS.
+// Simulates first (C20) and sends only what the simulation accepted. Harvests go through handleHarvest instead.
 async function execute(
   pass: Pass,
   subject: string,
   decision: Decision<string>,
-  call:
-    | { kind: "loan"; functionName: LoanAction; tokenId: bigint }
-    | { kind: "market"; maturity: bigint }
-    | HarvestCall,
+  call: { kind: "loan"; functionName: LoanAction; tokenId: bigint } | { kind: "market"; maturity: bigint },
 ): Promise<void> {
   const { reader, writer, account } = pass.clients;
   let send: () => Promise<Hash>;
   try {
-    if (call.kind === "harvest") {
-      const args = [call.tokenId, call.gauges, call.feeTokens, call.bribeTokens] as const;
-      const { request } = await reader.simulateContract({
-        address: call.payDown,
-        abi: payDownAbi,
-        functionName: "harvest",
-        args,
-        account,
-      });
-      const estimate = () =>
-        reader.estimateContractGas({ address: call.payDown, abi: payDownAbi, functionName: "harvest", args, account: account! });
-      send = async () => writer!.writeContract({ ...request, gas: await plausibleGas(estimate) });
-    } else if (call.kind === "loan") {
+    if (call.kind === "loan") {
       const { request } = await reader.simulateContract({
         address: pass.record.loanManager,
         abi: loanManagerAbi,
@@ -236,30 +265,8 @@ async function execute(
     return;
   }
 
-  if (call.kind === "harvest") pass.summary.harvests += 1;
-  else pass.summary.actions += 1;
-  if (pass.config.dry || writer === undefined) {
-    line(pass, subject, decision.action, decision.reason, "simulated");
-    return;
-  }
-  let hash: Hash;
-  try {
-    hash = await send();
-  } catch (err) {
-    pass.summary.failedSends += 1;
-    line(pass, subject, decision.action, decision.reason, `send failed: ${describeError(err)}`);
-    return;
-  }
-  try {
-    const receipt = await reader.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
-    if (receipt.status !== "success") pass.summary.failedSends += 1;
-    const status = receipt.status === "success" ? "" : " REVERTED";
-    line(pass, subject, decision.action, decision.reason, `${hash}${status} https://explorer.test.mezo.org/tx/${hash}`);
-  } catch {
-    // Nodes behind rpc.test.mezo.org trailed by up to 494 s on 2026-10-20, so a missing receipt is not a failure: the
-    // next pass reads the chain again and acts only if the call is still due.
-    line(pass, subject, decision.action, decision.reason, `${hash} sent, no receipt within ${RECEIPT_TIMEOUT_MS / 1000} s yet https://explorer.test.mezo.org/tx/${hash}`);
-  }
+  pass.summary.actions += 1;
+  await deliver(pass, (outcome) => line(pass, subject, decision.action, decision.reason, outcome), send);
 }
 
 // MAX_ACTIONS is the resolution budget of the whole run, shared by every pair because they share one gas wallet.
@@ -765,8 +772,24 @@ interface Harvester {
   voter: Address;
   musd: Address;
   btc: Address;
-  price: bigint;
+  // Undefined when the feed gave no usable price this run, and noPrice then says why.
+  price: bigint | undefined;
+  noPrice: string;
   gauges: Map<Address, { gauge: Address; sides: [RewardSide, RewardSide] } | null>;
+}
+
+interface HarvestPlan {
+  gauges: Address[];
+  feeTokens: Address[][];
+  bribeTokens: Address[][];
+}
+
+// What a plan without BTC claims and leaves behind, and why BTC was left out, for its log lines.
+interface BtcLeftOut {
+  musd: bigint;
+  btc: bigint;
+  why: string;
+  rest: string;
 }
 
 // The pools a position votes for, read one index at a time until PoolsVoter's array ends.
@@ -829,10 +852,83 @@ async function earnedOn(h: Harvester, side: RewardSide, tokenId: bigint): Promis
   return out;
 }
 
+// The decoded name of a revert, or undefined for anything else.
+function revertName(err: unknown): string | undefined {
+  if (!(err instanceof BaseError)) return undefined;
+  const reverted = err.walk((e) => e instanceof ContractFunctionRevertedError);
+  return reverted instanceof ContractFunctionRevertedError ? reverted.data?.errorName : undefined;
+}
+
+// Throws the refusal, decoded with harvestAbi. Harvests count against their own budget, never against MAX_ACTIONS.
+async function simulateHarvest(
+  h: Harvester,
+  tokenId: bigint,
+  plan: HarvestPlan,
+): Promise<{ repaid: bigint; send: () => Promise<Hash> }> {
+  const { reader, writer, account } = h.pass.clients;
+  const address = h.payDown;
+  const args = [tokenId, plan.gauges, plan.feeTokens, plan.bribeTokens] as const;
+  const { request, result } = await reader.simulateContract({ address, abi: harvestAbi, functionName: "harvest", args, account });
+  const estimate = () => reader.estimateContractGas({ address, abi: harvestAbi, functionName: "harvest", args, account: account! });
+  return { repaid: result, send: async () => writer!.writeContract({ ...request, gas: await plausibleGas(estimate) }) };
+}
+
+// A request that failed is not a refusal, so only a revert outside EXPECTED_REFUSALS fails the run (exit code 4).
+function reportRefusal(h: Harvester, subject: string, decision: Decision<string>, err: unknown): void {
+  const { pass } = h;
+  pass.summary.failedSimulations += 1;
+  if (isRevert(err) && !EXPECTED_REFUSALS.has(revertName(err) ?? "")) pass.summary.unexpectedRefusals += 1;
+  line(pass, subject, decision.action, decision.reason, `simulation failed, skipped: ${describeError(err)}`);
+}
+
+// The same plan with BTC on no list and no gauge left with nothing to claim.
+function dropBtc(h: Harvester, plan: HarvestPlan): HarvestPlan {
+  const kept: HarvestPlan = { gauges: [], feeTokens: [], bribeTokens: [] };
+  const keep = (tokens: Address[]) => tokens.filter((token) => !isAddressEqual(token, h.btc));
+  plan.gauges.forEach((gauge, i) => {
+    const fee = keep(plan.feeTokens[i]!);
+    const bribe = keep(plan.bribeTokens[i]!);
+    if (fee.length + bribe.length === 0) return;
+    kept.gauges.push(gauge);
+    kept.feeTokens.push(fee);
+    kept.bribeTokens.push(bribe);
+  });
+  return kept;
+}
+
+// C39, C48: a harvest is one transaction, so a BTC sale that cannot happen would hold back the MUSD too. BTC left off
+// the lists is never claimed, so it stays in Mezo's reward contract and the next run tries the full plan first. Only
+// BTC is dropped and no floor changes, and the plan is judged on what it will claim: MUSD alone.
+async function harvestWithoutBtc(h: Harvester, tokenId: bigint, plan: HarvestPlan, left: BtcLeftOut): Promise<void> {
+  const { pass } = h;
+  const { musd, btc, why, rest } = left;
+  const subject = `harvest ${tokenId}`;
+  const skip = (reason: string): void => {
+    pass.summary.harvestSkips += 1;
+    line(pass, subject, "skip", `${why}; ${reason}`, "-");
+  };
+  const smaller = dropBtc(h, plan);
+  if (smaller.gauges.length === 0) return skip(`its ${formatEther(btc)} BTC is all it earned, so that waits for a later harvest`);
+  if (musd < pass.config.harvestMinMusd) {
+    return skip(`without BTC it claims ${formatEther(musd)} MUSD, below HARVEST_MIN_MUSD ${formatEther(pass.config.harvestMinMusd)}`);
+  }
+  let simulated: Awaited<ReturnType<typeof simulateHarvest>>;
+  try {
+    simulated = await simulateHarvest(h, tokenId, smaller);
+  } catch (err) {
+    return reportRefusal(h, subject, { action: "harvest", reason: `without BTC: ${why}` }, err);
+  }
+  if (simulated.repaid === 0n) return skip("without BTC it would repay nothing");
+  pass.summary.harvests += 1;
+  const verb = pass.config.dry ? "would be sent" : "sent";
+  const told = `${subject} ${verb} without BTC: ${why}; repays ${formatEther(simulated.repaid)} MUSD, ${formatEther(btc)} BTC waits for a later harvest${rest}`;
+  await deliver(pass, (outcome) => console.log(`${pass.tag} ${told} | ${outcome}`), simulated.send);
+}
+
 // C48: one position's harvest. Every condition is read from the chain this run; the simulation and the contract
 // floors (C39) decide the rest.
 async function handleHarvest(h: Harvester, tokenId: bigint): Promise<void> {
-  const { pass, payDown } = h;
+  const { pass, payDown, price } = h;
   const { reader } = pass.clients;
   const subject = `harvest ${tokenId}`;
   const skip = (reason: string): void => {
@@ -879,18 +975,26 @@ async function handleHarvest(h: Harvester, tokenId: bigint): Promise<void> {
   }
   if (gauges.length === 0) return skip(`nothing earned in MUSD or BTC on the ${pools.length} pool(s) it votes for`);
 
-  const worth = musd + (btc * h.price) / PRICE_SCALE;
+  const plan: HarvestPlan = { gauges, feeTokens, bribeTokens };
+  const rest = waiting > 0 ? `; ${waiting} more gauge(s) wait for the next harvest` : "";
+  if (btc > 0n && price === undefined) return harvestWithoutBtc(h, tokenId, plan, { musd, btc, why: h.noPrice, rest });
+
+  const worth = price === undefined ? musd : musd + (btc * price) / PRICE_SCALE;
   const earned = `${formatEther(musd)} MUSD and ${formatEther(btc)} BTC earned, worth ${formatEther(worth)} MUSD`;
   if (worth < pass.config.harvestMinMusd) {
     return skip(`${earned}, below HARVEST_MIN_MUSD ${formatEther(pass.config.harvestMinMusd)}`);
   }
-  const rest = waiting > 0 ? `; ${waiting} more gauge(s) wait for the next harvest` : "";
-  await execute(
-    pass,
-    subject,
-    { action: "harvest", reason: `${earned}, ${listed} token(s) from ${gauges.length} gauge(s)${rest}` },
-    { kind: "harvest", payDown, tokenId, gauges, feeTokens, bribeTokens },
-  );
+  const decision = { action: "harvest", reason: `${earned}, ${listed} token(s) from ${gauges.length} gauge(s)${rest}` };
+  let simulated: Awaited<ReturnType<typeof simulateHarvest>>;
+  try {
+    simulated = await simulateHarvest(h, tokenId, plan);
+  } catch (err) {
+    const why = BTC_REFUSALS.get(revertName(err) ?? "");
+    if (btc === 0n || why === undefined) return reportRefusal(h, subject, decision, err);
+    return harvestWithoutBtc(h, tokenId, plan, { musd, btc, why: `${why} (${describeError(err)})`, rest });
+  }
+  pass.summary.harvests += 1;
+  await deliver(pass, (outcome) => line(pass, subject, decision.action, decision.reason, outcome), simulated.send);
 }
 
 // The harvest job for one pair that has a PayDown, spending what is left of the run's HARVEST_MAX_POSITIONS.
@@ -913,15 +1017,17 @@ async function harvestPair(pass: Pass, payDown: Address, head: bigint): Promise<
     return;
   }
   // PayDown reads the price only when a harvest sells BTC (C7), so an outage must not stop the harvests that repay
-  // with MUSD alone. BTC counts as worth nothing this run, and a harvest that does need the price is refused in its
-  // simulation with PriceUnavailable and reported as refused.
-  let price = 0n;
+  // with MUSD alone. With no price, BTC cannot be valued or sold, so every plan this run leaves it out.
+  let price: bigint | undefined;
+  let noPrice = "";
   try {
-    price = await reader.readContract({ address: feed, abi: priceFeedAbi, functionName: "fetchPrice" });
-    if (price === 0n) line(pass, "harvest", "none", "the BTC price feed returned zero: BTC rewards count as 0 MUSD this run", "-");
+    const read = await reader.readContract({ address: feed, abi: priceFeedAbi, functionName: "fetchPrice" });
+    if (read === 0n) noPrice = "the BTC price feed returned zero";
+    else price = read;
   } catch (err) {
-    line(pass, "harvest", "none", `BTC price unavailable (${describeError(err)}): BTC rewards count as 0 MUSD this run`, "-");
+    noPrice = `the BTC price could not be read (${describeError(err)})`;
   }
+  if (price === undefined) line(pass, "harvest", "none", `${noPrice}: BTC rewards wait this run`, "-");
 
   const scan = await collectOperatorLogs(pass, head);
   const candidates = selectHarvestCandidates(scan.logs, payDown);
@@ -937,6 +1043,7 @@ async function harvestPair(pass: Pass, payDown: Address, head: bigint): Promise<
     musd: getAddress(musd),
     btc: getAddress(btc),
     price,
+    noPrice,
     gauges: new Map(),
   };
   for (const tokenId of chosen) {
@@ -1004,6 +1111,7 @@ export async function runPass(config: Config): Promise<PassSummary> {
     failedSends: 0,
     vaultAlerts: 0,
     pairFailures: 0,
+    unexpectedRefusals: 0,
   };
   const shared: Shared = { capped: false, vaultAlerts: [] };
   const passes: Pass[] = records.map((record, i) => ({
@@ -1065,7 +1173,8 @@ export async function runPass(config: Config): Promise<PassSummary> {
     plainText(
       `done: ${s.openLoans} open of ${s.tokenIds} positions, ${s.maturities} maturities, ${s.actions} ${mode}; ` +
         `${s.harvests} harvests ${mode}, ${s.harvestSkips} positions skipped of ${s.harvestPositions} read; ` +
-        `${s.failedSimulations} refused in simulation, ${s.failedSends} failed sends, ${s.vaultAlerts} vault alerts`,
+        `${s.failedSimulations} refused in simulation, ${s.unexpectedRefusals} of them unexpected, ` +
+        `${s.failedSends} failed sends, ${s.vaultAlerts} vault alerts`,
     ),
   );
   // Repeated last so the alert is the final thing on the run's page, where the emailed link lands.

@@ -29,10 +29,10 @@ A pair is one LoanManager and its CreditMarkets, plus PayDown and UnitMarket fro
 
 5. Checks the 32 most recent weekly loan dates of each pair. For each one it compares the chain's own count of open loans (`marketOf(date).openLoans`) with what the scan found. If the chain has more, it prints a warning, acts on what it found, and exits with code 2 so the run shows red. It calls `finalize` on a date once the date has passed, it had loans, none is still open and it is not closed yet.
 6. Harvests, only after every pair's loan and date jobs have run (C48). If a pair's jobs stopped, or `MAX_ACTIONS` ran out, it skips every harvest this pass and says why, so rewards never take gas the loan jobs still need. For each pair that has a PayDown:
-   - It reads PayDown's pause switch and the BTC price; a paused PayDown or an unavailable price skips the pair with a line saying so.
+   - It reads PayDown's pause switch and the BTC price; a paused PayDown skips the pair with a line saying so.
    - It finds the positions whose latest `RewardOperatorSet` event names this pair's PayDown, and reads each again with `positionOf`. A position whose operator is no longer PayDown, or that LoanManager no longer holds, is skipped with that reason.
    - For each one it reads the pools the position votes for, each pool's gauge and its fee and incentive reward contracts, and lists only MUSD and BTC, only where that contract records the token as a reward (`isReward`), and only where something is earned. A claim lists at most 16 tokens; extra gauges wait for the next harvest.
-   - It skips a position whose earned MUSD plus earned BTC, valued at the price feed, is below `HARVEST_MIN_MUSD`. Otherwise it simulates `PayDown.harvest` and sends it only if the simulation passes. PayDown decides what is sold and at what floor.
+   - It skips a position whose earned MUSD plus earned BTC, valued at the price feed, is below `HARVEST_MIN_MUSD`. Otherwise it simulates `PayDown.harvest` and sends it only if the simulation passes. PayDown decides what is sold and at what floor. When the price read fails, or the simulation is refused with the Router's `InsufficientOutputAmount` or PayDown's `BelowFloor` or `PriceUnavailable`, it runs the same harvest with BTC left out, values only the MUSD that claims, sends it if it repays something, and logs `harvest <id> sent without BTC: <reason>`, so the MUSD repays the loan and the BTC stays claimable for a later run, which tries the full plan first.
 
    Pool rewards arrive once a week when the epoch turns, and a harvested position reads zero earned until the next one, so the harvest step runs every pass but acts about once a week per position.
 7. Simulates every call first and sends it only if the simulation passes. A refused simulation is logged with its reason and skipped.
@@ -97,12 +97,13 @@ Exit codes:
 
 | Code | Meaning |
 | --- | --- |
-| 0 | The pass finished, even if some simulations were refused. |
+| 0 | The pass finished, even if some simulations were refused for a known reason. |
 | 1 | A setting is missing, a record or the chain does not check out, a live pass found the key holds a role, a pair's jobs stopped, or a sent transaction failed. |
 | 2 | A checked date has more open loans on chain than the scan found, or could not be checked. |
 | 3 | A vault check raised a `VAULT ALERT`. |
+| 4 | A harvest was refused for a reason other than the three known BTC refusals, `NotBorrower` when the operator changed mid-run, `HarvestsPaused`, or nothing to claim. Every other job has run by then. |
 
-When more than one applies, 1 wins over 3, and 3 over 2. A dry run exits 2 and 3 the same way.
+When more than one applies, 1 wins over 3, 3 over 4, and 4 over 2. A dry run exits 2, 3 and 4 the same way.
 
 ## Run it on GitHub
 
@@ -125,7 +126,7 @@ Measured on a fork of Mezo testnet; at the 172 wei per gas testnet charged on 20
 | `settle` | 410,000 to 614,000 |
 | `finalize` | about 76,000 |
 
-The vault check is a simulation, so it costs no gas. A `PayDown.harvest` measured by the test suite has a median of about 604,000 execution gas, from 32,116 to 682,066 (the [README's gas table](https://github.com/ramakrishnanhulk20/doji#gas)); the real reward contracts and the real pool cost more, and no live harvest had run when this page was written.
+The vault check is a simulation, so it costs no gas. A `PayDown.harvest` measured by the test suite has a median of about 604,000 execution gas, from 32,116 to 682,066 (the [README's gas table](https://github.com/ramakrishnanhulk20/doji#gas)); the real reward contracts and the real pool cost more. The first live keeper harvest, on 5 November 2026, used 270,922 gas with BTC left out.
 
 ## What it does not do
 

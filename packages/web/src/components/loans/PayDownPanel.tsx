@@ -12,6 +12,7 @@ import { EXPLORER, STATE_ACTIVE, STATE_AUCTION, musdText, shortAddress, toMusdNu
 import { useReducedMotion } from "../../lib/motion-mode";
 import {
   buildPayDownPlan,
+  estimateLine,
   fixedText,
   harvestAndSwapCall,
   harvestCall,
@@ -20,6 +21,7 @@ import {
   nextThursday,
   parseHarvested,
   parseSwapped,
+  quotePlan,
   quoteSale,
   readOtherRewards,
   saleSwaps,
@@ -190,23 +192,15 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
     }
   };
 
+  // The estimate on screen may have left BTC out, so the button sends the plan that was quoted. useWrite dry runs it
+  // again at the press, so a plan the chain no longer accepts stops there.
   const harvest = async () => {
-    if (client === undefined) return;
+    const quoted = quote.data;
+    if (quoted?.kind !== "ready") return;
     setActing("harvest");
     try {
-      let plan;
-      try {
-        plan = await buildPayDownPlan(client, id);
-      } catch {
-        stop(VOTER_LINE);
-        return;
-      }
-      if (plan.gauges.length === 0) {
-        stop(NOTHING_LINE);
-        return;
-      }
       const result = await write({
-        ...harvestCall(id, plan),
+        ...harvestCall(id, quoted.plan),
         successLine: (receipt) => {
           const found = parseHarvested(receipt, id);
           return found === null ? "Confirmed on Mezo." : harvestedLine(id, found);
@@ -234,9 +228,12 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
 
   // The quotes on screen can be 30 seconds old, so the sale asks Mezo's pools again for the ticked tokens. Each minimum
   // sent is never below the one on screen at the press, so a pool that fell meanwhile makes the dry run refuse rather
-  // than sell for less. A ticked token that lost its quote is left out and stays with the wallet.
+  // than sell for less. A ticked token that lost its quote is left out and stays with the wallet. A sale refused over
+  // BTC goes out without BTC, as a harvest does, with its swaps and minimums unchanged; any other refusal is left to
+  // useWrite's own dry run to report.
   const sell = async () => {
-    if (client === undefined) return;
+    const account = gate.address;
+    if (client === undefined || account === undefined) return;
     const shownMinimums = new Map(
       otherRows.flatMap((row) => {
         const key = row.reward.token.toLowerCase();
@@ -265,9 +262,16 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
         stop(NO_QUOTE_LINE);
         return;
       }
+      let quoted;
+      try {
+        quoted = await quotePlan(client, id, plan, account, swaps);
+      } catch {
+        stop(VOTER_LINE);
+        return;
+      }
       const labels = fresh.map((row) => row.reward);
       const result = await write({
-        ...harvestAndSwapCall(id, plan, swaps),
+        ...harvestAndSwapCall(id, quoted.kind === "ready" ? quoted.plan : plan, swaps),
         successLine: (receipt) => {
           const found = parseHarvested(receipt, id);
           return found === null ? "Confirmed on Mezo." : soldLine(id, found, parseSwapped(receipt, id, labels));
@@ -415,15 +419,15 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
   const byRewards = list === undefined ? null : sumRepaid(list);
   const shares = byRewards === null ? null : ledgerShares(view.loan.face, view.loan.repaid, byRewards);
 
-  const estimate = (() => {
+  const estimate = (slippageBps: number) => {
     if (quote.isError) return <p className="paydown-estimate">{unavailable}</p>;
     const answer = quote.data;
     if (answer === undefined) return <p className="paydown-estimate paydown-dim">Checking what a harvest would repay.</p>;
     if (answer.kind === "ready") {
-      return <p className="paydown-estimate">Claiming now would repay about {fixedText(answer.repaid, 4)} MUSD.</p>;
+      return <p className="paydown-estimate">{estimateLine(answer.repaid, answer.withoutBtc, slippageBps)}</p>;
     }
     return <p className="paydown-estimate paydown-dim">{answer.kind === "nothing" ? NOTHING_LINE : answer.reason}</p>;
-  })();
+  };
 
   const action = (() => {
     if (state.isError) return <p className="paydown-note">{unavailable}</p>;
@@ -432,7 +436,7 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
     if (!loanOpen) return null;
     return (
       <div className="paydown-action">
-        {estimate}
+        {estimate(current.slippageBps)}
         <Button
           variant="primary"
           arrow

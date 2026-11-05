@@ -1,14 +1,16 @@
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, parseAbi } from "viem";
 import { addressBook } from "../src/lib/addresses";
 import { mezoTestnetChain } from "../src/lib/chains";
 import {
   buildPayDownPlan,
+  estimateLine,
   fixedText,
   harvestAndSwapCall,
   harvestedLine,
   ledgerShares,
   nextThursday,
   quoteHarvest,
+  quotePlan,
   quoteSale,
   readHarvests,
   readOtherRewards,
@@ -52,7 +54,41 @@ console.log(`next harvest day: ${formatDate(nextThursday(now))}`);
 
 console.log("\n== quoteHarvest from the zero address");
 const quote = await quoteHarvest(client, tokenId, zero);
-console.log(quote.kind === "ready" ? { kind: quote.kind, repaid: `${fixedText(quote.repaid, 4)} MUSD` } : quote);
+if (quote.kind === "ready") {
+  const tokens = quote.plan.tokens.map((token) => token.symbol);
+  console.log({ kind: quote.kind, repaid: `${fixedText(quote.repaid, 4)} MUSD`, withoutBtc: quote.withoutBtc, gauges: quote.plan.gauges.length, tokens });
+  console.log(`estimate line: ${estimateLine(quote.repaid, quote.withoutBtc, state.slippageBps)}`);
+} else {
+  console.log(quote);
+}
+
+console.log("\n== Mezo's BTC/MUSD pool against the oracle, for the 0.0000118 BTC #411 earned");
+const earnedBtc = 11_836_629_687_452n;
+const poolAbi = parseAbi([
+  "function priceFeed() view returns (address)",
+  "function factory() view returns (address)",
+  "function fetchPrice() view returns (uint256)",
+  "function getAmountsOut(uint256 amountIn, (address from, address to, bool stable, address factory)[] routes) view returns (uint256[] amounts)",
+  "function positionOf(uint256 tokenId) view returns ((address borrower, address rewardOperator))",
+]);
+const feed = await client.readContract({ address: book.payDown, abi: poolAbi, functionName: "priceFeed" });
+const factory = await client.readContract({ address: book.payDown, abi: poolAbi, functionName: "factory" });
+const oracle = await client.readContract({ address: feed, abi: poolAbi, functionName: "fetchPrice" }).catch(() => null);
+const amounts = await client.readContract({
+  address: book.router,
+  abi: poolAbi,
+  functionName: "getAmountsOut",
+  args: [earnedBtc, [{ from: book.btc, to: book.musd, stable: false, factory }]],
+});
+const poolPays = amounts[amounts.length - 1] ?? 0n;
+if (oracle === null) {
+  console.log(`oracle unavailable; the pool pays ${fixedText(poolPays, 4)} MUSD`);
+} else {
+  const atOracle = (earnedBtc * oracle) / 10n ** 18n;
+  const floor = (atOracle * BigInt(10_000 - state.slippageBps)) / 10_000n;
+  const under = Number(((atOracle - poolPays) * 1_000_000n) / atOracle) / 10_000;
+  console.log(`oracle ${fixedText(oracle, 2)} MUSD per BTC, so ${fixedText(atOracle, 4)} MUSD; floor ${fixedText(floor, 4)} MUSD; the pool pays ${fixedText(poolPays, 4)} MUSD, ${under}% under the oracle`);
+}
 
 // Fees and incentives count in `earned` only after their week finishes, so before Thu 5 Nov 00:00 UTC these lists can be empty.
 console.log("\n== readOtherRewards");
@@ -82,6 +118,15 @@ if (sale === null) {
   const kept = saleSwaps([sale], new Map([[key, sale.amountOutMin - 1n]]))[0];
   console.log(
     `saleSwaps: a higher minimum on screen is sent ${raised?.amountOutMin === sale.amountOutMin + 1n}, a lower one keeps the fresh minimum ${kept?.amountOutMin === sale.amountOutMin}, a token not on screen is left out ${saleSwaps([sale], new Map()).length === 0}`,
+  );
+  const { borrower } = await client.readContract({ address: book.loanManager, abi: poolAbi, functionName: "positionOf", args: [tokenId] });
+  const salePlan = await buildPayDownPlan(client, tokenId);
+  const waiting = await readOtherRewards(client, tokenId, salePlan);
+  const ticked = await Promise.all(waiting.map((reward) => quoteSale(client, reward.token, reward.amount)));
+  const shown = new Map(ticked.flatMap((row) => (row === null ? [] : [[row.token.toLowerCase(), row.amountOutMin] as const])));
+  const sold = await quotePlan(client, tokenId, salePlan, borrower, saleSwaps(ticked, shown));
+  console.log(
+    `Pay down and sell on #${tokenId}, ${shown.size} swap(s), as its borrower: ${sold.kind === "ready" ? `repays ${fixedText(sold.repaid, 4)} MUSD, withoutBtc ${sold.withoutBtc}, ${sold.plan.tokens.map((token) => token.symbol).join(" ")}` : JSON.stringify(sold)}`,
   );
   console.log(
     `sample done line: ${soldLine(412n, { musdRepaid: 12_345_678_000_000_000_000n, btcSold: 0n, musdFromBtc: 0n }, [{ token: mT, symbol: "mT", decimals: 18, amountIn: 100_000_000_000_000_000n, musdOut: sale.quotedOut }])}`,

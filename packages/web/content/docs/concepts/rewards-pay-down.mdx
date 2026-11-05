@@ -58,7 +58,7 @@ The contract accepts this call only from the borrower, for at most 8 tokens, eac
 | What happens | What Doji does |
 | --- | --- |
 | Doji's guardian pauses harvests | Every harvest reverts and the rewards stay in Mezo's reward contracts. The panel says "Harvests are paused by Doji's guardian. Turning pay-down on still works; harvests resume when the pause ends." The borrower's own claim, repaying and turning pay-down off still work. Only the owner can end the pause. |
-| The pool price moves, or someone tries to sandwich the sale | A BTC sale below the oracle floor reverts the whole harvest. Nothing changes, and the rewards wait for the next one. |
+| The pool price moves, or someone tries to sandwich the sale | A BTC sale below the oracle floor reverts that transaction, so no BTC is sold below the floor. |
 | Mezo's price feed is stale | A harvest that would sell BTC reverts. A harvest that repays with MUSD alone never reads the price, so it still runs. |
 | The loan goes to auction | The borrower's claim and PayDown's harvest still run during a Wave 2 auction, so the last week's rewards stay with the borrower. A harvest that covers the debt repays it in full and ends the auction. |
 | A harvest claims gauges in an unlucky order | Anyone picks which gauges a harvest claims. One that claims BTC before a later MUSD reward can sell BTC the MUSD would have covered. The cost is at most the 1% allowance on that BTC. |
@@ -66,8 +66,10 @@ The contract accepts this call only from the borrower, for at most 8 tokens, eac
 | The keeper is down | Anyone can press "Pay down now", or call `harvest` directly. |
 | The loan is on the 20 October contracts | They have no reward operator. The panel shows "Rewards pay-down works on loans opened since 4 November. This loan is on Doji's 20 October contracts, so its rewards are claimed by hand above." |
 
+When a harvest is refused over BTC, because the pool pays below the floor or the price feed is out, the keeper and the website run the same harvest with BTC left out, so the MUSD repays the loan, the panel adds "BTC rewards wait until Mezo's pool pays within 1% of the price.", and the BTC stays in Mezo's reward contract for a later harvest, which tries the full claim first.
+
 PayDown changes a loan only by repaying it. Its addresses (LoanManager, the Router and its factory, MUSD, BTC and PriceFeed) are fixed at deployment, and its approvals to the Router and LoanManager are exact and set back to zero after each use. Doji never sells collateral on a pool; this is the only sale anywhere in Doji, and it sells rewards.
 
 ## Live on testnet
 
-On 4 November 2026 loan 411 was opened on the Wave 2 contracts, voted for two pools and named PayDown as its operator, and incentives of 20 MUSD and 0.0003 BTC were added to those pools for the epoch that ends on Thursday 5 November 00:00 UTC. Its first harvest can run only after that moment. Follow it at [/loans/411](/loans/411); every setup transaction is in [docs/proof/wave2-live-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md).
+On 4 November 2026 loan 411 was opened on the Wave 2 contracts, voted for two pools and named PayDown as its operator, and incentives of 20 MUSD and 0.0003 BTC were added to those pools for the epoch that ends on Thursday 5 November 00:00 UTC. The keeper's first harvest ran on 5 November and repaid 1.38 MUSD, with its BTC left for later because Mezo's pool paid under the floor that day. The same day, loan 412's borrower ran "Pay down and sell" on the site, repaid 1.59 MUSD and sold 0.0268 mT. Follow loan 411 at [/loans/411](/loans/411); every setup transaction is in [docs/proof/wave2-live-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md).

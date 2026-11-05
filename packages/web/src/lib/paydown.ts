@@ -24,7 +24,7 @@ const ZERO: Address = "0x0000000000000000000000000000000000000000";
 // Wave 2 adds the reward operator to the position record, so this slice reads both words.
 const positionRead = parseAbi(["function positionOf(uint256 tokenId) view returns ((address borrower, address rewardOperator))"]);
 
-import { HARVESTED_TOPIC, harvestedEvent, sameAddress, tokenWord, type Harvest } from "./harvests";
+import { HARVESTED_TOPIC, harvestedEvent, sameAddress, slippageText, tokenWord, type Harvest } from "./harvests";
 
 export { readHarvests, readRepaidByRewards, slippageText, type Harvest } from "./harvests";
 
@@ -65,29 +65,100 @@ export async function buildPayDownPlan(client: PublicClient, tokenId: bigint): P
   );
 }
 
-export type HarvestQuote = { kind: "ready"; repaid: bigint } | { kind: "nothing" } | { kind: "refused"; reason: string };
+/** `plan` is the one that was dry run, so the button sends what the estimate quoted. */
+export type HarvestQuote =
+  | { kind: "ready"; repaid: bigint; withoutBtc: boolean; plan: ClaimPlan }
+  | { kind: "nothing" }
+  | { kind: "refused"; reason: string };
+
+/** The refusals of a harvest whose BTC sale cannot happen: the pool pays below the floor, or there is no price. */
+const BTC_REFUSALS = new Set(["InsufficientOutputAmount", "BelowFloor", "PriceUnavailable"]);
 
 /**
- * What a harvest would repay right now, from a dry run of PayDown.harvest. Harvest is open to everyone, so the
- * zero address stands in when no wallet is connected. A revert is an answer ("refused"); a failed read is thrown so
- * the screen says "unavailable" instead of guessing.
+ * The same plan with BTC on no list and no gauge left with nothing to claim, or null when the plan lists no BTC or
+ * nothing else. Every other token stays, MUSD included.
  */
-export async function quoteHarvest(client: PublicClient, tokenId: bigint, account: Address): Promise<HarvestQuote> {
-  const plan = await buildPayDownPlan(client, tokenId);
+function planWithoutBtc(plan: ClaimPlan): ClaimPlan | null {
+  const keep = (token: Address): boolean => !sameAddress(token, book.btc);
+  const listsBtc = [...plan.feeTokens, ...plan.bribeTokens].flat().some((token) => !keep(token));
+  if (!listsBtc) return null;
+  const kept: ClaimPlan = { ...plan, gauges: [], feeTokens: [], bribeTokens: [], tokens: plan.tokens.filter(({ token }) => keep(token)) };
+  plan.gauges.forEach((gauge, index) => {
+    const fee = (plan.feeTokens[index] ?? []).filter(keep);
+    const bribe = (plan.bribeTokens[index] ?? []).filter(keep);
+    if (fee.length + bribe.length === 0) return;
+    kept.gauges.push(gauge);
+    kept.feeTokens.push(fee);
+    kept.bribeTokens.push(bribe);
+  });
+  return kept.gauges.length === 0 ? null : kept;
+}
+
+async function simulatePlan(
+  client: PublicClient,
+  tokenId: bigint,
+  plan: ClaimPlan,
+  account: Address,
+  swaps: readonly SaleSwap[],
+): Promise<bigint> {
+  const call = swaps.length === 0 ? harvestCall(tokenId, plan) : harvestAndSwapCall(tokenId, plan, swaps);
+  const { result } = await client.simulateContract({
+    address: book.payDown,
+    abi: call.abi,
+    functionName: call.functionName,
+    args: call.args,
+    account,
+  });
+  return result as bigint;
+}
+
+const refused = (error: unknown): HarvestQuote => ({ kind: "refused", reason: explainError(error, { phase: "simulate" }).detail });
+
+/**
+ * What `plan` would repay right now, from a dry run of PayDown.harvest, or of harvestAndSwap when `swaps` are given.
+ * Harvest is open to everyone, so the zero address stands in when no wallet is connected. A revert is an answer
+ * ("refused"); a failed read is thrown so the screen says "unavailable" instead of guessing.
+ *
+ * A harvest is one transaction, so a BTC sale that cannot happen would hold back the MUSD too (C39, C48). When that is
+ * the refusal, the same plan without BTC is dry run, and if it repays anything it is the plan to send. BTC left out is
+ * never claimed, so it stays claimable, and the next quote tries the full plan first.
+ */
+export async function quotePlan(
+  client: PublicClient,
+  tokenId: bigint,
+  plan: ClaimPlan,
+  account: Address,
+  swaps: readonly SaleSwap[] = [],
+): Promise<HarvestQuote> {
   if (plan.gauges.length === 0) return { kind: "nothing" };
   try {
-    const { result } = await client.simulateContract({
-      address: book.payDown,
-      abi: payDownAbi,
-      functionName: "harvest",
-      args: [tokenId, plan.gauges, plan.feeTokens, plan.bribeTokens],
-      account,
-    });
-    return result === 0n ? { kind: "nothing" } : { kind: "ready", repaid: result };
+    const repaid = await simulatePlan(client, tokenId, plan, account, swaps);
+    return repaid === 0n ? { kind: "nothing" } : { kind: "ready", repaid, withoutBtc: false, plan };
   } catch (error) {
-    if (findRevert(error) === null) throw error;
-    return { kind: "refused", reason: explainError(error, { phase: "simulate" }).detail };
+    const revert = findRevert(error);
+    if (revert === null) throw error;
+    const smaller = BTC_REFUSALS.has(revert.name) ? planWithoutBtc(plan) : null;
+    if (smaller === null) return refused(error);
+    try {
+      const repaid = await simulatePlan(client, tokenId, smaller, account, swaps);
+      return repaid === 0n ? refused(error) : { kind: "ready", repaid, withoutBtc: true, plan: smaller };
+    } catch (retryError) {
+      if (findRevert(retryError) === null) throw retryError;
+      return refused(retryError);
+    }
   }
+}
+
+/** quotePlan for the plan a harvest of this position would send now. */
+export async function quoteHarvest(client: PublicClient, tokenId: bigint, account: Address): Promise<HarvestQuote> {
+  return quotePlan(client, tokenId, await buildPayDownPlan(client, tokenId), account);
+}
+
+/** The line above "Pay down now" for a ready quote. */
+export function estimateLine(repaid: bigint, withoutBtc: boolean, slippageBps: number): string {
+  const base = `Claiming now would repay about ${fixedText(repaid, 4)} MUSD.`;
+  if (!withoutBtc) return base;
+  return `${base} BTC rewards wait until Mezo's pool pays within ${slippageText(slippageBps)}% of the price.`;
 }
 
 /** A write for useWrite, without its success line. PayDown has its own name there, which LoanCall does not list. */
