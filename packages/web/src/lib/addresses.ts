@@ -19,6 +19,8 @@ type DojiAddresses = {
   readonly veBTC: Address;
   readonly priceFeed: Address;
   readonly feeDistributor: Address;
+  /** Pays one starter kit per wallet. Only Doji's relayer can call it. */
+  readonly faucet: Address;
 };
 
 type MezoAddresses = {
@@ -43,6 +45,7 @@ export const addressBook: { readonly 31611: DojiAddresses; readonly 31612: MezoA
     veBTC: deployment.veBTC,
     priceFeed: deployment.priceFeed,
     feeDistributor: deployment.feeDistributor,
+    faucet: deployment.faucet,
   },
   31612: {
     veBTC: "0x3D4b1b884A7a1E59fE8589a3296EC8f8cBB6f279",

@@ -7,6 +7,7 @@ const records = resolve(here, "../../contracts/deployments");
 const wave2Source = resolve(records, "31611-wave2.json");
 const demoSource = resolve(records, "31611-wave2-demo.json");
 const legacySource = resolve(records, "31611.json");
+const faucetSource = resolve(records, "31611-faucet.json");
 const target = resolve(here, "../src/generated/deployment.ts");
 
 const wave2Fields = [
@@ -50,6 +51,7 @@ function readRecord(source, fields) {
 const wave2 = readRecord(wave2Source, wave2Fields);
 const legacy = readRecord(legacySource, [...legacyFields, ...sharedFields]);
 const demo = readRecord(demoSource, ["loanManager", "creditMarkets"]);
+const faucet = readRecord(faucetSource, ["faucet", "musd"]);
 
 for (const field of ["unitFeeBps", "payDownSlippageBps"]) {
   if (!Number.isInteger(wave2[field]) || wave2[field] < 0 || wave2[field] > 10_000) {
@@ -71,6 +73,11 @@ for (const field of ["loanManager", "creditMarkets"]) {
   }
 }
 
+// C82: a faucet paying a token other than the MUSD the rest of Doji uses would hand testers money the site cannot read.
+if (!sameAddress(faucet.musd, wave2.musd)) {
+  throw new Error(`sync-deployment: the faucet record ${faucetSource} names MUSD ${faucet.musd}, not the Wave 2 ${wave2.musd}`);
+}
+
 const healthy = Object.values(demo.loans ?? {}).find((loan) => loan.role === "healthy");
 
 if (!healthy) {
@@ -89,10 +96,11 @@ if (!isAddress(healthy.borrower)) {
 const hex = "`0x${string}`";
 
 const lines = [
-  "// Written by scripts/sync-deployment.mjs from packages/contracts/deployments/31611-wave2.json, 31611-wave2-demo.json and 31611.json. Do not edit.",
+  "// Written by scripts/sync-deployment.mjs from packages/contracts/deployments/31611-wave2.json, 31611-wave2-demo.json, 31611-faucet.json and 31611.json. Do not edit.",
   "export const deployment = {",
   "  chainId: 31611,",
   ...wave2Fields.map((field) => `  ${field}: "${wave2[field]}" as ${hex},`),
+  `  faucet: "${faucet.faucet}" as ${hex},`,
   `  block: ${wave2.block},`,
   `  unitFeeBps: ${wave2.unitFeeBps},`,
   `  payDownSlippageBps: ${wave2.payDownSlippageBps},`,
