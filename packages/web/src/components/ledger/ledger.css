@@ -40,13 +40,11 @@
   background-repeat: repeat;
 }
 
-/* Two noise tiles in one layer: slow mottling at 12 percent, fine grain at 5 percent. Each tile carries its own
-   opacity, because one pseudo-element can only have one CSS opacity. */
+/* Two noise tiles in one layer: fine grain over slow mottling, written by scripts/build-paper.mjs. Each tile carries its
+   own strength in its alpha, because one pseudo-element can only have one CSS opacity. */
 .ledger-paper::after {
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512'%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' seed='5' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.478 0 0 0 0 0.392 0 0 0 0 0.282 0 0 0 2 -0.5'/%3E%3C/filter%3E%3Crect width='512' height='512' filter='url(%23f)' opacity='0.05'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512'%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.009' numOctaves='2' seed='11' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.643 0 0 0 0 0.541 0 0 0 0 0.388 0 0 0 2 -0.5'/%3E%3C/filter%3E%3Crect width='512' height='512' filter='url(%23f)' opacity='0.12'/%3E%3C/svg%3E");
-  background-size: 512px;
+  background-image: url("/art/washi-grain.webp"), url("/art/washi-mottle.webp");
+  background-size: 640px;
 }
 
 /* The stamp press. The seal rests at its tilt; the three layers are copies of the same seal. */
@@ -986,4 +984,289 @@
   .ledger .ledger-slip .link-draw {
     transition: none;
   }
+}
+
+/* The stage: a section that holds the headline and the book. */
+.ledger-stage {
+  position: relative;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.ledger-stage-label {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.ledger-stage-title {
+  margin: 16px 0 0;
+  font-size: clamp(3rem, 6.4vw, 5.6rem);
+  line-height: 1.02;
+  font-weight: var(--display-headline-weight);
+  color: var(--paper);
+}
+
+.ledger-stage-body {
+  margin: 24px 0 0;
+  max-width: 42ch;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--paper-dim);
+}
+
+/* On a laptop the book replaces the flat pages the moment the script runs. Until then they stay hidden and the section keeps
+   a screen of ink, so a visitor sees ink and then the book, never the flat pages. Without a script, the component's
+   noscript style shows them again. */
+@media (min-width: 1024px) and (min-height: 680px) and (prefers-reduced-motion: no-preference) {
+  .ledger-stage-flat:not([data-ready="true"]) {
+    visibility: hidden;
+    min-height: 100vh;
+  }
+}
+
+/* Without the book: the headline, the cover, then every chapter in flow. */
+.ledger-stage-flat {
+  padding: 72px 24px 120px;
+}
+
+.ledger-stage-flat-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.ledger-stage-flat-head {
+  max-width: 720px;
+}
+
+.ledger-stage-flat-cover {
+  margin-top: 24px;
+  padding-top: 100px;
+}
+
+.ledger-stage-flat-pages {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 48px;
+  margin-top: 72px;
+}
+
+/* With the book, the frame stays on screen while the section scrolls past. The scroll length is the section's own height. */
+.ledger-stage-frame {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: clip;
+  perspective: 3000px;
+}
+
+.ledger-stage-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5vw;
+  width: 36vw;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.ledger-stage-drop,
+.ledger-stage-book {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.ledger-stage-book[data-moving="true"] {
+  pointer-events: none;
+}
+
+/* 1120 by 680, centred on the screen, scaled as one piece by the script to leave a 40px margin. */
+.ledger-stage-box {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1120px;
+  height: 680px;
+  margin: -340px 0 0 -560px;
+  transform: scale(var(--ledger-fit, 1));
+  transform-style: preserve-3d;
+}
+
+/* One shadow and one page-block edge for each half of the book, so stacked leaves do not pile their shadows up. The
+   right half fades in as the cover lands there. */
+.ledger-stage-ground {
+  position: absolute;
+  top: 0;
+  width: 560px;
+  height: 680px;
+  transform: translateZ(-2px);
+  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+
+.ledger-stage-ground::before,
+.ledger-stage-ground::after {
+  content: "";
+  position: absolute;
+  background: var(--washi-deep);
+}
+
+.ledger-stage-ground-left {
+  left: 0;
+}
+
+.ledger-stage-ground-left::before {
+  left: -3px;
+  top: 3px;
+  bottom: 0;
+  width: 3px;
+}
+
+.ledger-stage-ground-left::after {
+  left: -3px;
+  right: 3px;
+  bottom: -3px;
+  height: 3px;
+}
+
+.ledger-stage-ground-right {
+  left: 560px;
+}
+
+.ledger-stage-ground-right::before {
+  right: -3px;
+  top: 3px;
+  bottom: 0;
+  width: 3px;
+}
+
+.ledger-stage-ground-right::after {
+  left: 3px;
+  right: -3px;
+  bottom: -3px;
+  height: 3px;
+}
+
+.ledger-stage-leaf,
+.ledger-stage-base {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 560px;
+  height: 680px;
+}
+
+.ledger-stage-base {
+  display: flex;
+}
+
+/* A leaf hangs on its right edge, the spine at the middle of the open book. */
+.ledger-stage-leaf {
+  transform-origin: 100% 50%;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.ledger-stage-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  backface-visibility: hidden;
+}
+
+.ledger-stage-back {
+  transform: rotateY(180deg);
+}
+
+.ledger-stage-page {
+  position: relative;
+  flex: 1 1 100%;
+  min-width: 0;
+  display: flex;
+}
+
+.ledger-stage-pinned .ledger-page.ledger-paper,
+.ledger-stage-pinned .ledger-cover.ledger-paper,
+.ledger-stage-pinned .ledger-stage-inside {
+  box-shadow:
+    inset 0 0 60px rgba(120, 90, 50, 0.16),
+    0 2px 0 rgba(255, 245, 225, 0.06);
+}
+
+/* The cover is the size of a page. Its drawing scales up to the page height and the spare width stays blank on the right,
+   next to the thread. The page block's edge is drawn by the ground instead. */
+.ledger-stage-pinned .ledger-cover-wrap {
+  width: 560px;
+  max-width: none;
+}
+
+.ledger-stage-pinned .ledger-cover-book {
+  --u: calc(680px / 600);
+}
+
+.ledger-stage-pinned .ledger-cover.ledger-paper {
+  aspect-ratio: auto;
+  height: 680px;
+}
+
+.ledger-stage-pinned .ledger-cover-edge {
+  display: none;
+}
+
+.ledger-stage .ledger-stage-inside {
+  position: absolute;
+  inset: 0;
+  background: var(--washi-deep);
+}
+
+/* The thread runs down the spine, which is the left edge of the inside face. */
+.ledger-stage-inside .ledger-thread {
+  right: auto;
+  left: 0;
+  transform: scaleX(-1);
+}
+
+.ledger-stage-shade,
+.ledger-stage-light {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The shadow of the leaf that is passing, darkest at the spine. */
+.ledger-stage-shade[data-side="left"] {
+  background: linear-gradient(to left, rgba(26, 18, 8, 1), rgba(26, 18, 8, 0.5) 35%, rgba(26, 18, 8, 0) 80%);
+}
+
+.ledger-stage-shade[data-side="right"] {
+  background: linear-gradient(to right, rgba(26, 18, 8, 1), rgba(26, 18, 8, 0.5) 35%, rgba(26, 18, 8, 0) 80%);
+}
+
+/* Light falling off across the leaf, darkest at its free edge. */
+.ledger-stage-light[data-edge="left"] {
+  background: linear-gradient(to right, rgba(20, 13, 5, 1), rgba(20, 13, 5, 0) 80%);
+}
+
+.ledger-stage-light[data-edge="right"] {
+  background: linear-gradient(to left, rgba(20, 13, 5, 1), rgba(20, 13, 5, 0) 80%);
+}
+
+/* At the bottom left, in line with the headline, so it never meets the cover at rest. */
+.ledger-stage-hint {
+  position: absolute;
+  left: 5vw;
+  bottom: 40px;
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--paper-dim);
+  pointer-events: none;
 }
