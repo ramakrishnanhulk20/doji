@@ -1,0 +1,332 @@
+/* The banzuke: an Edo ranking sheet. East and West face each other across a column of rank names, and the type
+   shrinks down the sheet. Colour tokens come from ledger.css. */
+
+.banzuke-sheet {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 40px 44px 32px;
+  color: var(--sumi);
+}
+
+.bz-head {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+/* Letter spacing adds a gap after the last character, so a left pad of the same size keeps the head centred. */
+.bz-title {
+  margin: 0;
+  padding-left: 0.1em;
+  font-family: var(--font-ledger-brush), var(--font-shippori), serif;
+  font-size: 92px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  color: var(--sumi);
+}
+
+.bz-asof {
+  margin: 12px 0 0;
+  padding-left: 0.14em;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sumi-soft);
+}
+
+/* A thick rule with a thin one three pixels below it. */
+.bz-rule {
+  padding-top: 3px;
+  border-top: 3px solid var(--sumi);
+}
+
+.bz-rule::after {
+  content: "";
+  display: block;
+  border-top: 1px solid var(--sumi);
+}
+
+.bz-body {
+  display: grid;
+  grid-template-columns: 1fr 96px 1fr;
+  grid-template-rows: auto repeat(4, auto);
+  margin-top: 20px;
+}
+
+/* Each side borrows the body's rows, so a tier ends on the same line in the West and the East. */
+.bz-side {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: 1 / span 5;
+  min-width: 0;
+}
+
+.bz-side[data-side="west"] {
+  grid-column: 1;
+}
+
+.bz-side[data-side="east"] {
+  grid-column: 3;
+  text-align: right;
+}
+
+.bz-label {
+  grid-row: 1;
+  margin: 0;
+  padding-bottom: 12px;
+  font-family: var(--font-ledger-brush), var(--font-shippori), serif;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--sumi);
+}
+
+.bz-ranks {
+  grid-column: 2;
+  grid-row: 1 / span 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0 12px;
+  border-inline: 1px solid var(--rule);
+  color: var(--sumi);
+}
+
+.bz-tier {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.bz-side[data-side="west"] .bz-tier,
+.bz-side[data-side="west"] .bz-label {
+  padding-right: 16px;
+}
+
+.bz-side[data-side="east"] .bz-tier,
+.bz-side[data-side="east"] .bz-label {
+  padding-left: 16px;
+}
+
+.bz-tier[data-tier="0"] {
+  grid-row: 2;
+  --bz-pad: 8px;
+  --bz-address: 26px;
+  --bz-exp: 15px;
+  --bz-rule: 3px;
+  border-bottom: 3px solid var(--sumi);
+}
+
+.bz-tier[data-tier="1"] {
+  grid-row: 3;
+  --bz-pad: 6px;
+  --bz-address: 19px;
+  --bz-exp: 13px;
+  --bz-rule: 2px;
+  border-bottom: 2px solid var(--sumi);
+}
+
+.bz-tier[data-tier="2"] {
+  grid-row: 4;
+  --bz-pad: 4px;
+  --bz-address: 15px;
+  --bz-exp: 12px;
+  --bz-rule: 1px;
+  border-bottom: 1px solid var(--sumi);
+}
+
+.bz-tier[data-tier="3"] {
+  grid-row: 5;
+  --bz-pad: 3px;
+  --bz-address: 12px;
+  --bz-exp: 11px;
+  --bz-rule: 0px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+  align-content: start;
+}
+
+.bz-item {
+  min-width: 0;
+}
+
+.bz-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--bz-pad);
+  border-radius: 4px;
+}
+
+.bz-row[data-you] {
+  outline: 1px solid var(--beni-deep);
+}
+
+.bz-row[data-side="east"] {
+  flex-direction: row-reverse;
+}
+
+.bz-row svg {
+  flex: none;
+}
+
+.bz-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bz-tier[data-tier="3"] .bz-text {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+}
+
+.bz-row[data-side="east"] .bz-text,
+.bz-row[data-side="east"] .bz-line,
+.bz-row[data-side="east"] .bz-meta {
+  justify-content: flex-end;
+}
+
+/* The tag drops under a long address on a narrow column instead of splitting the address. */
+.bz-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+}
+
+.bz-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--sumi-soft);
+}
+
+.bz-tier[data-tier="3"] .bz-meta {
+  margin-top: 0;
+}
+
+.bz-address {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: var(--bz-address);
+  line-height: 1.2;
+  color: var(--sumi);
+  white-space: nowrap;
+  text-decoration: none;
+  transition: color 150ms;
+}
+
+.bz-tier[data-tier="0"] .bz-address {
+  font-weight: 600;
+}
+
+.bz-address:hover,
+.bz-address:focus-visible {
+  color: var(--beni-deep);
+}
+
+.bz-you {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--beni-deep);
+}
+
+.bz-exp {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: var(--bz-exp);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.bz-empty {
+  margin: 48px 0 24px;
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--sumi-soft);
+}
+
+.bz-foot {
+  margin: 28px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--sumi-soft);
+}
+
+/* Rows rise into place once the sheet is on screen, one tier after another. */
+.bz[data-motion="on"] .bz-item {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.bz[data-motion="on"][data-seen="true"] .bz-item {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 420ms var(--ease-settle),
+    transform 420ms var(--ease-settle);
+  transition-delay: calc(var(--tier, 0) * 90ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bz .bz-item {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+/* One column. The wrappers dissolve and every row is ordered by its place, so the East and West rows interleave. */
+@media (max-width: 759.98px) {
+  .bz-body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bz-side,
+  .bz-tier,
+  .bz-tier[data-tier="3"] {
+    display: contents;
+  }
+
+  .bz-label,
+  .bz-ranks {
+    display: none;
+  }
+
+  .bz-item {
+    order: var(--place);
+  }
+
+  .bz-item[data-tier-end] {
+    border-bottom: var(--bz-rule, 0px) solid var(--sumi);
+  }
+
+  .bz-row[data-side="east"] {
+    flex-direction: row;
+  }
+
+  .bz-side[data-side="east"] {
+    text-align: left;
+  }
+
+  .bz-row[data-side="east"] .bz-text,
+  .bz-row[data-side="east"] .bz-line,
+  .bz-row[data-side="east"] .bz-meta {
+    justify-content: flex-start;
+  }
+
+  .bz-tier[data-tier="0"] {
+    --bz-address: 20px;
+  }
+}

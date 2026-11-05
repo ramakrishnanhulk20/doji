@@ -1,0 +1,41 @@
+{
+  "asOf": 1793893895,
+  "rows": [
+    {
+      "place": 1,
+      "address": "0x92DcCb70C33300848Da555eDe8597d3F7037AE2b",
+      "exp": 750,
+      "rank": "tedai"
+    },
+    {
+      "place": 2,
+      "address": "0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e",
+      "exp": 650,
+      "rank": "tedai"
+    },
+    {
+      "place": 3,
+      "address": "0x56B9c9418BaEfDEDef6da0aB2af450842b776B79",
+      "exp": 150,
+      "rank": "decchi"
+    },
+    {
+      "place": 4,
+      "address": "0x6EF23DBf6cDa3738f44913595B87A0559746895F",
+      "exp": 150,
+      "rank": "decchi"
+    },
+    {
+      "place": 5,
+      "address": "0xCFD41eb3Cd90BB5E8e583182333a8Dc2DB0992B4",
+      "exp": 50,
+      "rank": "decchi"
+    },
+    {
+      "place": 6,
+      "address": "0xb3a727A0447D2c0168395124cb374a970bDCA524",
+      "exp": 50,
+      "rank": "decchi"
+    }
+  ]
+}
