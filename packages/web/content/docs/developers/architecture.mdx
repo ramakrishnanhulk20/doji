@@ -175,7 +175,7 @@ The pay-down switch only ever names the PayDown in the address book, and a posit
 Three things run on the server, none with a database.
 
 - `POST /api/faucet` takes an address and a Turnstile token. It checks the format, then Cloudflare, then the chain, then simulates the exact call, and only then signs one `claim`, the only transaction it can sign (C59 to C64).
-- `GET /api/leaderboard` returns the top 50 wallets, with Doji's own removed, from at most one scan a minute (C73, C75).
+- `GET /api/leaderboard` returns the top 50 wallets, with Doji's own removed, from at most one scan a minute per server instance, the same snapshot the share image reads (C73, C75).
 - The share image at `/quests/<address>` reads that snapshot and carries only values the code computed (C73, C77).
 
 The quest engine is one module, [table.ts](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/web/src/lib/quests/table.ts) and [exp.ts](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/web/src/lib/quests/exp.ts), used by the browser, the leaderboard and the image, so all three give the same EXP from the same logs (C68, C69). A log counts only if a contract in the quest table emitted it at or after the Wave 2 deploy block (C67). An incomplete read is never shown as a final number (C70).
