@@ -1,0 +1,53 @@
+{
+  "chainId": 31611,
+  "offers": [
+    {
+      "id": 5,
+      "maturity": 1794441600,
+      "aprBps": 550,
+      "amount": "40000000000000000000"
+    },
+    {
+      "id": 6,
+      "maturity": 1795046400,
+      "aprBps": 600,
+      "amount": "40000000000000000000"
+    },
+    {
+      "id": 7,
+      "maturity": 1795651200,
+      "aprBps": 650,
+      "amount": "40000000000000000000"
+    },
+    {
+      "id": 8,
+      "maturity": 1796256000,
+      "aprBps": 700,
+      "amount": "40000000000000000000"
+    }
+  ],
+  "auctionLoans": [
+    {
+      "tokenId": 415,
+      "borrower": "0xb164F15b59DFd9eb7eac60A364ce3F0f6721A5Ef",
+      "maturity": 1794441600,
+      "hash": "0x3ea15a37e4f81e63ae7f4f96eb66e19fc51e0601caf578078f903b612ef9cc3c"
+    },
+    {
+      "tokenId": 416,
+      "borrower": "0xb164F15b59DFd9eb7eac60A364ce3F0f6721A5Ef",
+      "maturity": 1794441600,
+      "hash": "0xba967d399178b983bdc44b1449e79452283770e7a5eb3a3b674e69505ecdc4ec"
+    },
+    {
+      "tokenId": 417,
+      "borrower": "0xb164F15b59DFd9eb7eac60A364ce3F0f6721A5Ef",
+      "maturity": 1794441600,
+      "hash": "0x37a97b90ca2f557430afedc182bea10de9ceaada38ddbe9d0d037c83c836a3c7"
+    }
+  ],
+  "seedAuctionDates": [
+    1794441600
+  ],
+  "block": 16602410
+}
