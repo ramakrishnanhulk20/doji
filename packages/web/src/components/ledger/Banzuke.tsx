@@ -171,7 +171,7 @@ export function Banzuke({ rows, asOf, you }: BanzukeProps) {
         </header>
         <div className="bz-rule" aria-hidden="true" />
 
-        {placed.length < 2 ? (
+        {placed.length === 0 ? (
           <p className="bz-empty">{EMPTY_LINE}</p>
         ) : (
           <div className="bz-body">

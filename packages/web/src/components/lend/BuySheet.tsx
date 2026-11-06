@@ -8,6 +8,7 @@ import { useLoanGate } from "../../hooks/useLoanGate";
 import { useStepFlow, type FlowStep } from "../../hooks/useStepFlow";
 import { useUnitWallet } from "../../hooks/useUnitMarket";
 import { useWrite, type WriteResult } from "../../hooks/useWrite";
+import { seedAuctionDates } from "../../lib/addresses";
 import { formatDate } from "../../lib/stats";
 import {
   MARKET_PAUSED_LINE,
@@ -48,6 +49,7 @@ type BuySheetProps = {
 const dash = <span className="summary-empty">-</span>;
 
 const DATE_PASSED_LINE = "This date has passed, so the buy was not sent.";
+const AUCTION_NOTE = "A Doji test loan on this date is going to auction, so payouts here can take a few extra days.";
 
 let noteCounter = 0;
 
@@ -220,6 +222,8 @@ function BuyForm({ listing, now, paused, onClose, onRunning }: BuySheetProps & {
           <Stepper steps={engine.rows(plan)} />
         </div>
       )}
+
+      {seedAuctionDates.includes(listing.maturity) && <p className="field-note">{AUCTION_NOTE}</p>}
 
       <Button className="confirm-button" disabled={confirm.disabled} loading={confirm.loading} onClick={confirm.onClick}>
         {confirm.label}

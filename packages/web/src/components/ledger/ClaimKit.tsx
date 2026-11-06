@@ -90,7 +90,7 @@ function ClaimFlow({ wallet, open }: { wallet: Address; open: boolean }) {
         {view.step === "refused" && <p className="ledger-claim-line">{refusalLine(view.code, view.minutes)}</p>}
       </div>
 
-      {(late || (view.step === "refused" && view.code !== "already_claimed")) && (
+      {((view.step === "confirming" && late) || (view.step === "refused" && view.code !== "already_claimed")) && (
         <Button variant="secondary" className="ledger-claim-again" onClick={claim}>
           Try again
         </Button>

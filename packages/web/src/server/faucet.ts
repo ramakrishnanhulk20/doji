@@ -33,6 +33,8 @@ const FAUCET_ABI = parseAbi([
 const GAS_LIMIT = 230_000n;
 const GAS_PRICE_CEILING = 10_000n;
 const IN_FLIGHT_LIMIT = 3;
+const NONCE_READS = 3;
+const STUCK_AFTER_MS = 60_000;
 
 const ROUTE_BUDGET_MS = 8_000;
 const VERIFY_TIMEOUT_MS = 5_000;
@@ -194,6 +196,37 @@ export function liveClaimDeps(client: PublicClient = liveClient): ClaimDeps {
   };
 }
 
+// There is no store, so this instance's own memory is the age test. A cold start forgets it, which only delays a
+// replacement and can never cause one.
+let headSeen: { nonce: number; at: number } | null = null;
+
+function headIsStuck(nonce: number, now: number): boolean {
+  if (headSeen === null || headSeen.nonce !== nonce) {
+    headSeen = { nonce, at: now };
+    return false;
+  }
+  return now - headSeen.at >= STUCK_AFTER_MS;
+}
+
+/**
+ * The highest nonces across NONCE_READS rounds. Mezo's RPC is several nodes, and a lagging one would hand out a nonce
+ * already used. A batching client sends one tick's calls as one post, which reaches one node, so each round waits for
+ * the last. This lowers the odds of a stale answer and rules nothing out.
+ */
+export async function readNonces(client: PublicClient, relayer: Address): Promise<{ latest: number; pending: number }> {
+  let latest = 0;
+  let pending = 0;
+  for (let round = 0; round < NONCE_READS; round += 1) {
+    const [seenLatest, seenPending] = await Promise.all([
+      client.getTransactionCount({ address: relayer, blockTag: "latest" }),
+      client.getTransactionCount({ address: relayer, blockTag: "pending" }),
+    ]);
+    latest = Math.max(latest, seenLatest);
+    pending = Math.max(pending, seenPending);
+  }
+  return { latest, pending };
+}
+
 async function claimOnChain(
   wallet: Address,
   relayer: Address,
@@ -204,7 +237,7 @@ async function claimOnChain(
   const faucet = { address: FAUCET, abi: FAUCET_ABI } as const;
 
   // These pick the message a refusal carries. They never permit a send: only the simulation below does (C62).
-  const [chainId, alreadyClaimed, claimsOpen, nextOpenAt, paused, balance, latest, pending, gasPrice] = await withinBudget(
+  const [chainId, alreadyClaimed, claimsOpen, nextOpenAt, paused, balance, { latest, pending }, gasPrice] = await withinBudget(
     () =>
       Promise.all([
         client.getChainId(),
@@ -213,8 +246,7 @@ async function claimOnChain(
         client.readContract({ ...faucet, functionName: "nextOpenAt" }),
         client.readContract({ ...faucet, functionName: "paused" }),
         client.getBalance({ address: relayer }),
-        client.getTransactionCount({ address: relayer, blockTag: "latest" }),
-        client.getTransactionCount({ address: relayer, blockTag: "pending" }),
+        readNonces(client, relayer),
         client.getGasPrice(),
       ]),
     deadline,
@@ -233,9 +265,11 @@ async function claimOnChain(
   if (gasPrice <= 0n || gasPrice > GAS_PRICE_CEILING) return refuse("unavailable");
   if (pending < latest) return refuse("busy");
 
-  // At the limit there is no store to say how old the head is, so this caller's claim takes its nonce at a higher
-  // price. That frees a stuck head. A caller replaced this way times out and retries: `claimed` stays false for them.
+  // A full queue is usually only seconds old, and the caller at its head already holds a hash, so at the limit the next
+  // caller is told to try again. Only a head that has sat at one nonce for STUCK_AFTER_MS is taken, at a higher price, so
+  // one stuck nonce cannot stop claims for good. A caller replaced that way times out and retries: `claimed` stays false.
   const atLimit = pending - latest >= IN_FLIGHT_LIMIT;
+  if (atLimit && !headIsStuck(latest, deps.now())) return refuse("busy");
   const bumped = (gasPrice * 12n + 9n) / 10n;
   const nonce = atLimit ? latest : pending;
   const price = !atLimit ? gasPrice : bumped < GAS_PRICE_CEILING ? bumped : GAS_PRICE_CEILING;
@@ -254,6 +288,8 @@ async function claimOnChain(
   );
 
   const outcome = await withinBudget(() => deps.signAndSend({ to: wallet, nonce, gasPrice: price }), deadline, deps.now);
+  // A replacement is a fresh claim with a caller waiting on it, so it gets its own full wait before anyone may replace it.
+  if (outcome.sent && atLimit) headSeen = { nonce, at: deps.now() };
   return outcome.sent ? { ok: true, hash: outcome.hash } : refuse(outcome.code);
 }
 

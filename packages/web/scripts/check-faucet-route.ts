@@ -43,7 +43,7 @@ type FaucetModule = typeof import("../src/server/faucet");
 type ClaimDeps = import("../src/server/faucet").ClaimDeps;
 type RouteModule = typeof import("../src/app/api/faucet/route");
 
-const { handleClaim, liveClaimDeps, verifyToken }: FaucetModule = await import("../src/server/faucet");
+const { handleClaim, liveClaimDeps, readNonces, verifyToken }: FaucetModule = await import("../src/server/faucet");
 
 const env = process.env as Record<string, string | undefined>;
 const LIVE = process.argv.includes("--live");
@@ -52,6 +52,8 @@ const NORMAL_GAS_PRICE = 146n; // What Mezo testnet answered on 2026-11-05.
 const GAS_LIMIT = 230_000n;
 const CEILING = 10_000n;
 const IN_FLIGHT = 3;
+const NONCE_READS = 3;
+const STUCK_AFTER_MS = 60_000;
 const MARKER = "UPSTREAM-TEXT-MARKER https://rpc.internal.example/secret-path";
 const TOKEN = "turnstile-token-marker";
 const IP = "203.0.113.7";
@@ -114,6 +116,8 @@ type NodeSetup = {
   latest: number;
   /** Added to the real queue length, for a queue this check did not fill itself. */
   pendingExtra: number;
+  /** Which of each set of nonce reads a node one nonce behind answers, or null when none does. */
+  laggingRead: number | null;
   acceptReplacement: boolean;
   simulationBroken: boolean;
   readsBroken: boolean;
@@ -135,6 +139,7 @@ function mockNode(setup: Partial<NodeSetup> = {}) {
     viewsLie: false,
     latest: 7,
     pendingExtra: 0,
+    laggingRead: null,
     acceptReplacement: false,
     simulationBroken: false,
     readsBroken: false,
@@ -147,6 +152,7 @@ function mockNode(setup: Partial<NodeSetup> = {}) {
   const claimed = new Set(world.claimed);
   const queue: Queued[] = [];
   const startingNonce = world.latest;
+  const nonceReads = { latest: 0, pending: 0 };
   let landed = 0;
   let failed = 0;
 
@@ -217,8 +223,11 @@ function mockNode(setup: Partial<NodeSetup> = {}) {
         return numberToHex(world.gasPrice);
       case "eth_getBalance":
         return numberToHex(world.balance);
-      case "eth_getTransactionCount":
-        return numberToHex(list[1] === "pending" ? world.latest + queue.length + world.pendingExtra : world.latest);
+      case "eth_getTransactionCount": {
+        const tag = list[1] === "pending" ? "pending" : "latest";
+        const lag = nonceReads[tag]++ % NONCE_READS === world.laggingRead ? 1 : 0;
+        return numberToHex((tag === "pending" ? world.latest + queue.length + world.pendingExtra : world.latest) - lag);
+      }
       case "eth_call":
         return answerCall(list[0] as Record<string, string | undefined>);
       case "eth_sendRawTransaction":
@@ -400,7 +409,7 @@ async function checkSigningLimits() {
   check("C59 the signer itself refuses a price over the ceiling", !overCeiling.sent && !direct.calls.includes("eth_sendRawTransaction"));
 
   const exported = Object.keys(await import("../src/server/faucet")).sort().join(",");
-  check("C59 the server module exports no general send", exported === "MAX_BODY_BYTES,handleClaim,liveClaimDeps,verifyToken");
+  check("C59 the server module exports no general send", exported === "MAX_BODY_BYTES,handleClaim,liveClaimDeps,readNonces,verifyToken");
 
   await withEnv({ RELAYER_PRIVATE_KEY: undefined }, async () => {
     const node = mockNode();
@@ -659,27 +668,112 @@ async function checkNonces() {
     inTurn.push(await handleClaim({ body: claimBody(wallet, `turn-${index}`), ip: null }, staggered.deps));
   }
   check(`C63 calls one after another fill at most ${IN_FLIGHT} slots`, staggered.node.queue.length === IN_FLIGHT);
-  check("C63 past the limit the node's refusal is busy, never a hash", inTurn.slice(IN_FLIGHT).every((reply) => refusedWith(reply, "busy")));
+  check("C63 past the limit the route answers busy, never a hash", inTurn.slice(IN_FLIGHT).every((reply) => refusedWith(reply, "busy")));
   staggered.node.mine();
   check(`C63 one lands and at most ${IN_FLIGHT} fail`, staggered.node.counts().landed === 1 && staggered.node.counts().failed <= IN_FLIGHT);
 
-  const head = setup({ acceptReplacement: true });
-  head.node.queue.push({ raw: "0xaa", to: randomWallet(), nonce: 7, gasPrice: NORMAL_GAS_PRICE });
-  head.node.world.pendingExtra = IN_FLIGHT - 1;
-  const replacement = await handleClaim({ body: claimBody(wallet), ip: null }, head.deps);
-  const replaced = head.node.queue[0];
-  check("C63 at the limit the claim goes at the head nonce", replacement.ok && replaced?.nonce === 7 && replaced.to === wallet);
-  check("C63 the replacement pays 1.2 times the gas price", replaced?.gasPrice === (NORMAL_GAS_PRICE * 12n + 9n) / 10n);
+  // Each relayer takes its own nonce, because the route remembers the last head it saw for as long as the module lives.
+  const fullQueue = (nonce: number, start: Partial<NodeSetup> = {}) => {
+    const rig = setup({ latest: nonce, acceptReplacement: true, ...start });
+    rig.node.queue.push({ raw: "0xaa", to: randomWallet(), nonce, gasPrice: NORMAL_GAS_PRICE });
+    rig.node.world.pendingExtra = IN_FLIGHT - 1;
+    let clock = 1_000_000;
+    rig.deps.now = () => clock;
+    return {
+      ...rig,
+      claim: () => handleClaim({ body: claimBody(wallet), ip: null }, rig.deps),
+      wait: (ms: number) => {
+        clock += ms;
+      },
+      noSend: () => rig.signs() === 0 && !rig.node.calls.includes("eth_sendRawTransaction"),
+    };
+  };
 
-  const nearCeiling = setup({ gasPrice: CEILING - 1n, pendingExtra: IN_FLIGHT, acceptReplacement: true });
-  await handleClaim({ body: claimBody(wallet), ip: null }, nearCeiling.deps);
+  const firstSight = fullQueue(101);
+  check("C63 at the limit, first sight of the head: busy, nothing signed", refusedWith(await firstSight.claim(), "busy") && firstSight.noSend());
+
+  const young = fullQueue(102);
+  await young.claim();
+  young.wait(STUCK_AFTER_MS - 1_000);
+  check("C63 at the limit, same head 59 s later: busy, nothing signed", refusedWith(await young.claim(), "busy") && young.noSend());
+
+  const stuck = fullQueue(103);
+  await stuck.claim();
+  stuck.wait(STUCK_AFTER_MS);
+  const replacement = await stuck.claim();
+  const replaced = stuck.node.queue[0];
+  check("C63 at the limit, same head 60 s later: the claim goes at the head nonce", replacement.ok && replaced?.nonce === 103 && replaced.to === wallet);
+  check("C63 the replacement pays 1.2 times the gas price", replaced?.gasPrice === (NORMAL_GAS_PRICE * 12n + 9n) / 10n);
+  stuck.wait(1_000);
+  check("C63 a replacement restarts the clock: the next claim is busy, nothing signed", refusedWith(await stuck.claim(), "busy") && stuck.signs() === 1);
+
+  const postSizes: number[] = [];
+  const batching = createPublicClient({
+    transport: http("https://mock.invalid", {
+      batch: true,
+      retryCount: 0,
+      fetchFn: async (_url, init) => {
+        const body = JSON.parse(String(init?.body)) as { id: number } | { id: number }[];
+        const calls = Array.isArray(body) ? body : [body];
+        postSizes.push(calls.length);
+        const answers = calls.map(({ id }) => ({ jsonrpc: "2.0", id, result: numberToHex(postSizes.length) }));
+        return Response.json(Array.isArray(body) ? answers : answers[0]);
+      },
+    }),
+  });
+  const rounds = await readNonces(batching as PublicClient, wallet);
+  check(
+    `C63 on a batching client the nonce reads leave as ${NONCE_READS} posts, so more than one node can answer, and the highest wins`,
+    postSizes.length === NONCE_READS && rounds.latest === NONCE_READS && rounds.pending === NONCE_READS,
+  );
+
+  const moved = fullQueue(104);
+  await moved.claim();
+  moved.node.mine();
+  moved.node.world.pendingExtra = IN_FLIGHT;
+  moved.wait(STUCK_AFTER_MS);
+  check("C63 at the limit, a head that moved restarts the clock: busy after 60 s, nothing signed", refusedWith(await moved.claim(), "busy") && moved.noSend());
+
+  const nearCeiling = fullQueue(106, { gasPrice: CEILING - 1n });
+  await nearCeiling.claim();
+  nearCeiling.wait(STUCK_AFTER_MS);
+  await nearCeiling.claim();
   check("C63 the replacement stays within the ceiling", nearCeiling.node.queue[0]?.gasPrice === CEILING);
 
-  const refusedHead = setup({ acceptReplacement: false });
-  refusedHead.node.queue.push({ raw: "0xaa", to: randomWallet(), nonce: 7, gasPrice: NORMAL_GAS_PRICE });
-  refusedHead.node.world.pendingExtra = IN_FLIGHT - 1;
-  const refusedReply = await handleClaim({ body: claimBody(wallet), ip: null }, refusedHead.deps);
-  check("C63 a replacement the node refuses is busy", refusedWith(refusedReply, "busy"));
+  const refusedHead = fullQueue(107, { acceptReplacement: false });
+  await refusedHead.claim();
+  refusedHead.wait(STUCK_AFTER_MS);
+  const refusedReply = await refusedHead.claim();
+  check("C63 a replacement the node refuses is busy", refusedWith(refusedReply, "busy") && refusedHead.node.calls.includes("eth_sendRawTransaction"));
+
+  for (let position = 0; position < NONCE_READS; position += 1) {
+    const nonce = 110 + position;
+    const lagging = setup({ latest: nonce, pendingExtra: IN_FLIGHT - 1, laggingRead: position });
+    const lagReply = await handleClaim({ body: claimBody(wallet), ip: null }, lagging.deps);
+    check(
+      `C63 a lagging node answers read ${position + 1} of ${NONCE_READS}: the signed nonce is the highest pending, and the gap is measured from the highest latest`,
+      lagReply.ok && lagging.node.queue[0]?.nonce === nonce + IN_FLIGHT - 1,
+    );
+  }
+
+  const laggingHead = fullQueue(120, { laggingRead: 1 });
+  await laggingHead.claim();
+  laggingHead.wait(STUCK_AFTER_MS);
+  const laggingHeadReply = await laggingHead.claim();
+  check("C63 a lagging node: the replacement takes the highest latest", laggingHeadReply.ok && laggingHead.node.queue[0]?.nonce === 120);
+
+  const crowded = setup({ pendingExtra: IN_FLIGHT - 1 });
+  const crowd = await Promise.all(
+    Array.from({ length: IN_FLIGHT + 1 }, (_, index) => handleClaim({ body: claimBody(randomWallet(), `crowd-${index}`), ip: null }, crowded.deps)),
+  );
+  const crowdHashes = crowd.filter((reply) => reply.ok);
+  check(`C63 ${IN_FLIGHT + 1} parallel claims one below the limit sign at most ${IN_FLIGHT} (signed ${crowded.signs()})`, crowded.signs() <= IN_FLIGHT);
+  check(
+    "C63 of those, each hash is a transaction the node holds, and every other caller gets busy",
+    crowdHashes.length === crowded.node.queue.length &&
+      crowdHashes.every((reply) => crowded.node.queue.some((queued) => keccak256(queued.raw) === reply.hash)) &&
+      crowd.filter((reply) => refusedWith(reply, "busy")).length === crowd.length - crowdHashes.length,
+  );
 
   const stale = mockNode({ latest: 9 });
   const staleSend = await liveClaimDeps(stale.client).signAndSend({ to: wallet, nonce: 8, gasPrice: NORMAL_GAS_PRICE });
