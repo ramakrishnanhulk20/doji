@@ -6,6 +6,7 @@ import type { QuestId } from "../../lib/quests/table";
 import { Button } from "../Button";
 import { Seal } from "../Seal";
 import { QUEST_COPY, QUEST_FACTS, explorerTx, ledgerDate, sealTilt } from "./chapters";
+import { ClaimKit } from "./ClaimKit";
 import { PaperSheet } from "./PaperSheet";
 import "./ledger.css";
 
@@ -138,7 +139,8 @@ export function InstructionSlip({ id, open, onClose, done, at, hash }: Instructi
             <p className="ledger-slip-label">What you need</p>
             <p className="ledger-slip-need">{copy.need}</p>
 
-            {!done && (
+            {!done && id === "kit" && <ClaimKit open={open} />}
+            {!done && id !== "kit" && (
               <Button variant="primary" arrow href={copy.button.href} className="ledger-slip-button">
                 {copy.button.label}
               </Button>

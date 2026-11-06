@@ -1,7 +1,11 @@
+"use client";
+
 import type { CSSProperties } from "react";
+import { useReducedMotion } from "../../lib/motion-mode";
 import { Seal } from "../Seal";
 import { ledgerDate, sealTilt, type Entry } from "./chapters";
 import type { QuestId } from "../../lib/quests/table";
+import { StampPress } from "./StampPress";
 import "./ledger.css";
 
 type QuestEntryProps = {
@@ -9,6 +13,8 @@ type QuestEntryProps = {
   /** "column" is one column of a spread page. "row" is a line in the stacked layout below 1024. */
   variant: "column" | "row";
   onOpen: (id: QuestId) => void;
+  /** True when the read that just came in is the one that earned this seal, so it is stamped on instead of simply drawn. */
+  landing?: boolean;
 };
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -17,14 +23,27 @@ const pad = (value: number) => String(value).padStart(2, "0");
 const COLUMN_SEAL_BOX = (76 * 64) / 56;
 const ROW_SEAL_BOX = 56;
 
-export function QuestEntry({ entry, variant, onOpen }: QuestEntryProps) {
+function LandingSeal({ size, tilt }: { size: number; tilt: CSSProperties }) {
+  const reduced = useReducedMotion();
+  return (
+    <span className="ledger-entry-seal ledger-entry-press" style={tilt}>
+      <StampPress stamped reduced={reduced}>
+        <Seal size={size} title="" />
+      </StampPress>
+    </span>
+  );
+}
+
+export function QuestEntry({ entry, variant, onOpen, landing = false }: QuestEntryProps) {
   const { id, done, at, kanji, title, expLabel } = entry;
   const date = done && at !== undefined ? ledgerDate(at) : null;
   const label = done ? (date === null ? `${title}, done` : `${title}, done on ${date}`) : `${title}, not done`;
   const tilt = { "--tilt": `${sealTilt(entry)}deg` } as CSSProperties;
   const markSize = variant === "column" ? COLUMN_SEAL_BOX : ROW_SEAL_BOX;
 
-  const mark = done ? (
+  const mark = done && landing ? (
+    <LandingSeal size={markSize} tilt={tilt} />
+  ) : done ? (
     <span className="ledger-entry-seal" style={tilt}>
       <Seal size={markSize} title="" />
     </span>

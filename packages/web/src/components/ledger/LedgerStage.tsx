@@ -89,19 +89,26 @@ type StagePageProps = {
   index: number;
   chapter: ChapterEntries;
   onOpen: OpenEntry;
+  landing?: ReadonlySet<QuestId>;
 };
 
-function StagePage({ side, index, chapter, onOpen }: StagePageProps) {
+function StagePage({ side, index, chapter, onOpen, landing }: StagePageProps) {
   const name = `${side}-${index}`;
   return (
     <div className="ledger-stage-page" data-page={name}>
-      <LedgerPage side={side} chapter={chapter.chapter} entries={chapter.entries} onOpen={onOpen} />
+      <LedgerPage side={side} chapter={chapter.chapter} entries={chapter.entries} onOpen={onOpen} landing={landing} />
       <span className="ledger-stage-shade" data-side={side} data-shade={name} aria-hidden="true" />
     </div>
   );
 }
 
-type StageProps = { rank?: Rank; header?: ReactNode; chapters: ChapterEntries[]; onOpen: OpenEntry };
+type StageProps = {
+  rank?: Rank;
+  header?: ReactNode;
+  chapters: ChapterEntries[];
+  onOpen: OpenEntry;
+  landing?: ReadonlySet<QuestId>;
+};
 
 const subscribeToNothing = () => () => {};
 
@@ -115,7 +122,7 @@ const SHOW_FLAT_WITHOUT_SCRIPT = "<style>.ledger-stage-flat{visibility:visible!i
 
 // The book. A leaf is the cover or one page: it hangs on the spine and turns about it. Its front is what shows on the left,
 // its back is what shows once it has landed on the right.
-function PinnedStage({ rank, header, chapters, onOpen }: StageProps) {
+function PinnedStage({ rank, header, chapters, onOpen, landing }: StageProps) {
   const rootRef = useRef<HTMLElement>(null);
   const count = chapters.length;
 
@@ -307,7 +314,7 @@ function PinnedStage({ rank, header, chapters, onOpen }: StageProps) {
               <span className="ledger-stage-ground ledger-stage-ground-right" data-stage-ground-right aria-hidden="true" />
 
               <div className="ledger-stage-base">
-                <StagePage side="left" index={count} chapter={last} onOpen={onOpen} />
+                <StagePage side="left" index={count} chapter={last} onOpen={onOpen} landing={landing} />
               </div>
 
               {turning.map((k) => {
@@ -317,11 +324,11 @@ function PinnedStage({ rank, header, chapters, onOpen }: StageProps) {
                 return (
                   <div key={k} className="ledger-stage-leaf" data-leaf={k}>
                     <div className="ledger-stage-face ledger-stage-front">
-                      <StagePage side="left" index={k} chapter={own} onOpen={onOpen} />
+                      <StagePage side="left" index={k} chapter={own} onOpen={onOpen} landing={landing} />
                       <span className="ledger-stage-light" data-light={k} data-edge="left" aria-hidden="true" />
                     </div>
                     <div className="ledger-stage-face ledger-stage-back">
-                      <StagePage side="right" index={k + 1} chapter={next} onOpen={onOpen} />
+                      <StagePage side="right" index={k + 1} chapter={next} onOpen={onOpen} landing={landing} />
                       <span className="ledger-stage-light" data-light={k} data-edge="right" aria-hidden="true" />
                     </div>
                   </div>
@@ -337,7 +344,7 @@ function PinnedStage({ rank, header, chapters, onOpen }: StageProps) {
                   <PaperSheet className="ledger-stage-inside">
                     <ThreadBinding ticks={false} />
                   </PaperSheet>
-                  <StagePage side="right" index={1} chapter={first} onOpen={onOpen} />
+                  <StagePage side="right" index={1} chapter={first} onOpen={onOpen} landing={landing} />
                   <span className="ledger-stage-light" data-light={0} data-edge="right" aria-hidden="true" />
                 </div>
               </div>
@@ -355,7 +362,7 @@ function PinnedStage({ rank, header, chapters, onOpen }: StageProps) {
 
 // The same content as plain flow: the cover, then every chapter. Small screens, short windows and reduced motion get this,
 // and so does the server, so the page reads with no script.
-function FlatStage({ rank, header, chapters, onOpen, ready }: StageProps & { ready: boolean }) {
+function FlatStage({ rank, header, chapters, onOpen, landing, ready }: StageProps & { ready: boolean }) {
   return (
     <section className="ledger ledger-stage ledger-stage-flat" data-ready={ready}>
       <div className="ledger-stage-flat-inner">
@@ -367,7 +374,7 @@ function FlatStage({ rank, header, chapters, onOpen, ready }: StageProps & { rea
         </div>
         <div className="ledger-stage-flat-pages">
           {chapters.map(({ chapter, entries }) => (
-            <LedgerSpread key={chapter.id} chapter={chapter} entries={entries} onOpen={onOpen} />
+            <LedgerSpread key={chapter.id} chapter={chapter} entries={entries} onOpen={onOpen} landing={landing} />
           ))}
         </div>
       </div>
@@ -380,9 +387,11 @@ type LedgerStageProps = {
   progress: WalletProgress | null;
   /** Shown under the headline's body paragraph, in the pinned and the flat layout alike. */
   header?: ReactNode;
+  /** Quests whose seal is being stamped on while the page is open. */
+  landing?: ReadonlySet<QuestId>;
 };
 
-export function LedgerStage({ progress, header }: LedgerStageProps) {
+export function LedgerStage({ progress, header, landing }: LedgerStageProps) {
   const reduced = useReducedMotion();
   const roomy = useMatchMedia(ROOMY);
   const pinned = roomy && !reduced;
@@ -409,9 +418,9 @@ export function LedgerStage({ progress, header }: LedgerStageProps) {
     <>
       <noscript dangerouslySetInnerHTML={{ __html: SHOW_FLAT_WITHOUT_SCRIPT }} suppressHydrationWarning />
       {pinned ? (
-        <PinnedStage rank={rank} header={header} chapters={chapters} onOpen={openSlip} />
+        <PinnedStage rank={rank} header={header} chapters={chapters} onOpen={openSlip} landing={landing} />
       ) : (
-        <FlatStage rank={rank} header={header} chapters={chapters} onOpen={openSlip} ready={hydrated} />
+        <FlatStage rank={rank} header={header} chapters={chapters} onOpen={openSlip} landing={landing} ready={hydrated} />
       )}
       {slipEntry && (
         <InstructionSlip

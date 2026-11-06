@@ -1367,3 +1367,126 @@
 .ledger-stage-head {
   z-index: 2;
 }
+
+/* The claim step in the starter kit slip. */
+.ledger-claim {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.ledger .ledger-claim .ledger-slip-button {
+  margin-top: 0;
+}
+
+.ledger-claim-widget:empty,
+.ledger-claim-status:empty {
+  display: none;
+}
+
+.ledger-claim-help {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sumi-soft);
+}
+
+.ledger-claim-status {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.ledger-claim-working {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sumi);
+}
+
+.ledger-claim-working svg {
+  flex: none;
+}
+
+.ledger-claim-line {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--sumi);
+}
+
+.ledger .ledger-claim-again {
+  width: 100%;
+}
+
+/* A seal stamped while the page is open. The press tilts its own layers, so this box must not tilt them a second time. */
+.ledger-entry-seal.ledger-entry-press {
+  transform: none;
+}
+
+.ledger-entry[data-done="true"]:hover .ledger-entry-seal.ledger-entry-press {
+  transform: scale(1.04);
+}
+
+.ledger-entry-press .ledger-press {
+  display: grid;
+  width: 100%;
+  height: 100%;
+}
+
+/* A new rank. It sits over the slip and the toasts: a phone's toasts stack at the bottom, right where its buttons are. */
+.ledger-rankup {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(10, 8, 7, 0.78);
+}
+
+.ledger-rankup-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  margin: auto;
+  text-align: center;
+}
+
+.ledger-rankup-sheet {
+  display: grid;
+  place-items: center;
+  width: min(380px, 84vw);
+  height: min(380px, 84vw);
+}
+
+/* The sheet is narrower than the 280px seal on a very small phone. */
+.ledger-rankup-sheet svg {
+  max-width: 74vw;
+  height: auto;
+}
+
+.ledger-rankup-title {
+  margin: 0;
+  font-size: 38px;
+  line-height: 1.1;
+  color: var(--paper);
+}
+
+.ledger-rankup-meaning {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--paper-dim);
+}
+
+.ledger-rankup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
