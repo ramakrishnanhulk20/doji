@@ -13,6 +13,8 @@ const LISTED: readonly string[] = [
   "0x56b9c9418baefdedef6da0ab2af450842b776b79", // seed buyer
   "0xCFD41eb3Cd90BB5E8e583182333a8Dc2DB0992B4", // faucet proof claim
   "0xb3a727A0447D2c0168395124cb374a970bDCA524", // claim route proof
+  "0xE26ca169c608885406162710AE6731EfBdd41ccA", // first real claim
+  "0xd57D8F8A615F35133D8121e58F4ed778A4F612E9", // team test wallet
 ];
 
 function parsedList(): ReadonlySet<Address> {
