@@ -166,6 +166,12 @@ type Proof = {
   also?: (seen: DecodedLog, facts: QuestFacts) => boolean;
 };
 
+/**
+ * F45 extended: a quest that names a payment or a transfer counts only if at least one of these amounts is above zero.
+ * Most of these contracts refuse an empty call today, and this holds the row to its name whatever they do.
+ */
+const moved = ({ args }: DecodedLog, ...amounts: readonly string[]): boolean => amounts.some((field) => (args[field] as bigint) > 0n);
+
 export type QuestId =
   | "kit"
   | "borrow"
@@ -187,8 +193,8 @@ export type QuestId =
 export type Quest = { id: QuestId; chapter: Chapter; exp: number; kanji: string; proofs: readonly Proof[] };
 
 export const QUESTS: readonly Quest[] = [
-  { id: "kit", chapter: "first", exp: 50, kanji: "元", proofs: [{ event: "Claimed", wallet: "to" }] },
-  { id: "borrow", chapter: "first", exp: 200, kanji: "借", proofs: [{ event: "Borrowed", wallet: "borrower" }] },
+  { id: "kit", chapter: "first", exp: 50, kanji: "元", proofs: [{ event: "Claimed", wallet: "to", also: (seen) => moved(seen, "btc", "musd") }] },
+  { id: "borrow", chapter: "first", exp: 200, kanji: "借", proofs: [{ event: "Borrowed", wallet: "borrower", also: (seen) => moved(seen, "principal") }] },
   {
     id: "vote",
     chapter: "first",
@@ -203,14 +209,14 @@ export const QUESTS: readonly Quest[] = [
     kanji: "払",
     proofs: [{ event: "RewardOperatorSet", held: true, also: ({ args }) => args.operator === CONTRACTS.payDown }],
   },
-  { id: "repay", chapter: "first", exp: 150, kanji: "返", proofs: [{ event: "Repaid", wallet: "payer", held: true }] },
+  { id: "repay", chapter: "first", exp: 150, kanji: "返", proofs: [{ event: "Repaid", wallet: "payer", held: true, also: (seen) => moved(seen, "amount") }] },
   { id: "home", chapter: "first", exp: 50, kanji: "戻", proofs: [{ event: "Withdrawn", wallet: "borrower" }] },
   {
     id: "parked",
     chapter: "lender",
     exp: 150,
     kanji: "預",
-    proofs: [{ event: "OfferPosted", wallet: "maker", also: ({ args }, facts) => facts.offerParked(args.offerId as bigint) }],
+    proofs: [{ event: "OfferPosted", wallet: "maker", also: (seen, facts) => moved(seen, "amount") && facts.offerParked(seen.args.offerId as bigint) }],
   },
   {
     id: "stranger",
@@ -221,12 +227,12 @@ export const QUESTS: readonly Quest[] = [
       {
         event: "Filled",
         wallet: "maker",
-        also: ({ log }, facts) => facts.borrowersIn(log.hash).some((borrower) => borrower !== facts.wallet),
+        also: (seen, facts) => moved(seen, "principal") && facts.borrowersIn(seen.log.hash).some((borrower) => borrower !== facts.wallet),
       },
     ],
   },
-  { id: "units", chapter: "lender", exp: 100, kanji: "券", proofs: [{ event: "UnitsClaimed", wallet: "account" }] },
-  { id: "sell", chapter: "lender", exp: 150, kanji: "売", proofs: [{ event: "Listed", wallet: "seller" }] },
+  { id: "units", chapter: "lender", exp: 100, kanji: "券", proofs: [{ event: "UnitsClaimed", wallet: "account", also: (seen) => moved(seen, "units") }] },
+  { id: "sell", chapter: "lender", exp: 150, kanji: "売", proofs: [{ event: "Listed", wallet: "seller", also: (seen) => moved(seen, "units") }] },
   {
     id: "buy",
     chapter: "lender",
@@ -236,9 +242,9 @@ export const QUESTS: readonly Quest[] = [
       {
         event: "Bought",
         wallet: "buyer",
-        also: ({ args }, facts) => {
-          const seller = facts.sellerOf(args.listingId as bigint);
-          return seller !== null && seller !== facts.wallet;
+        also: (seen, facts) => {
+          const seller = facts.sellerOf(seen.args.listingId as bigint);
+          return moved(seen, "cost") && seller !== null && seller !== facts.wallet;
         },
       },
     ],
@@ -248,9 +254,10 @@ export const QUESTS: readonly Quest[] = [
     chapter: "thursday",
     exp: 200,
     kanji: "受",
+    // F45: withdrawCollected with nothing collected still emits its event, so a payout of nothing must earn nothing.
     proofs: [
-      { event: "Redeemed", wallet: "account" },
-      { event: "CollectedWithdrawn", wallet: "account" },
+      { event: "Redeemed", wallet: "account", also: (seen) => moved(seen, "musdOut", "btcOut") },
+      { event: "CollectedWithdrawn", wallet: "account", also: (seen) => moved(seen, "musdOut", "btcOut") },
     ],
   },
   {
@@ -267,7 +274,7 @@ export const QUESTS: readonly Quest[] = [
     chapter: "hard",
     exp: 500,
     kanji: "競",
-    proofs: [{ event: "Purchased", wallet: "buyer", also: ({ args }, facts) => args.borrower !== facts.wallet }],
+    proofs: [{ event: "Purchased", wallet: "buyer", also: (seen, facts) => moved(seen, "price") && seen.args.borrower !== facts.wallet }],
   },
   // No log proves this one: it comes from content/quests/bonus-exp.json alone.
   { id: "bug", chapter: "hard", exp: 0, kanji: "虫", proofs: [] },

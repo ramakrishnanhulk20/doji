@@ -249,15 +249,34 @@ export async function readExplorerLogs(query: ExplorerQuery, deadline = Number.P
   return mergeReads([{ logs, complete: false }]);
 }
 
+/** The newest block the explorer has indexed, or null when it will not say. A reply supplies this one checked number. */
+async function explorerHeight(): Promise<number | null> {
+  try {
+    const reply = await fetchJson(`${EXPLORER_API}/v2/blocks?type=block`);
+    const newest: unknown = isRecord(reply) && Array.isArray(reply.items) ? reply.items[0] : undefined;
+    const height = isRecord(newest) ? newest.height : undefined;
+    return typeof height === "number" && Number.isSafeInteger(height) && height >= 0 ? height : null;
+  } catch {
+    return null;
+  }
+}
+
+const NOT_READ: LogRead = { logs: [], complete: false };
+
 /**
  * One node request for every table event over the newest 9,999 blocks, for what the explorer has not indexed yet (C70).
  * Topics cannot say "this wallet in whichever position", so it covers all wallets and the caller keeps what it needs.
- * Logs come back with timestamp 0, because their blocks are only worth asking about once a caller keeps them.
+ * Logs come back with timestamp 0, because their blocks are only worth asking about once a caller keeps them. No call
+ * starts past `deadline`, so a scan lands within one timeout of it.
  */
-export async function readRecentLogs(): Promise<LogRead> {
+export async function readRecentLogs(deadline = Number.POSITIVE_INFINITY): Promise<LogRead> {
   try {
+    if (Date.now() > deadline) return NOT_READ;
     const latest = quantity(await rpc("eth_blockNumber", []));
-    if (latest === null) return { logs: [], complete: false };
+    if (latest === null || Date.now() > deadline) return NOT_READ;
+    // One after the other, because a wallet read gives this function a single one of its four slots.
+    const height = await explorerHeight();
+    if (Date.now() > deadline) return NOT_READ;
     const rows = await rpc("eth_getLogs", [
       {
         address: Object.values(CONTRACTS),
@@ -266,9 +285,10 @@ export async function readRecentLogs(): Promise<LogRead> {
         toBlock: toHex(latest),
       },
     ]);
-    if (!Array.isArray(rows)) return { logs: [], complete: false };
+    if (!Array.isArray(rows)) return NOT_READ;
     const logs: NormalizedLog[] = [];
-    let complete = true;
+    // Past that gap the two sources no longer meet, so logs between them cannot be seen.
+    let complete = height !== null && height >= latest - RPC_WINDOW_SPAN;
     for (const raw of rows) {
       const log = normalizeLog(raw, 0);
       if (log !== null && decodeQuestLog(log) !== null) logs.push(log);
@@ -276,8 +296,17 @@ export async function readRecentLogs(): Promise<LogRead> {
     }
     return { logs, complete };
   } catch {
-    return { logs: [], complete: false };
+    return NOT_READ;
   }
+}
+
+/**
+ * True when the all-wallets scan could return this log. The node window cannot narrow by a `scan` field, so without this
+ * a stranger's vote on Mezo's PoolsVoter looks like a log the explorer missed, and enough of them would fail every scan.
+ */
+export function inTheScan(log: NormalizedLog): boolean {
+  const scan = eventAt(log.emitter, log.topics[0])?.scan;
+  return scan === undefined || decodeQuestLog(log)?.args[scan.field] === scan.wallet;
 }
 
 async function blockTime(blockNumber: number): Promise<number | null> {
@@ -289,11 +318,15 @@ async function blockTime(blockNumber: number): Promise<number | null> {
   }
 }
 
-/** The same logs with their block's time. A log whose block could not be read is left out and the read is incomplete. */
-export async function stampLogs(logs: readonly NormalizedLog[]): Promise<LogRead> {
+/**
+ * The same logs with their block's time. A log whose block could not be read, or was not reached before `deadline`, is
+ * left out and the read is incomplete.
+ */
+export async function stampLogs(logs: readonly NormalizedLog[], deadline = Number.POSITIVE_INFINITY): Promise<LogRead> {
+  if (Date.now() > deadline) return NOT_READ;
   const blocks = [...new Set(logs.map((log) => log.blockNumber))];
-  if (blocks.length > MAX_STAMPED_BLOCKS) return { logs: [], complete: false };
-  const times = await mapLimit(blocks, MAX_CONCURRENT, blockTime);
+  if (blocks.length > MAX_STAMPED_BLOCKS) return NOT_READ;
+  const times = await mapLimit(blocks, MAX_CONCURRENT, async (block) => (Date.now() > deadline ? null : blockTime(block)));
   const timeOf = new Map(blocks.map((block, at) => [block, times[at] ?? null]));
   const stamped = logs.flatMap((log) => {
     const timestamp = timeOf.get(log.blockNumber) ?? null;

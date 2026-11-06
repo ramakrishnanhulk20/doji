@@ -469,6 +469,22 @@ async function claimChecks(page, world, label) {
   check(`${label}: opening the slip again polls and lands`, await waitForLine(page, "Your kit has landed."));
   world.claimed = false;
 
+  await loadQuests(page);
+  await openKitSlip(page);
+  await claimButton(page, "Claim");
+  await page.evaluate(() => {
+    window.__shortTimers = true;
+  });
+  await press(page, "Claim");
+  await waitForWorking(page, lateLine);
+  await page.evaluate(() => {
+    window.__shortTimers = false;
+  });
+  world.claimed = true;
+  const landedLate = await waitForLine(page, "Your kit has landed.");
+  check(`${label}: a claim past the 60 s line that lands shows success and no Try again`, landedLate && !(await hasTryAgain(page)), await claimText(page));
+  world.claimed = false;
+
   await loadQuests(page, `/quests?address=${WALLET_C}&wallet=${WALLET_C}&recipient=${WALLET_C}`);
   await openKitSlip(page);
   await claimButton(page, "Claim");

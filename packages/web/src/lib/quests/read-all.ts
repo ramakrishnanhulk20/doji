@@ -4,7 +4,7 @@ import type { Address } from "viem";
 import { parseAddress } from "../address";
 import { isDojiWallet } from "../doji-wallets";
 import { bonusEntries, compareProgress, computeProgress, walletsIn, type WalletProgress } from "./exp";
-import { MAX_CONCURRENT, mapLimit, mergeReads, readExplorerLogs, readRecentLogs, stampLogs, unseenLogs, type ExplorerQuery } from "./logs";
+import { MAX_CONCURRENT, inTheScan, mapLimit, mergeReads, readExplorerLogs, readRecentLogs, stampLogs, unseenLogs, type ExplorerQuery } from "./logs";
 import type { RankId } from "./ranks";
 import { QUEST_EVENTS } from "./table";
 
@@ -18,14 +18,14 @@ const scanQueries: readonly ExplorerQuery[] = QUEST_EVENTS.map((event) => ({ eve
 
 /**
  * Every wallet's progress from every log of every table event since the deploy block. It costs at least one explorer
- * call per event, so only the leaderboard route's once-a-minute scan may call it. Past `deadline` the remaining reads
- * stop and the result is incomplete. It reaches no request data, so it cannot vary by caller.
+ * call per event, so only the once-a-minute snapshot below may call it. Past `deadline` the remaining reads stop and the
+ * result is incomplete. It reaches no request data, so it cannot vary by caller.
  */
 export async function readAllProgress(deadline?: number): Promise<WholeRead> {
   const scans = await mapLimit(scanQueries, MAX_CONCURRENT, (query) => readExplorerLogs(query, deadline));
-  const recent = await readRecentLogs();
+  const recent = await readRecentLogs(deadline);
   const indexed = mergeReads(scans);
-  const stamped = await stampLogs(unseenLogs(recent, indexed));
+  const stamped = await stampLogs(unseenLogs(recent, indexed).filter(inTheScan), deadline);
   const read = mergeReads([indexed, stamped, { logs: [], complete: recent.complete }]);
 
   const wallets = new Set(walletsIn(read));
@@ -50,24 +50,28 @@ export function leaderboardRows(wallets: readonly WalletProgress[]): BoardRow[] 
 
 const SNAPSHOT_EVERY_MS = 60_000;
 const SNAPSHOT_EVERY_SECONDS = 60;
-// The same budget as the leaderboard route's scan: new reads stop here, and the slowest one running takes 10 s more.
+// New reads stop here and the slowest one running takes 10 s more, which lands under the 60 s maxDuration of both routes.
 const SNAPSHOT_BUDGET_MS = 45_000;
 
 export type WalletStanding = { exp: number; rank: RankId };
 
-/** Every wallet with EXP, Doji's own included because their public pages stay (C75). A failed read holds nothing. */
-export type ExpSnapshot = { complete: boolean; wallets: Record<string, WalletStanding> };
+/**
+ * The one scan, as of `asOf`. `rows` is the public top 50 without Doji's wallets, and `wallets` is everyone with EXP,
+ * Doji's own included because their public pages stay (C75). An incomplete read holds neither.
+ */
+export type ExpSnapshot = { complete: boolean; asOf: number; rows: BoardRow[]; wallets: Record<string, WalletStanding> };
 
 async function takeSnapshot(): Promise<ExpSnapshot> {
+  const asOf = Math.floor(Date.now() / 1000);
   try {
     const { wallets, complete } = await readAllProgress(Date.now() + SNAPSHOT_BUDGET_MS);
-    console.info(`leaderboard scan: ${wallets.length} wallets, ${complete ? "complete" : "incomplete"}, for the snapshot`);
-    if (!complete) return { complete: false, wallets: {} };
+    console.info(`leaderboard scan: ${wallets.length} wallets, ${complete ? "complete" : "incomplete"}`);
+    if (!complete) return { complete: false, asOf, rows: [], wallets: {} };
     const standings = wallets.filter((wallet) => wallet.exp > 0).map((wallet) => [wallet.address, { exp: wallet.exp, rank: wallet.rank.id }]);
-    return { complete: true, wallets: Object.fromEntries(standings) };
+    return { complete: true, asOf, rows: leaderboardRows(wallets), wallets: Object.fromEntries(standings) };
   } catch {
-    console.error("leaderboard scan: failed, for the snapshot");
-    return { complete: false, wallets: {} };
+    console.error("leaderboard scan: failed");
+    return { complete: false, asOf, rows: [], wallets: {} };
   }
 }
 
@@ -82,11 +86,12 @@ function snapshotAtMostOnceAMinute(): Promise<ExpSnapshot> {
 }
 
 // The key holds nothing from the request. A failed read is cached too, so an outage cannot send every request upstream.
-const cachedSnapshot = unstable_cache(snapshotAtMostOnceAMinute, ["quest-exp-snapshot"], { revalidate: SNAPSHOT_EVERY_SECONDS });
+// The key changes with the snapshot's shape, so a deploy cannot read an entry saved by the one before it.
+const cachedSnapshot = unstable_cache(snapshotAtMostOnceAMinute, ["quest-exp-snapshot-with-rows"], { revalidate: SNAPSHOT_EVERY_SECONDS });
 
 /**
- * The one cached snapshot of every wallet's EXP, for the share image (C73). The leaderboard route's cache holds only 50
- * rows without Doji's wallets, so it cannot answer for any address. Takes no input, so every caller gets one answer.
+ * The one cached scan (C73): the leaderboard route reads its rows and the share image its wallets, so neither scans on
+ * its own. Takes no input, so every caller gets one answer.
  */
 export function readExpSnapshot(): Promise<ExpSnapshot> {
   return cachedSnapshot();

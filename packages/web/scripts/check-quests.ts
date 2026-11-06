@@ -27,7 +27,7 @@ import { addressBook } from "../src/lib/addresses";
 import { mezoTestnetChain } from "../src/lib/chains";
 import { dojiWallets, isDojiWallet } from "../src/lib/doji-wallets";
 import { compareProgress, computeProgress, walletsIn, type BonusEntry, type WalletProgress } from "../src/lib/quests/exp";
-import { decodeQuestLog, normalizeLog, readExplorerLogs, readRecentLogs, type ExplorerQuery, type NormalizedLog } from "../src/lib/quests/logs";
+import { decodeQuestLog, normalizeLog, readExplorerLogs, readRecentLogs, stampLogs, type ExplorerQuery, type NormalizedLog } from "../src/lib/quests/logs";
 import { RANKS, nextRank, rankOf } from "../src/lib/quests/ranks";
 import { readWalletProgress } from "../src/lib/quests/read-wallet";
 import { CONTRACTS, EVENTS, FROM_BLOCK, QUESTS, QUEST_EVENTS, type EventName } from "../src/lib/quests/table";
@@ -97,7 +97,7 @@ const earned = (progress: WalletProgress, id: string) => done(progress).includes
 type Reply = Response | "continue";
 type World = {
   logs: readonly Raw[];
-  /** The explorer has not indexed logs above this block. */
+  /** The explorer has not indexed logs above this block, and its height call says so. Left out, it is level with the head. */
   indexedUpTo?: number;
   latest?: number;
   /** Takes over one request, by its explorer page number for a topic0 or by host. */
@@ -107,6 +107,7 @@ type World = {
 const realFetch = globalThis.fetch;
 
 const blockOf = (log: Raw) => Number(log.blockNumber);
+const headOf = (world: World) => world.latest ?? Math.max(BASE, ...world.logs.map(blockOf)) + 5;
 const sorted = (logs: readonly Raw[]) => [...logs].sort((a, b) => blockOf(a) - blockOf(b) || Number(a.logIndex) - Number(b.logIndex));
 
 function explorerReply(world: World, url: URL): Response {
@@ -124,9 +125,8 @@ function explorerReply(world: World, url: URL): Response {
 
 function nodeReply(world: World, body: { method: string; params: unknown[] }): Response {
   const result = (value: unknown) => Response.json({ jsonrpc: "2.0", id: 1, result: value });
-  const latest = world.latest ?? Math.max(BASE, ...world.logs.map(blockOf)) + 5;
   const { method, params } = body;
-  if (method === "eth_blockNumber") return result(toHex(latest));
+  if (method === "eth_blockNumber") return result(toHex(headOf(world)));
   if (method === "eth_getBlockByNumber") return result({ timestamp: toHex(blockTimeOf(Number(params[0]))) });
   if (method === "eth_getTransactionReceipt") {
     const logs = world.logs.filter((log) => log.transactionHash === params[0]);
@@ -148,6 +148,8 @@ function nodeReply(world: World, body: { method: string; params: unknown[] }): R
 
 type Traffic = { hosts: Set<string>; calls: number; peak: number; everyCallGuarded: boolean };
 
+const isHeightCall = (url: URL) => url.host === "api.explorer.test.mezo.org" && url.pathname === "/api/v2/blocks";
+
 function stand(world: World): Traffic {
   const traffic: Traffic = { hosts: new Set(), calls: 0, peak: 0, everyCallGuarded: true };
   let inFlight = 0;
@@ -162,6 +164,7 @@ function stand(world: World): Traffic {
       await new Promise((settle) => setTimeout(settle, 1));
       const taken = (await world.override?.(url, init)) ?? "continue";
       if (taken !== "continue") return taken;
+      if (isHeightCall(url)) return Response.json({ items: [{ height: world.indexedUpTo ?? headOf(world) }] });
       if (url.host === "api.explorer.test.mezo.org") return explorerReply(world, url);
       if (url.host === "rpc.test.mezo.org") return nodeReply(world, JSON.parse(String(init?.body)));
       throw new Error(`a request went to ${url.host}`);
@@ -290,6 +293,27 @@ section("C68: conditions on the table's rows");
 
   check(!earned(progressOf([raw("Purchased", { buyer: ALICE, borrower: ALICE })]), "auction"), "buying your own position earns no auction");
   check(earned(progressOf([raw("Purchased", { buyer: ALICE, borrower: BOB })]), "auction"), "control: buying another's position earns auction");
+
+  const amountRows: readonly [string, EventName, (amount: bigint) => Raw[]][] = [
+    ["kit", "Claimed", (amount) => [raw("Claimed", { to: ALICE, btc: amount, musd: amount })]],
+    ["borrow", "Borrowed", (amount) => [raw("Borrowed", { borrower: ALICE, principal: amount })]],
+    ["repay", "Repaid", (amount) => [deposited, raw("Repaid", { tokenId: 7n, payer: ALICE, amount }, { block: BASE + 12 })]],
+    ["parked", "OfferPosted", (amount) => [raw("OfferPosted", { offerId: 3n, maker: ALICE, amount }), raw("OfferParked", { offerId: 3n })]],
+    ["stranger", "Filled", (amount) => [raw("Filled", { maker: ALICE, principal: amount }, { hash: shared }), raw("Borrowed", { borrower: BOB }, { hash: shared })]],
+    ["units", "UnitsClaimed", (amount) => [raw("UnitsClaimed", { account: ALICE, units: amount })]],
+    ["sell", "Listed", (amount) => [raw("Listed", { seller: ALICE, units: amount })]],
+    ["buy", "Bought", (amount) => [raw("Listed", { listingId: 6n, seller: BOB }), raw("Bought", { listingId: 6n, buyer: ALICE, cost: amount })]],
+    ["payout", "Redeemed", (amount) => [raw("Redeemed", { account: ALICE, musdOut: amount, btcOut: amount })]],
+    ["payout", "CollectedWithdrawn", (amount) => [raw("CollectedWithdrawn", { account: ALICE, unitsAdded: 0n, musdOut: amount, btcOut: amount })]],
+    ["auction", "Purchased", (amount) => [raw("Purchased", { buyer: ALICE, borrower: BOB, price: amount })]],
+  ];
+  for (const [id, name, logs] of amountRows) {
+    check(!earned(progressOf(logs(0n)), id), `a ${name} that moved nothing earns no ${id} (F45)`);
+    check(earned(progressOf(logs(1n)), id), `control: a ${name} that moved something earns ${id}`);
+  }
+  check(earned(progressOf([raw("CollectedWithdrawn", { account: ALICE, musdOut: 0n, btcOut: 1n })]), "payout"), "a CollectedWithdrawn that paid only BTC earns payout");
+  check(earned(progressOf([raw("Redeemed", { account: ALICE, musdOut: 0n, btcOut: 1n })]), "payout"), "a Redeemed that paid only BTC earns payout");
+  check(earned(progressOf([raw("Claimed", { to: ALICE, btc: 0n, musd: 1n })]), "kit"), "a kit of MUSD alone earns kit");
 
   const twice = progressOf([raw("Borrowed", { borrower: ALICE }, { block: BASE + 40 }), raw("Borrowed", { borrower: ALICE }, { block: BASE + 30 })]);
   check(twice.exp === 200 && twice.quests.find((quest) => quest.id === "borrow")?.at === blockTimeOf(BASE + 30), "a quest counts once, and shows its earliest log's block time");
@@ -443,6 +467,75 @@ section("C70: an incomplete read is never a final number");
   stand({ logs: [...selfFills, raw("Filled", { maker: ALICE }, { hash: strangerHash, index: 1 }), raw("Borrowed", { borrower: BOB }, { hash: strangerHash, index: 2 })] });
   const decided = await readWalletProgress(ALICE);
   check(decided.complete && earned(decided, "stranger"), "a stranger inside the newest 20 decides it, so complete");
+}
+
+section("C70: the node window meets the scan and the explorer");
+{
+  const wait = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
+  const NODE_WINDOW = 9_999;
+  const head = BASE + 20_000;
+  const lastSeen = head - NODE_WINDOW;
+
+  const strangers = Array.from({ length: 65 }, (_, at) => raw("Voted", { voter: BOB, pool: POOL, tokenId: 8n }, { block: BASE + at }));
+  stand({ logs: strangers });
+  const flooded = await readAllProgress();
+  check(flooded.complete, "65 strangers' votes in the node window leave the scan complete");
+  check((flooded.wallets.find((wallet) => wallet.address === BOB)?.exp ?? 0) === 0, "and the stranger earns nothing");
+
+  const lost = raw("Borrowed", { borrower: ALICE }, { block: BASE + 10 });
+  const bothReads = async () => ({ wallet: await readWalletProgress(ALICE), whole: await readAllProgress() });
+
+  stand({ logs: [lost], latest: head, indexedUpTo: BASE });
+  const stalled = await bothReads();
+  check(!stalled.wallet.complete && stalled.wallet.exp === 0, "an explorer behind the node window leaves a gap, so the wallet read is incomplete");
+  check(!stalled.whole.complete, "and so is the whole read");
+
+  stand({ logs: [lost], latest: head, indexedUpTo: lastSeen - 1 });
+  const oneShort = await bothReads();
+  check(!oneShort.wallet.complete && !oneShort.whole.complete, "a height one block below the window's bottom is incomplete");
+
+  stand({ logs: [lost], latest: head, indexedUpTo: lastSeen });
+  const atTheEdge = await bothReads();
+  check(atTheEdge.wallet.complete && atTheEdge.whole.complete && atTheEdge.wallet.exp === 200, "a height at the window's bottom is complete, and the log is found");
+
+  stand({ logs: [raw("Borrowed", { borrower: ALICE }, { block: head - 5 })], latest: head, indexedUpTo: BASE });
+  const kept = await readRecentLogs();
+  check(!kept.complete && kept.logs.length === 1, "a stalled read keeps the logs it found");
+
+  const heights: readonly [string, () => Response][] = [
+    ["a 503", () => new Response("down", { status: 503 })],
+    ["not JSON", () => new Response("<html>")],
+    ["no items", () => Response.json({ items: [] })],
+    ["text", () => Response.json({ items: [{ height: "16607995" }] })],
+    ["a fraction", () => Response.json({ items: [{ height: 1.5 }] })],
+    ["a negative", () => Response.json({ items: [{ height: -1 }] })],
+    ["too large to be exact", () => Response.json({ items: [{ height: 2 ** 60 }] })],
+  ];
+  for (const [name, reply] of heights) {
+    stand({ logs: world, override: (url) => (isHeightCall(url) ? reply() : "continue") });
+    const reads = await bothReads();
+    check(!reads.wallet.complete && !reads.whole.complete, `a height reply of ${name} is unreadable, so both reads are incomplete`);
+  }
+
+  const asked = stand({ logs: world });
+  const beforeRecent = await readRecentLogs(Date.now() - 1);
+  const beforeStamps = await stampLogs([normal(raw("Borrowed", { borrower: ALICE }))], Date.now() - 1);
+  check(asked.calls === 0, `a passed deadline makes no upstream call (${asked.calls})`);
+  check(!beforeRecent.complete && beforeRecent.logs.length === 0, "readRecentLogs past its deadline is incomplete and empty");
+  check(!beforeStamps.complete && beforeStamps.logs.length === 0, "stampLogs past its deadline is incomplete and empty");
+
+  const slowOn = (method: string) => async (_url: URL, init: RequestInit | undefined): Promise<Reply> => {
+    if (String(init?.body).includes(method)) await wait(60);
+    return "continue";
+  };
+  const midRecent = stand({ logs: world, override: slowOn("eth_blockNumber") });
+  const stoppedRecent = await readRecentLogs(Date.now() + 20);
+  check(!stoppedRecent.complete && midRecent.calls === 1, `a deadline that passes after the head read stops the rest (${midRecent.calls} call)`);
+
+  const eight = Array.from({ length: 8 }, (_, at) => normal(raw("Borrowed", { borrower: ALICE }, { block: BASE + 1_000 + at })));
+  const midStamps = stand({ logs: [], override: slowOn("eth_getBlockByNumber") });
+  const partStamped = await stampLogs(eight, Date.now() + 20);
+  check(!partStamped.complete && partStamped.logs.length === 4 && midStamps.calls === 4, `blocks not read when the deadline passes count as unread (${partStamped.logs.length} of 8 stamped, ${midStamps.calls} calls)`);
 }
 
 section("C72: outbound calls have a fixed shape");
