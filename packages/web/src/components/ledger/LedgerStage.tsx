@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useMatchMedia } from "../../hooks/useMatchMedia";
 import type { WalletProgress } from "../../lib/quests/exp";
-import type { QuestId } from "../../lib/quests/table";
+import { RANKS } from "../../lib/quests/ranks";
+import { QUESTS, type QuestId } from "../../lib/quests/table";
 import { useReducedMotion } from "../../lib/motion-mode";
 import { CHAPTERS, entriesOf, type ChapterInfo, type Entry } from "./chapters";
 import { InstructionSlip } from "./InstructionSlip";
@@ -59,12 +60,25 @@ const SCROLL_HINT = "Scroll to turn the page";
 type ChapterEntries = { chapter: ChapterInfo; entries: Entry[] };
 type OpenEntry = (id: QuestId) => void;
 
-function Headline() {
+// With no wallet there is nothing to read, so every quest is open. This only feeds the page entries: no rank or total from
+// it is ever shown.
+const NO_QUESTS_DONE: WalletProgress = {
+  address: "0x0000000000000000000000000000000000000000",
+  exp: 0,
+  rank: RANKS[0],
+  next: RANKS[1],
+  quests: QUESTS.map((quest) => ({ id: quest.id, done: false })),
+  complete: true,
+  reachedBlock: null,
+};
+
+function Headline({ header }: { header?: ReactNode }) {
   return (
     <>
       <p className="ledger-stage-label">{HEADLINE_LABEL}</p>
       <h2 className="ledger-stage-title display-face">{HEADLINE}</h2>
       <p className="ledger-stage-body">{HEADLINE_BODY}</p>
+      {header}
     </>
   );
 }
@@ -87,7 +101,7 @@ function StagePage({ side, index, chapter, onOpen }: StagePageProps) {
   );
 }
 
-type StageProps = { rank: Rank; chapters: ChapterEntries[]; onOpen: OpenEntry };
+type StageProps = { rank?: Rank; header?: ReactNode; chapters: ChapterEntries[]; onOpen: OpenEntry };
 
 const subscribeToNothing = () => () => {};
 
@@ -101,7 +115,7 @@ const SHOW_FLAT_WITHOUT_SCRIPT = "<style>.ledger-stage-flat{visibility:visible!i
 
 // The book. A leaf is the cover or one page: it hangs on the spine and turns about it. Its front is what shows on the left,
 // its back is what shows once it has landed on the right.
-function PinnedStage({ rank, chapters, onOpen }: StageProps) {
+function PinnedStage({ rank, header, chapters, onOpen }: StageProps) {
   const rootRef = useRef<HTMLElement>(null);
   const count = chapters.length;
 
@@ -161,6 +175,8 @@ function PinnedStage({ rank, chapters, onOpen }: StageProps) {
           page.inert = Number(index) !== spread || waiting;
         }
       }
+      // The headline fades out by scroll, so its buttons must stop taking clicks before they sit invisible over the book.
+      head.inert = time >= HEAD_FADE / 2;
       book.dataset.moving = "true";
       window.clearTimeout(idle);
       idle = window.setTimeout(() => {
@@ -280,7 +296,7 @@ function PinnedStage({ rank, chapters, onOpen }: StageProps) {
       <div className="ledger-stage-frame" data-stage-frame>
         <div className="ledger-stage-head" data-stage-head>
           <div className="ledger-stage-head-inner" data-stage-head-inner>
-            <Headline />
+            <Headline header={header} />
           </div>
         </div>
 
@@ -339,12 +355,12 @@ function PinnedStage({ rank, chapters, onOpen }: StageProps) {
 
 // The same content as plain flow: the cover, then every chapter. Small screens, short windows and reduced motion get this,
 // and so does the server, so the page reads with no script.
-function FlatStage({ rank, chapters, onOpen, ready }: StageProps & { ready: boolean }) {
+function FlatStage({ rank, header, chapters, onOpen, ready }: StageProps & { ready: boolean }) {
   return (
     <section className="ledger ledger-stage ledger-stage-flat" data-ready={ready}>
       <div className="ledger-stage-flat-inner">
         <header className="ledger-stage-flat-head">
-          <Headline />
+          <Headline header={header} />
         </header>
         <div className="ledger-stage-flat-cover">
           <LedgerCover rank={rank} />
@@ -359,12 +375,20 @@ function FlatStage({ rank, chapters, onOpen, ready }: StageProps & { ready: bool
   );
 }
 
-export function LedgerStage({ progress }: { progress: WalletProgress }) {
+type LedgerStageProps = {
+  /** Null when no wallet is connected: every quest shows open and the cover shows no seal. */
+  progress: WalletProgress | null;
+  /** Shown under the headline's body paragraph, in the pinned and the flat layout alike. */
+  header?: ReactNode;
+};
+
+export function LedgerStage({ progress, header }: LedgerStageProps) {
   const reduced = useReducedMotion();
   const roomy = useMatchMedia(ROOMY);
   const pinned = roomy && !reduced;
 
-  const entries = useMemo(() => entriesOf(progress), [progress]);
+  const entries = useMemo(() => entriesOf(progress ?? NO_QUESTS_DONE), [progress]);
+  const rank = progress?.rank.id;
   const chapters = useMemo<ChapterEntries[]>(
     () => CHAPTERS.map((chapter) => ({ chapter, entries: entries.filter((entry) => entry.chapter === chapter.id) })),
     [entries],
@@ -385,9 +409,9 @@ export function LedgerStage({ progress }: { progress: WalletProgress }) {
     <>
       <noscript dangerouslySetInnerHTML={{ __html: SHOW_FLAT_WITHOUT_SCRIPT }} suppressHydrationWarning />
       {pinned ? (
-        <PinnedStage rank={progress.rank.id} chapters={chapters} onOpen={openSlip} />
+        <PinnedStage rank={rank} header={header} chapters={chapters} onOpen={openSlip} />
       ) : (
-        <FlatStage rank={progress.rank.id} chapters={chapters} onOpen={openSlip} ready={hydrated} />
+        <FlatStage rank={rank} header={header} chapters={chapters} onOpen={openSlip} ready={hydrated} />
       )}
       {slipEntry && (
         <InstructionSlip

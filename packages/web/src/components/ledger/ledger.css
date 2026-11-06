@@ -1005,7 +1005,7 @@
 
 .ledger-stage-title {
   margin: 16px 0 0;
-  font-size: clamp(3rem, 6.4vw, 5.6rem);
+  font-size: clamp(3rem, min(6.4vw, 10.5vh), 5.6rem);
   line-height: 1.02;
   font-weight: var(--display-headline-weight);
   color: var(--paper);
@@ -1066,7 +1066,7 @@
 
 .ledger-stage-head {
   position: absolute;
-  top: 0;
+  top: 65px;
   bottom: 0;
   left: 5vw;
   width: 36vw;
@@ -1269,4 +1269,101 @@
   line-height: 1.4;
   color: var(--paper-dim);
   pointer-events: none;
+}
+
+/* The rank header sits in the headline block. The block ignores clicks so it never blocks the book, and the header takes
+   them back for its own button and link. */
+.rank-header {
+  margin-top: 28px;
+  max-width: 440px;
+  pointer-events: auto;
+}
+
+.rank-header-help {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+
+.rank-header-loading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.rank-header-loading .rank-header-loading-text {
+  margin: 0;
+}
+
+.rank-header-shimmer {
+  display: block;
+  flex: none;
+  width: 200px;
+  height: 12px;
+}
+
+.rank-header-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.rank-header .rank-header-chip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  padding: 10px;
+  box-sizing: border-box;
+  line-height: 0;
+}
+
+.rank-header-name {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: var(--display-headline-weight);
+  color: var(--paper);
+}
+
+.rank-header-meaning {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--paper-dim);
+}
+
+.rank-header-exp {
+  margin: 18px 0 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--paper);
+}
+
+.rank-header-bar {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.rank-header-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--paper-dim);
+}
+
+.rank-header-rankings {
+  margin: 18px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* The book layer fills the whole frame and is painted after the headline, so without this it would take every click meant
+   for the header. The headline is invisible and inert by the time the book moves under it. */
+.ledger-stage-head {
+  z-index: 2;
 }

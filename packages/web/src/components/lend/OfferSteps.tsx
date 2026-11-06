@@ -153,10 +153,10 @@ export function LendAmountStep({ amountText, onAmountText, onMax, maxDisabled, b
         {(balance.kind === "connect" || (balance.kind === "ready" && balance.wei === 0n)) && (
           <p className="field-note field-note-plain">
             No test MUSD yet?{" "}
-            <Link className="link-draw" href="/borrow">
-              Borrow some on Doji
+            <Link className="link-draw" href="/quests">
+              Claim a free starter kit
             </Link>
-            , then lend it.
+            .
           </p>
         )}
       </div>

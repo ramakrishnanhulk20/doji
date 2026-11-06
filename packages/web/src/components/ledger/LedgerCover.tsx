@@ -39,7 +39,8 @@ function HangingCord() {
   );
 }
 
-export function LedgerCover({ rank }: { rank: Rank }) {
+// With no rank the cover stays bare: a ledger that has not been signed into yet shows no seal.
+export function LedgerCover({ rank }: { rank?: Rank }) {
   return (
     <div className="ledger-cover-wrap">
       <div className="ledger-cover-book" role="img" aria-label="The Doji ledger, closed">
@@ -53,9 +54,11 @@ export function LedgerCover({ rank }: { rank: Rank }) {
             </span>
           </PaperSheet>
           <span className="ledger-cover-name">Doji</span>
-          <span className="ledger-cover-seal">
-            <RankSeal rank={rank} size={96} />
-          </span>
+          {rank !== undefined && (
+            <span className="ledger-cover-seal">
+              <RankSeal rank={rank} size={96} />
+            </span>
+          )}
           <HangingCord />
         </PaperSheet>
       </div>

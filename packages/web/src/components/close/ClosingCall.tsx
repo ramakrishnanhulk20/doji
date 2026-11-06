@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { usePrefersReducedMotion } from "../../lib/motion-mode";
@@ -69,14 +70,12 @@ export function ClosingCall() {
             Lend MUSD
           </Button>
         </div>
-        <a
-          className="link-draw closing-note"
-          href="https://faucet.test.mezo.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Mezo testnet · test BTC from faucet.test.mezo.org
-        </a>
+        <p className="closing-note">
+          Mezo testnet ·{" "}
+          <Link className="link-draw" href="/quests">
+            free test tokens in the Quests ledger
+          </Link>
+        </p>
       </div>
     </section>
   );

@@ -5,6 +5,7 @@ import { Seal } from "./Seal";
 const INTERNAL = [
   { label: "Borrow", href: "/borrow" },
   { label: "Lend", href: "/lend" },
+  { label: "Quests", href: "/quests" },
   { label: "Docs", href: "/docs" },
 ] as const;
 

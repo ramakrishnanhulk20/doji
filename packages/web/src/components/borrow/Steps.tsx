@@ -130,10 +130,10 @@ export function CollateralStep(props: CollateralStepProps) {
                 }`
               : (
                 <>
-                  Connect a wallet to see your balance. Test BTC comes from the{" "}
-                  <a className="link-draw" href="https://faucet.test.mezo.org" target="_blank" rel="noopener noreferrer">
-                    Mezo faucet
-                  </a>
+                  Connect a wallet to see your balance. Need test BTC? You can{" "}
+                  <Link className="link-draw" href="/quests">
+                    claim a free starter kit
+                  </Link>
                   .
                 </>
               )}

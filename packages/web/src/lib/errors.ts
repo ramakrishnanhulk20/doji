@@ -291,7 +291,7 @@ export function explainError(error: unknown, context: ErrorContext = {}): Explai
     return { title: "Not sent", detail: "You cancelled it in your wallet. Nothing was sent." };
   }
   if (isOutOfGas(error)) {
-    return { title, detail: "Not enough test BTC to pay for gas. Get some from the Mezo faucet." };
+    return { title, detail: "Not enough test BTC to pay for gas. Claim a free starter kit on the Quests page." };
   }
   const refusal = NODE_REFUSALS.find((candidate) => candidate.pattern.test(allText(error)));
   if (refusal) return { title, detail: refusal.detail };

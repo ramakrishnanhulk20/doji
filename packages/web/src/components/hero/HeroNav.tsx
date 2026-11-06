@@ -9,6 +9,7 @@ const LINKS = [
   { label: "How it works", href: "#how" },
   { label: "Borrow", href: "/borrow" },
   { label: "Lend", href: "/lend" },
+  { label: "Quests", href: "/quests" },
   { label: "Try to break it", href: "/break" },
   { label: "Docs", href: "/docs" },
 ] as const;
