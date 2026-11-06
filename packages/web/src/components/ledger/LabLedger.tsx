@@ -13,6 +13,7 @@ import labSample from "./lab-sample.json";
 import { LedgerCover } from "./LedgerCover";
 import { LedgerSpread } from "./LedgerSpread";
 import { PaperSheet } from "./PaperSheet";
+import { RANK_TEXT } from "./rank-names";
 import { RANK_KANJI, RankSeal, type Rank } from "./RankSeal";
 import { StampPress } from "./StampPress";
 import "./ledger.css";
@@ -22,12 +23,12 @@ const SAMPLE = labSample as WalletProgress;
 const ENTRIES = entriesOf(SAMPLE);
 
 const RANKS: { rank: Rank; name: string; meaning: string; exp: string; tilt: number }[] = [
-  { rank: "decchi", name: "Decchi", meaning: "the apprentice", exp: "0 EXP", tilt: -2 },
-  { rank: "tedai", name: "Tedai", meaning: "the clerk", exp: "300 EXP", tilt: 1 },
-  { rank: "banto", name: "Banto", meaning: "the head clerk", exp: "800 EXP", tilt: -1 },
-  { rank: "nakagai", name: "Nakagai", meaning: "the broker", exp: "1,400 EXP", tilt: 2 },
-  { rank: "ryogaesho", name: "Ryogaesho", meaning: "the money changer", exp: "2,000 EXP", tilt: -1 },
-  { rank: "sobashi", name: "Sobashi", meaning: "the market master", exp: "2,500 EXP", tilt: 1 },
+  { rank: "decchi", ...RANK_TEXT.decchi, exp: "0 EXP", tilt: -2 },
+  { rank: "tedai", ...RANK_TEXT.tedai, exp: "300 EXP", tilt: 1 },
+  { rank: "banto", ...RANK_TEXT.banto, exp: "800 EXP", tilt: -1 },
+  { rank: "nakagai", ...RANK_TEXT.nakagai, exp: "1,400 EXP", tilt: 2 },
+  { rank: "ryogaesho", ...RANK_TEXT.ryogaesho, exp: "2,000 EXP", tilt: -1 },
+  { rank: "sobashi", ...RANK_TEXT.sobashi, exp: "2,500 EXP", tilt: 1 },
 ];
 
 const REPLAY_GAP_MS = 140;

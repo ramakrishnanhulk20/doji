@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { QuestBoard } from "../../../components/ledger/QuestBoard";
 import { QuestPage } from "../../../components/ledger/QuestPage";
 
 // The site's title template would add a second "| Doji", so this one title is written out whole.
@@ -8,5 +9,10 @@ export const metadata: Metadata = {
 };
 
 export default function QuestsPage() {
-  return <QuestPage />;
+  return (
+    <>
+      <QuestPage />
+      <QuestBoard />
+    </>
+  );
 }

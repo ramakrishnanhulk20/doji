@@ -1490,3 +1490,58 @@
   justify-content: center;
   gap: 12px;
 }
+
+/* The rankings under the book on /quests. */
+.quest-board {
+  padding: 96px 24px;
+  background: var(--ink);
+}
+
+.quest-board-shimmer {
+  display: block;
+  height: 240px;
+  margin-top: 20px;
+}
+
+.quest-board-failed {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--paper-dim);
+}
+
+.quest-board-asof {
+  margin: 16px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--paper-dim);
+}
+
+/* The header on a ledger that is not the connected wallet's. */
+.wallet-owner-label {
+  margin: 0;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.wallet-owner-address {
+  margin: 6px 0 20px;
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  color: var(--paper);
+}
+
+.wallet-owner-doji {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--paper-dim);
+}

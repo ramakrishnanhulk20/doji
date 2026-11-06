@@ -18,11 +18,13 @@ type InstructionSlipProps = {
   /** Unix seconds of the block that proved the quest. */
   at?: number;
   hash?: Hex;
+  /** Someone else's ledger: the steps show and nothing here acts (C76). */
+  readOnly?: boolean;
 };
 
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function InstructionSlip({ id, open, onClose, done, at, hash }: InstructionSlipProps) {
+export function InstructionSlip({ id, open, onClose, done, at, hash, readOnly = false }: InstructionSlipProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -139,8 +141,8 @@ export function InstructionSlip({ id, open, onClose, done, at, hash }: Instructi
             <p className="ledger-slip-label">What you need</p>
             <p className="ledger-slip-need">{copy.need}</p>
 
-            {!done && id === "kit" && <ClaimKit open={open} />}
-            {!done && id !== "kit" && (
+            {!readOnly && !done && id === "kit" && <ClaimKit open={open} />}
+            {!readOnly && !done && id !== "kit" && (
               <Button variant="primary" arrow href={copy.button.href} className="ledger-slip-button">
                 {copy.button.label}
               </Button>

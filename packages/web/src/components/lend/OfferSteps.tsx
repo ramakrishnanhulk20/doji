@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { seedAuctionDates } from "../../lib/addresses";
 import type { ThursdayCard } from "../../lib/stats";
 import { formatApr, formatDate, formatMusd } from "../../lib/stats";
 import { fmtMusd, sanitizeAmount } from "../borrow/format";
@@ -53,6 +54,9 @@ export function LendDateStep({ dates, selected, onSelect, status }: DateStepProp
           ))
         )}
       </div>
+      {selected !== null && seedAuctionDates.includes(selected) && (
+        <p className="field-note">A Doji test loan on this date is going to auction, so payouts here can take a few extra days.</p>
+      )}
     </section>
   );
 }

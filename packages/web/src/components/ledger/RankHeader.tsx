@@ -2,24 +2,14 @@
 
 import { useReducedMotion } from "../../lib/motion-mode";
 import type { WalletProgress } from "../../lib/quests/exp";
-import type { RankId } from "../../lib/quests/ranks";
 import { openConnectModal } from "../app/connect-modal-store";
 import { Button } from "../Button";
 import { CountValue } from "../CountValue";
 import { BrushProgress } from "./BrushProgress";
 import { PaperSheet } from "./PaperSheet";
+import { RANK_TEXT } from "./rank-names";
 import { RankSeal } from "./RankSeal";
 import "./ledger.css";
-
-// ranks.ts holds the EXP and kanji; the names and what they mean are only for reading, so they live here.
-const RANK_TEXT: Record<RankId, { name: string; meaning: string }> = {
-  decchi: { name: "Decchi", meaning: "the apprentice" },
-  tedai: { name: "Tedai", meaning: "the clerk" },
-  banto: { name: "Banto", meaning: "the head clerk" },
-  nakagai: { name: "Nakagai", meaning: "the broker" },
-  ryogaesho: { name: "Ryogaesho", meaning: "the money changer" },
-  sobashi: { name: "Sobashi", meaning: "the market master" },
-};
 
 const formatExp = (value: number) => Math.round(value).toLocaleString("en-US");
 
@@ -54,7 +44,7 @@ export function RankHeader({ connected, progress }: RankHeaderProps) {
       {connected && progress !== undefined && <RankReading progress={progress} reduced={reduced} />}
 
       <p className="rank-header-rankings">
-        <a className="link-draw" href="#rankings">
+        <a className="link-draw" href="/quests#rankings">
           See the rankings
         </a>
       </p>
@@ -62,7 +52,7 @@ export function RankHeader({ connected, progress }: RankHeaderProps) {
   );
 }
 
-function RankReading({ progress, reduced }: { progress: WalletProgress; reduced: boolean }) {
+export function RankReading({ progress, reduced }: { progress: WalletProgress; reduced: boolean }) {
   const { rank, next, exp } = progress;
   const text = RANK_TEXT[rank.id];
   const fill = next === null ? 1 : (exp - rank.exp) / (next.exp - rank.exp);

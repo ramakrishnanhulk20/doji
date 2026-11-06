@@ -103,3 +103,6 @@ export function pairByCreditMarkets(address: Address): Pair | null {
 
 /** The seeded loan the stamp moment reads: its position token and the transaction that opened it. */
 export const demoLoan = deployment.demoLoan;
+
+/** Thursdays where a Doji seed loan is on its way to auction, unix seconds. Every unit on such a date shares that wait (C80). */
+export const seedAuctionDates: readonly number[] = deployment.seedAuctionDates;

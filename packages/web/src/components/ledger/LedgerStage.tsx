@@ -389,9 +389,11 @@ type LedgerStageProps = {
   header?: ReactNode;
   /** Quests whose seal is being stamped on while the page is open. */
   landing?: ReadonlySet<QuestId>;
+  /** Another wallet's ledger: entries open with their steps and offer no action. */
+  readOnly?: boolean;
 };
 
-export function LedgerStage({ progress, header, landing }: LedgerStageProps) {
+export function LedgerStage({ progress, header, landing, readOnly = false }: LedgerStageProps) {
   const reduced = useReducedMotion();
   const roomy = useMatchMedia(ROOMY);
   const pinned = roomy && !reduced;
@@ -430,6 +432,7 @@ export function LedgerStage({ progress, header, landing }: LedgerStageProps) {
           done={slipEntry.done}
           at={slipEntry.at}
           hash={slipEntry.hash}
+          readOnly={readOnly}
         />
       )}
     </>

@@ -6,6 +6,7 @@ import { useReducedMotion } from "../../lib/motion-mode";
 import type { RankId } from "../../lib/quests/ranks";
 import { Button } from "../Button";
 import { PaperSheet } from "./PaperSheet";
+import { RANK_TEXT } from "./rank-names";
 import { RankSeal } from "./RankSeal";
 import { StampPress } from "./StampPress";
 import "./ledger.css";
@@ -15,15 +16,6 @@ type RankUpProps = {
   /** The wallet that rose, already parsed. */
   address: Address;
   onClose: () => void;
-};
-
-const RANK_TEXT: Record<RankId, { name: string; meaning: string }> = {
-  decchi: { name: "Decchi", meaning: "the apprentice" },
-  tedai: { name: "Tedai", meaning: "the clerk" },
-  banto: { name: "Banto", meaning: "the head clerk" },
-  nakagai: { name: "Nakagai", meaning: "the broker" },
-  ryogaesho: { name: "Ryogaesho", meaning: "the money changer" },
-  sobashi: { name: "Sobashi", meaning: "the market master" },
 };
 
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
