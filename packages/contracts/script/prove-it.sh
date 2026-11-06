@@ -20,8 +20,8 @@
 #   bash packages/contracts/script/prove-it.sh --resume <positionId> <borrowBlock>
 # The second form runs the original eight checks on the 20 October pair; DEPLOYMENT_FILE is a record under
 # packages/contracts/deployments. The third re-runs the checks and the repayment for a position a stopped run left
-# open; the first run prints both numbers. PROVE_IT_RPC_URL points the run at another node on chain 31611, such as
-# an anvil fork.
+# open; the first run prints both numbers. On a closed loan it stops and prints the command that takes the position
+# back. PROVE_IT_RPC_URL points the run at another node on chain 31611, such as an anvil fork.
 set -euo pipefail
 
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -38,6 +38,8 @@ SCRIPT="script/ProveIt.s.sol:ProveIt"
 # Must match MIN_BORROWER_BTC in ProveIt.s.sol: 0.0005 to lock plus room for gas.
 MIN_BTC_WEI=800000000000000
 BROADCAST=(--broadcast --skip-simulation --slow)
+RECEIPT_FAULT="Failure on receiving a receipt|method handler crashed"
+RECEIPT_RETRIES=3
 
 die() { echo "PROVE-IT STOPPED: $*" >&2; exit 1; }
 
@@ -76,10 +78,10 @@ PY="$(pick_python)"
 [[ "$RECORD" =~ ^deployments/[A-Za-z0-9._-]+\.json$ ]] || die "DEPLOYMENT_FILE must be a record in deployments/, such as deployments/31611.json"
 [ -f "$RECORD" ] || die "$RECORD is missing; deploy first"
 # A record that names PayDown is a Wave 2 pair: ProveIt.s.sol applies the same rule to the same key.
-read -r IS_BROADCAST RECORD_CHAIN IS_WAVE2 < <("$PY" -I -c '
+read -r IS_BROADCAST RECORD_CHAIN IS_WAVE2 LOAN_MANAGER < <("$PY" -I -c '
 import json, sys
 record = json.load(open(sys.argv[1]))
-print(record.get("broadcast") is True, record.get("chainId"), "payDown" in record)
+print(record.get("broadcast") is True, record.get("chainId"), "payDown" in record, record.get("loanManager"))
 ' "$(native_path "$CONTRACTS_DIR/$RECORD")" | tr -d '\r')
 [ "$IS_BROADCAST" = "True" ] || die "$RECORD is not a broadcast record, so nothing it names is on chain"
 [ "$RECORD_CHAIN" = "$CHAIN_ID" ] || die "$RECORD is for chain $RECORD_CHAIN, not Mezo testnet ($CHAIN_ID)"
@@ -106,11 +108,23 @@ run_step() {
   local name="$1"
   shift
   local log="$LOG_DIR/$name.log"
+  local last_log="$log" try=0 code=0
   rm -f "$BROADCAST_DIR/$name-latest.json"
-  if ! forge script "$SCRIPT" "$@" --rpc-url "$RPC_URL" > "$log" 2>&1; then
+  forge script "$SCRIPT" "$@" --rpc-url "$RPC_URL" > "$log" 2>&1 || code=$?
+  # Mezo's RPC can crash on the receipt of a transaction that landed, and --resume sends only what is still unsent.
+  while [ "$code" -ne 0 ] && [ "$try" -lt "$RECEIPT_RETRIES" ] && [[ " $* " == *" --broadcast "* ]] \
+    && [ -f "$BROADCAST_DIR/$name-latest.json" ] && grep -qE "$RECEIPT_FAULT" "$last_log"; do
+    try=$((try + 1))
+    echo "   Mezo's RPC dropped a receipt, picking up where forge stopped (try $try of $RECEIPT_RETRIES)"
+    sleep 5
+    last_log="$LOG_DIR/$name-resume-$try.log"
+    code=0
+    forge script "$SCRIPT" "$@" --resume --rpc-url "$RPC_URL" > "$last_log" 2>&1 || code=$?
+  done
+  if [ "$code" -ne 0 ]; then
     grep -E "^\s*(PASS|FAIL|SKIP|BORROWER|No open offer)" "$log" || true
-    tail -25 "$log" >&2
-    die "step $name failed; full forge log in $log"
+    tail -25 "$last_log" >&2
+    die "step $name failed; full forge log in $last_log"
   fi
   sed -n '/^== Logs ==/,/^$/p' "$log" | sed '1d;/^$/d'
 }
@@ -211,6 +225,23 @@ if [ -z "$RESUME_ID" ]; then
 else
   TOKEN_ID="$RESUME_ID"
   BORROW_BLOCK="$RESUME_BLOCK"
+  # checkAndRepay expects an open loan, and a closed one is deleted, so its state reads back as 0.
+  LOAN_STATE="$(cast call "$LOAN_MANAGER" "loanOf(uint256)(uint64,uint128,uint128,uint16,uint16,uint16,uint16,uint32,uint8)" \
+    "$TOKEN_ID" --rpc-url "$RPC_URL" | tail -1 | tr -d '\r')" || die "could not read the loan on position $TOKEN_ID"
+  [[ "$LOAN_STATE" =~ ^[0-9]+$ ]] || die "could not read the loan on position $TOKEN_ID"
+  if [ "$LOAN_STATE" = "0" ]; then
+    HOLDER="$(cast call "$LOAN_MANAGER" "positionOf(uint256)(address,address)" "$TOKEN_ID" --rpc-url "$RPC_URL" \
+      | head -1 | tr -d '\r')" || die "could not read the record of position $TOKEN_ID"
+    echo "Position $TOKEN_ID has no open loan: it is already closed, so there is nothing to check or repay."
+    if [ "$HOLDER" = "0x0000000000000000000000000000000000000000" ]; then
+      echo "LoanManager no longer holds the position, so nothing is left to take back."
+    else
+      echo "LoanManager still holds the position. Take it back, from packages/contracts:"
+      echo "      set -a; source .env; set +a"
+      echo "      cast send $LOAN_MANAGER \"withdrawCollateral(uint256)\" $TOKEN_ID --private-key \"\$BORROWER_PRIVATE_KEY\" --rpc-url $RPC_URL"
+    fi
+    exit 1
+  fi
   echo "resuming position $TOKEN_ID, opened in block $BORROW_BLOCK"
 fi
 
