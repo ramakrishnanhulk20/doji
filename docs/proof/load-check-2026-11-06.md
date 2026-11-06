@@ -10,8 +10,8 @@ Run it yourself with `bash packages/contracts/script/load-fork.sh`. Seeding take
 
 | Run | Finished in | Exit | What it did |
 | --- | --- | --- | --- |
-| 304 open loans, none due | 107 s, on the run before this one | 5 | Read 150 due first per pair, every resolution job before any harvest, 0 loans missed, 154 past the bound and named |
-| 100 of them overdue | 38.5 s, on the run before this one | 5 | Stopped at its 10 writes for the run, then said it left 141 loans, 95 of them past their date, and 6 dates |
+| 304 open loans, none due | 93.5 s | 5 | Read 150 due first per pair, every resolution job before any harvest, 0 loans missed, 154 past the bound and named |
+| 100 of them overdue | 27.9 s | 5 | Stopped at its 10 writes for the run, then said it left 141 loans, 95 of them past their date, and 6 dates |
 | 100 auctions open | 47.0 s | 5 | Planned 4 auction starts, 1 settle and 1 harvest, 0 refused |
 
 Exit 5 turns the scheduled run red. That is the point: a run past its bound now tells the repository's owner, where before it stayed green. A backlog of 100 overdue loans clears in about 5 hours at 10 writes per 30-minute run, and harvests wait until it has.
