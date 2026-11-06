@@ -3,6 +3,22 @@ title: FAQ
 description: Short answers to the questions borrowers and lenders ask most.
 ---
 
+## Do I need test tokens to start?
+
+No, only a wallet. Open [Quests](/quests), connect, and press Claim on the first quest. 0.001 test BTC and 25 test MUSD reach your wallet in a few seconds, and Doji pays the fee. Each wallet gets one kit, and 40 kits are released evenly across each UTC day. See [Quests](/docs/getting-started/quests).
+
+## What is EXP worth?
+
+EXP has no cash value. Doji may use it in future under terms published then. Nothing is promised. No contract, keeper step or faucet limit reads EXP today, so it moves no money. See [How EXP and ranks work](/docs/getting-started/quests#how-exp-and-ranks-work).
+
+## Does Doji work on my phone?
+
+Yes. Doji connects phone wallets through WalletConnect. Press "Connect wallet" and pick "Phone wallet": on a laptop you scan a QR code with your wallet app, and on a phone your wallet app opens. The founder tested this on a real phone on 6 November 2026. If a wallet cannot add Mezo testnet, the site says so and sends nothing. See [Start with only a wallet](/docs/getting-started/quests#start-with-only-a-wallet).
+
+## How do I report a bug?
+
+[Open an issue](https://github.com/ramakrishnanhulk20/doji/issues/new) with what you did, what happened and your wallet address. Doji checks each report by hand. A real bug earns up to 1,000 EXP, and your wallet goes on the public bonus file only if you say yes. See [How to report a bug](/docs/getting-started/quests#how-to-report-a-bug).
+
 ## Is my veBTC safe with Doji?
 
 Only you, the address that owned it before it entered Doji, can borrow against it or take it back, and every borrower action checks that first. A reward operator you name, such as PayDown, can only claim the position's rewards. Doji gives no approvals on veBTC, has no generic call and accepts no meta-transactions, the path behind Mezo's 5 October incident. A flaw in veBTC itself would reach every position at once, and Doji names that as a non-goal. See [Security](/docs/security).
@@ -57,7 +73,7 @@ Borrowers pay the lender's fixed rate; the protocol takes 10% of that interest a
 
 ## Is it audited?
 
-Each set of contracts had an independent review pass, separate from the build. Neither was a third-party audit firm. The 20 October 2026 review found no Critical or High issue, one Medium and three Low, and each was fixed with tests that failed before the fix. The 4 November 2026 review of the Wave 2 code found no Critical, High or Medium issue, one Low and six Informational; the Low was fixed before deployment, with three tests that failed on the reviewed code. See [Audit](/docs/security/audit).
+Each set of contracts had an independent review pass, separate from the build. Neither was a third-party audit firm. The 20 October 2026 review found no Critical or High issue, one Medium and three Low, and each was fixed with tests that failed before the fix. The 4 November 2026 review of the Wave 2 code found no Critical, High or Medium issue, one Low and six Informational; the Low was fixed before deployment, with three tests that failed on the reviewed code. The Faucet had the reviewer's threat pass and the test suite, not a separate audit, and it holds test tokens only. See [Audit](/docs/security/audit).
 
 ## Does it work on mainnet?
 

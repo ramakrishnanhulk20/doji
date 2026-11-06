@@ -5,15 +5,30 @@ description: Every claim Doji makes, with a screen, a file and a transaction you
 
 Doji asks you to take nothing on trust. Each answer below points to a screen on this site, a file in the open source repository, and a transaction on Mezo's testnet explorer where one exists.
 
+## Can I try it with only a wallet?
+
+Yes. A new wallet with no gas claims a free starter kit on [/quests](/quests), and Doji pays the fee. Every seal in the ledger comes from a contract log or one public bonus file, with no database.
+
+| Where | What it shows |
+| --- | --- |
+| Screen [/quests](/quests) | The merchant's ledger: 16 quests in four chapters, ranks and the rankings. |
+| Screen [/quests/0x92DcCb70C33300848Da555eDe8597d3F7037AE2b](/quests/0x92DcCb70C33300848Da555eDe8597d3F7037AE2b) | A public, read-only ledger: one of Doji's own test wallets, with the transaction behind each seal. |
+| Docs [/docs/getting-started/quests](/docs/getting-started/quests) | The starter kit, how EXP and ranks work, and how to report a bug. |
+| File [docs/proof/quests-2026-11-06.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/quests-2026-11-06.md) | The Faucet's deploy, its first claim and every refusal, the claim route's live claim, the market seeded for testers, every transaction linked, and what it does not prove. |
+| File [Faucet.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/Faucet.sol) | One kit per wallet, once, released evenly through each UTC day. |
+| File [table.ts](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/web/src/lib/quests/table.ts) | The one quest table. What is not in it earns nothing, so anyone can rebuild a wallet's EXP from the repository and the chain. |
+| Transaction [0xfd0c96db...cc5a](https://explorer.test.mezo.org/tx/0xfd0c96db1b080eecd966785364e2f1aef71db57127a20784c1508fa5adb4cc5a) | The first claim: one kit to a fresh address, sent by the relayer. |
+| Transaction [0xa5759532...94cb](https://explorer.test.mezo.org/tx/0xa5759532229f5972b4d7dfa87f0bce2e6c258db2092586fcc849e202057694cb) | The claim route's code sending a real kit to a fresh wallet, with Cloudflare's check mocked. |
+
 ## What went live on 4 November 2026?
 
 The Wave 2 pair: offers that earn in Mezo's sMUSD vault while they wait, loans whose pool rewards pay them down, and a market for credit units before their date. The same day the 20 October pair, which keeps serving what was opened on it, was used end to end from a veBTC made on Mezo itself.
 
 | Where | What it shows |
 | --- | --- |
-| File [docs/proof/wave2-live-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md) | The Wave 2 deploy, all five contracts verified; two offers parked in the sMUSD vault and a borrow paid out of it; the pay-down loan 411 with PayDown as its reward operator; a sale of credit units. Every transaction and the chain reads that check it. |
+| File [docs/proof/wave2-live-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md) | The Wave 2 deploy, all five contracts verified; two offers parked in the sMUSD vault and a borrow paid out of it; the pay-down loan 411 with PayDown as its reward operator; a sale of credit units; the first harvests on #411 and #412. Every transaction and the chain reads that check it. |
 | File [docs/proof/live-paths-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/live-paths-2026-11-04.md) | On the 20 October pair: a veBTC locked directly on Mezo, deposited, borrowed against, repaid and taken back; fresh offers for three Thursdays; a lender paid out after two settles. |
-| Screen [/loans/411](/loans/411) | The pay-down loan: PayDown named as the reward operator, and its harvests once the first one runs after the epoch turns on 5 November. |
+| Screen [/loans/411](/loans/411) | The pay-down loan: PayDown named as the reward operator, and its harvests, the first run by the keeper on 5 November. |
 | Transaction [0x626c46cc...1d7a](https://explorer.test.mezo.org/tx/0x626c46ccb4d1ec64e9eda76e1ac367f455506e3e9fcd627ff1c8857055841d7a) | An offer of 40 MUSD at 6.00% to Thu 12 Nov, parked in the sMUSD vault. |
 | Transaction [0xbec0ffd1...c210](https://explorer.test.mezo.org/tx/0xbec0ffd154bb4531e6fdc56175e179fda620936e0393ac36a6fb5fade517c210) | `lockAndBorrow` on the Wave 2 pair: 0.01 BTC locked as veBTC #411, 10 MUSD taken from a parked offer and paid out of the vault in the same transaction. |
 | Transaction [0x314b4d90...833a](https://explorer.test.mezo.org/tx/0x314b4d909072e09ec677d8dd3fad07fd8b1f296cf650117a33fe81530c76833a) | `setRewardOperator(411, PayDown)`: the borrower opts in to pay-down. |
@@ -53,16 +68,16 @@ A two-sided market that extends what MUSD can do: veBTC holders borrow without e
 
 ## Is my Bitcoin safe in it?
 
-Immutable contracts, a written rulebook with 53 rules each pointing to the code that keeps it, fuzz and invariant tests, fork tests against real Mezo state, two independent reviews with every finding settled, and one command that proves the main promise live.
+Immutable contracts, a written rulebook with 82 rules, fuzz and invariant tests, fork tests against real Mezo state, two independent reviews with every finding settled, and one command that proves the main promise live. The Faucet, which holds test tokens only, had the reviewer's threat pass and the test suite, not a separate audit.
 
 | Where | What it shows |
 | --- | --- |
 | Screen [/break](/break) | Twelve attacks simulated against the live contracts, each refused. |
 | Docs [/docs/developers/run-the-proof](/docs/developers/run-the-proof) | The prove-it command, the fork tests and the website test. |
-| File [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md) | The threat model: risks, attacker goals, the 53 rules (C30 to C53 for Wave 2) and the non-goals. |
+| File [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md) | The threat model: risks, attacker goals, the 82 rules (C30 to C53 for Wave 2, C54 to C82 for the quests) and the non-goals. |
 | File [docs/audit/findings-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-11-04.md) | The Wave 2 review's findings, each fixed, accepted or documented, and the failing tests behind the Low. |
 | File [docs/audit/findings-2026-10-20.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/audit/findings-2026-10-20.md) | The first review's findings and the failing tests behind them. |
-| File [docs/security/slither-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/slither-2026-11-04.md) | Every static-analysis result on the Wave 2 code, where it is and why it is safe. |
+| File [docs/security/slither-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/slither-2026-11-04.md) | Every static-analysis result on the Wave 2 code and the Faucet, where it is and why it is safe. |
 | File [CreditInvariants.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/unit/CreditInvariants.t.sol) | Randomised sequences of posts, fills, repays, rolls, sales, settles and redemptions, with the accounting checked after every step. |
 | File [prove-it.sh](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/script/prove-it.sh) and its [run](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-10-20.md) | "Doji promise proven: 8 of 8 checks passed". |
 | File [keeper.yml](https://github.com/ramakrishnanhulk20/doji/blob/main/.github/workflows/keeper.yml) | The keeper on GitHub Actions: main only, read-only token, actions pinned by commit. |
@@ -71,7 +86,7 @@ Immutable contracts, a written rulebook with 53 rules each pointing to the code 
 
 ## Can I use it without help?
 
-A first-time user can borrow and lend without help: live numbers before a wallet, Mezo testnet added by the wallet button, a faucet link when test BTC runs low, lock and borrow in one action, dates as calendar days, the exact amount owed before signing, and errors in plain words.
+A first-time user can borrow and lend without help: live numbers before a wallet, Mezo testnet added by the wallet button, a free starter kit for a new wallet, phone wallets through WalletConnect, lock and borrow in one action, dates as calendar days, the exact amount owed before signing, and errors in plain words.
 
 | Where | What it shows |
 | --- | --- |

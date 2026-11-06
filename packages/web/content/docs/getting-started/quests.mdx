@@ -1,0 +1,109 @@
+---
+title: Quests
+description: Start with only a wallet. A free starter kit, 16 quests in a merchant's ledger, EXP, ranks, and how to report a bug.
+---
+
+[Quests](/quests) is a merchant's ledger, a daifukucho (大福帳), and the way to try Doji with only a wallet. You need no test tokens and no gas to start. Each quest is a real action on Doji. Finish one and a red seal lands in your ledger, seals earn EXP, and EXP raises your rank.
+
+<Callout type="warn">
+Everything here runs on Mezo testnet (chain 31611). Test BTC and test MUSD have no value.
+</Callout>
+
+## Start with only a wallet
+
+Open [Quests](/quests) and press "Connect wallet". Any wallet app works, on a phone or a laptop.
+
+| Where you are | What to pick | What happens |
+| --- | --- | --- |
+| A laptop with a browser wallet | Your wallet by name, such as MetaMask or Rabby | The wallet asks to connect and adds Mezo testnet. |
+| A laptop, with your wallet on your phone | "Phone wallet", which reads "Scan a QR code with your phone" | A WalletConnect QR code opens. Scan it with your wallet app. |
+| A phone | "Phone wallet", which reads "Open your wallet app" | WalletConnect opens your wallet app, and you approve there. |
+| A phone with no wallet in its browser | "Open in MetaMask app" | Opens Doji inside MetaMask's own browser. |
+
+Connecting and claiming ask for no signature. Every other quest is a normal transaction you sign in your wallet. If a wallet cannot add Mezo testnet, the site says so and sends nothing, and the settings to add it by hand are in the [Quick start](/docs/getting-started#2-connect-a-wallet). The founder tested the phone wallet path on a real phone on 6 November 2026.
+
+## Claim your starter kit
+
+1. Open the first quest, "Claim your starter kit", and press Claim.
+2. Cloudflare's Turnstile checks you are a person. It shows a box only if it needs you to act.
+3. 0.001 test BTC and 25 test MUSD reach your wallet in a few seconds, and the slip says "Your kit has landed."
+
+Doji pays the fee. The site sends your address and the Cloudflare token to `POST /api/faucet`, and Doji's relayer sends the claim, so a wallet with no gas can still get its first gas. The kit covers the quests that follow: 0.0005 test BTC to lock with some left for gas, and enough MUSD for a 10 MUSD offer and a loan's interest.
+
+Each wallet gets one kit, once. The [Faucet](/docs/developers/contracts#faucet) releases 40 claims each UTC day, evenly, about one every 36 minutes, and unused ones carry over within that day. If a claim cannot go through, the slip says why:
+
+| The slip says | Why |
+| --- | --- |
+| "This wallet already claimed its kit." | One kit per wallet. |
+| "The next kit opens in about 12 minutes." | Today's release so far is used up. |
+| "Lots of claims at once. Try again in a few seconds." | Too many claims are on their way at once. |
+| "The check did not pass. Try again." | Cloudflare's check failed. |
+| "The faucet is being refilled. Try again soon." | The Faucet or the relayer is out of test tokens. |
+| "The faucet is paused for a moment. Try again soon." | The owner paused claims. |
+| "The faucet is not answering right now. Try again soon." | Cloudflare, the network or the site could not be reached. |
+
+When a connected wallet runs low on test BTC, a strip under the top bar links to Quests.
+
+## How EXP and ranks work
+
+EXP is read only from Doji's contract logs and one public bonus file. There is no database and no account. Each quest counts once per wallet, however many times you do it, and only actions on Doji's Wave 2 contracts and the Faucet count. The ledger reads your wallet from the chain, so a seal lands shortly after the transaction does.
+
+<Callout type="info">
+EXP has no cash value. Doji may use it in future under terms published then. Nothing is promised.
+</Callout>
+
+Your rank depends on EXP alone. The ranks follow an Osaka merchant house.
+
+| Rank | Meaning | EXP |
+| --- | --- | --- |
+| 丁稚 Decchi | the apprentice | 0 |
+| 手代 Tedai | the clerk | 300 |
+| 番頭 Banto | the head clerk | 800 |
+| 仲買 Nakagai | the broker | 1,400 |
+| 両替商 Ryogaesho | the money changer | 2,000 |
+| 相場師 Sobashi | the market master | 2,500 |
+
+2,500 is every quest a log can prove, so the top rank takes all of them, or a bonus.
+
+## The 16 quests
+
+| Chapter | Quest | EXP | What counts |
+| --- | --- | --- | --- |
+| 一 First steps | Claim your starter kit | 50 | A kit claimed for your wallet. |
+| | Lock Bitcoin and borrow | 200 | A loan opened by your wallet. |
+| | Vote with your locked Bitcoin | 100 | A vote through Doji on a position you held. |
+| | Let rewards pay your loan | 100 | Naming PayDown on a position you held. |
+| | Repay your loan | 150 | Your wallet repaying a position it held. |
+| | Take your position back | 50 | A position withdrawn to your wallet. |
+| 二 The lender | Post an offer that earns in sMUSD | 150 | An offer of yours parked in the vault. |
+| | A stranger borrows from your offer | 250 | Another wallet borrowing from your offer. |
+| | Claim your credit units | 100 | Units minted to your wallet. |
+| | Sell credit units | 150 | A listing of yours on UnitMarket. |
+| | Buy credit units | 150 | A buy from someone else's listing. |
+| 三 Thursday | Collect a payout | 200 | A redemption, or a withdrawal of what is collected. |
+| | Press Pay down now | 150 | A harvest you ran, on any loan, that repaid more than zero. |
+| | Roll a loan to a later Thursday | 200 | A roll on a position you held. |
+| 四 Hard mode | Buy a loan at auction | 500 | Buying someone else's loan at auction. |
+| | Report a real bug | up to 1,000 | A checked report, see below. |
+
+Open any quest in the ledger and its slip gives the steps, what you need and a button to the right screen.
+
+## The rankings and your public ledger
+
+The rankings are an Edo banzuke (番付), a ranking sheet of the top 50 wallets: most EXP first, then the earliest block to reach it, then address. They refresh about once a minute and leave out Doji's own wallets.
+
+Every wallet has a public, read-only ledger and a share image at `/quests/<address>`. It shows the wallet's rank and seals, with the date and the transaction behind each seal. Nothing on someone else's ledger acts for them, and a wallet of Doji's says so at the top.
+
+## How to report a bug
+
+1. Find something that breaks or looks wrong.
+2. Write down what you did and what happened.
+3. [Open an issue](https://github.com/ramakrishnanhulk20/doji/issues/new) with your wallet address.
+
+A real bug earns up to 1,000 EXP. Doji checks each report by hand. Your wallet goes on the public bonus file only if you say yes, because a public entry links that wallet to your name for good.
+
+## When a kit runs out
+
+Each wallet gets one kit, and these get you more. For test BTC, the [Mezo faucet](https://faucet.test.mezo.org) has a CAPTCHA and gives BTC only. For test MUSD, [borrow it on Doji](/docs/getting-started/borrow), or swap BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org).
+
+Next: the [Quick start](/docs/getting-started) walks through your first loan, and [Check it yourself](/docs/proof) links the transactions behind the Faucet.

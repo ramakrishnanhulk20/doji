@@ -8,7 +8,7 @@ Dōji (同時) means "at the same time": your Bitcoin stays locked and earning w
 
 Borrow MUSD against the Bitcoin you have locked on Mezo, at a fixed rate until a fixed date, without ending the lock or losing the rewards.
 
-[Live app](https://dojis.site) · [Demo video](https://youtu.be/rLvW37wmeaY) · [Docs](https://dojis.site/docs) · [Try to break it](https://dojis.site/break) · [Architecture](ARCHITECTURE.md)
+[Live app](https://dojis.site) · [Quests](https://dojis.site/quests) · [Demo video](https://youtu.be/rLvW37wmeaY) · [Docs](https://dojis.site/docs) · [Try to break it](https://dojis.site/break) · [Architecture](ARCHITECTURE.md)
 
 ## Live deployments
 
@@ -16,8 +16,9 @@ Borrow MUSD against the Bitcoin you have locked on Mezo, at a fixed rate until a
 | --- | --- | --- | --- |
 | Mezo testnet, Wave 2 pair | 31611 | [LoanManager](https://explorer.test.mezo.org/address/0xdB407A06E5CedF2fd4f8C5C557338908B2776978), [CreditMarkets](https://explorer.test.mezo.org/address/0x89Dc7C4a7Cbfddf3Cb7a00b5f3fEFaB47aC61a1f), [PassThrough](https://explorer.test.mezo.org/address/0x895187e9501E424774d93A0931D36b4be99E58A9), [PayDown](https://explorer.test.mezo.org/address/0xf0dbbD5167F9852234883aD58109dC80692a18DE), [UnitMarket](https://explorer.test.mezo.org/address/0xC50ff38f0a51Cda01BFB2c7E6324c30Cf5a16e18) | 2026-11-04, block 16,564,749 |
 | Mezo testnet, 20 October pair | 31611 | [LoanManager](https://explorer.test.mezo.org/address/0x983F2cD6e30492962104fc4dde8dbb5bd9d05Cfa), [CreditMarkets](https://explorer.test.mezo.org/address/0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de), [PassThrough](https://explorer.test.mezo.org/address/0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061) | 2026-10-20, block 16,259,280 |
+| Mezo testnet, starter kits | 31611 | [Faucet](https://explorer.test.mezo.org/address/0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa) | 2026-11-05, block 16,590,424 |
 
-All eight are verified on Mezo's testnet explorer and none can be upgraded: there are no proxies. New offers and new loans go to the Wave 2 pair. The 20 October pair keeps serving every loan, offer, credit unit and auction opened on it. Test BTC and test MUSD have no value. The app runs at [dojis.site](https://dojis.site) and reads Mezo straight from the browser, with no server of its own.
+All nine are verified on Mezo's testnet explorer and none can be upgraded: there are no proxies. New offers and new loans go to the Wave 2 pair. The 20 October pair keeps serving every loan, offer, credit unit and auction opened on it. Test BTC and test MUSD have no value. The Faucet holds test tokens only and no Doji contract reads it. The app runs at [dojis.site](https://dojis.site) and reads Mezo straight from the browser. It has no database, and its only server work is the claim route that pays a new wallet's gas, the rankings and the share images.
 
 ## Overview
 
@@ -75,6 +76,49 @@ Doji is for veBTC holders who need MUSD and do not want to end their lock, and f
 - Start an auction, cancel a recovered one, buy, prepare and settle, write off a position that left custody, close a date, harvest a position that opted into PayDown, and send an expired listing back to its seller. None of these needs a role, and the contracts check every condition.
 - A keeper on GitHub Actions makes those calls for both pairs, and harvests opted-in positions only after every loan and date job has run. It is scheduled every 30 minutes, but GitHub starts scheduled jobs late on a quiet repository: from 19 to 22 October 2026 a pass ran every 2.3 to 5.9 hours. A pass can also be started by hand, and anyone can run the same script.
 - Every loan has a public page. Try to break it runs twelve attacks against the live contracts and shows how each is refused.
+- Start with only a wallet: [Quests](#quests) gives a new wallet a free starter kit and keeps a public ledger of what it has done.
+
+## Quests
+
+[Quests](https://dojis.site/quests) is a merchant's ledger, a daifukucho (大福帳), and the way to try Doji with only a wallet. You need no tokens and no gas to start, on a phone or a laptop.
+
+### The ledger
+
+There are 16 quests in four chapters, and each one is a real action on Doji. A finished quest earns a red seal and EXP.
+
+| Chapter | Quests and their EXP | EXP in all |
+| --- | --- | --- |
+| First steps | Claim your starter kit 50, lock Bitcoin and borrow 200, vote with your locked Bitcoin 100, let rewards pay your loan 100, repay your loan 150, take your position back 50 | 650 |
+| The lender | Post an offer that earns in sMUSD 150, a stranger borrows from your offer 250, claim your credit units 100, sell credit units 150, buy credit units 150 | 800 |
+| Thursday | Collect a payout 200, press Pay down now 150, roll a loan to a later Thursday 200 | 550 |
+| Hard mode | Buy a loan at auction 500, report a real bug up to 1,000 | 500, plus any bonus |
+
+EXP is read only from Doji's contract logs and one public bonus file, [bonus-exp.json](packages/web/content/quests/bonus-exp.json). There is no database. Each quest counts once per wallet, and anyone can rebuild a wallet's EXP from this repository and the chain: every quest is one row of [table.ts](packages/web/src/lib/quests/table.ts).
+
+EXP has no cash value. Doji may use it in future under terms published then. Nothing is promised.
+
+| Rank | Meaning | EXP |
+| --- | --- | --- |
+| 丁稚 Decchi | the apprentice | 0 |
+| 手代 Tedai | the clerk | 300 |
+| 番頭 Banto | the head clerk | 800 |
+| 仲買 Nakagai | the broker | 1,400 |
+| 両替商 Ryogaesho | the money changer | 2,000 |
+| 相場師 Sobashi | the market master | 2,500 |
+
+2,500 is every quest a log can prove, so the top rank takes all of them, or a bonus. The rankings are an Edo banzuke (番付) of the top 50 wallets, and they leave out Doji's own wallets. Every wallet has a public read-only ledger and a share image at `/quests/<address>`.
+
+### The faucet
+
+The [Faucet](https://explorer.test.mezo.org/address/0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa) on Mezo testnet gives a wallet one starter kit, once: 0.001 test BTC and 25 test MUSD. It releases 40 claims each UTC day, evenly, about one every 36 minutes, and unused ones carry over within that day, so nobody can empty a day at midnight.
+
+A new wallet needs no gas. Pressing Claim sends `POST /api/faucet`, the route checks a Cloudflare Turnstile token and simulates the claim, and Doji's relayer [0x837Fbb9E...aEbA](https://explorer.test.mezo.org/address/0x837Fbb9E11f47293fF31F4F79AD5D5E3EC29aEbA) sends it and pays about 150,000 gas. The Faucet holds test tokens only. It had the reviewer's threat pass and the test suite, not a separate audit.
+
+### Phone wallets
+
+Doji connects phone wallets through WalletConnect: a QR code on a laptop, or the wallet app on a phone. The founder tested this on a real phone on 6 November 2026.
+
+Every live transaction behind this section, and what they do not prove, is in [docs/proof/quests-2026-11-06.md](docs/proof/quests-2026-11-06.md).
 
 ## Testnet deployment
 
@@ -96,6 +140,13 @@ Wave 2 pair, deployed 4 November 2026 at block 16,564,749. New offers and new lo
 | CreditMarkets | [0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de](https://explorer.test.mezo.org/address/0x62cBa75f2fAA834ddCa4bF012258368D17Bbb2de) | Doji: offers, Thursday markets, credit units. Verified. |
 | PassThrough (library) | [0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061](https://explorer.test.mezo.org/address/0x2E2430AB8Abbcbe89219dbB6D09265E10A5d2061) | Doji: the borrower's votes and reward claims. Verified. |
 
+Starter kits, deployed 5 November 2026 at block 16,590,424. The Faucet stands apart from the pairs.
+
+| Contract | Address on Mezo testnet (31611) | Role |
+| --- | --- | --- |
+| Faucet | [0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa](https://explorer.test.mezo.org/address/0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa) | Doji: one starter kit of test BTC and test MUSD per wallet. Verified. |
+| Relayer (a wallet) | [0x837Fbb9E11f47293fF31F4F79AD5D5E3EC29aEbA](https://explorer.test.mezo.org/address/0x837Fbb9E11f47293fF31F4F79AD5D5E3EC29aEbA) | Doji: the one address allowed to call `claim`. It pays the gas. |
+
 Mezo contracts both pairs use, and the two only the Wave 2 pair uses:
 
 | Contract | Address on Mezo testnet (31611) | Role |
@@ -110,7 +161,7 @@ Mezo contracts both pairs use, and the two only the Wave 2 pair uses:
 | sMUSD vault (MUSDSavingsRate) | [0x6f461c68B2c5492C0F5CCEc5a264d692aA7A8e16](https://explorer.test.mezo.org/address/0x6f461c68B2c5492C0F5CCEc5a264d692aA7A8e16) | Mezo: where parked offers wait and earn. Wave 2 only. |
 | Router | [0x9a1ff7FE3a0F69959A3fBa1F1e5ee18e1A9CD7E9](https://explorer.test.mezo.org/address/0x9a1ff7FE3a0F69959A3fBa1F1e5ee18e1A9CD7E9) | Mezo: the pool router PayDown sells BTC rewards through, on its default factory [0x4947243C...23Ce1A](https://explorer.test.mezo.org/address/0x4947243CC818b627A5D06d14C4eCe7398A23Ce1A). Wave 2 only. |
 
-PassThrough runtime code hashes: `0x982c24088d039adce9a80453762c5b95471988c67f871f487d248142b1ac3cf9` (Wave 2) and `0x37e8ef36bdb592b8cbb39af72ce99b46ce3098ff8b706bda489ab7e3737b72b6` (20 October). The deploy script refuses a library whose code differs from the compiled one. The full records are [packages/contracts/deployments/31611-wave2.json](packages/contracts/deployments/31611-wave2.json) and [packages/contracts/deployments/31611.json](packages/contracts/deployments/31611.json), and every Mezo contract and call, with mainnet addresses, is in the [Built on Mezo](https://dojis.site/docs/mezo) docs page.
+PassThrough runtime code hashes: `0x982c24088d039adce9a80453762c5b95471988c67f871f487d248142b1ac3cf9` (Wave 2) and `0x37e8ef36bdb592b8cbb39af72ce99b46ce3098ff8b706bda489ab7e3737b72b6` (20 October). The deploy script refuses a library whose code differs from the compiled one. The full records are [packages/contracts/deployments/31611-wave2.json](packages/contracts/deployments/31611-wave2.json), [packages/contracts/deployments/31611.json](packages/contracts/deployments/31611.json) and [packages/contracts/deployments/31611-faucet.json](packages/contracts/deployments/31611-faucet.json), and every Mezo contract and call, with mainnet addresses, is in the [Built on Mezo](https://dojis.site/docs/mezo) docs page.
 
 ## Architecture
 
@@ -122,7 +173,17 @@ flowchart LR
     B[Borrower wallet]
     L[Lender wallet]
     X["Anyone: buyer, unit buyer or keeper"]
+    N["New wallet with no gas"]
   end
+
+  subgraph Site["dojis.site, no database"]
+    CR["Claim route: POST /api/faucet"]
+    QE["Quest engine: EXP from logs and the bonus file"]
+  end
+
+  CF["Cloudflare Turnstile"]
+  BF["Public bonus file: bonus-exp.json"]
+  FA["Faucet: one starter kit per wallet"]
 
   subgraph Doji["Doji on Mezo, the Wave 2 pair"]
     LM["LoanManager: custody, loans, auctions, settle"]
@@ -169,9 +230,23 @@ flowchart LR
   CM -- "escrow and pay out" --> MUSD
   LM -- "pull and pay out" --> MUSD
   LM -- "lock and settle" --> BTC
+  N -- "address and Turnstile token" --> CR
+  CR -- "check the token" --> CF
+  CR -- "claim, sent and paid for by the relayer" --> FA
+  FA -- "0.001 test BTC and 25 test MUSD" --> N
+  FA -- "pay the kit" --> MUSD
+  QE -- "read logs" --> FA
+  QE -- "read logs" --> LM
+  QE -- "read logs" --> CM
+  QE -- "read logs" --> PD
+  QE -- "read logs" --> UM
+  QE -- "read Voted logs" --> PV
+  QE -- "read bonus entries" --> BF
 ```
 
 The 20 October pair has the same LoanManager, CreditMarkets and PassThrough without the Wave 2 parts: no PayDown, no UnitMarket, no sMUSD vault and no reward operator, and its reward claims accept only PoolsVoter's whitelisted tokens. ValidatorsVoter exists only on Mezo mainnet: both testnet records hold the zero address for it, so on testnet Doji passes votes to PoolsVoter only.
+
+The Faucet, the claim route and the quest engine stand apart from the pairs. No Doji contract reads the Faucet or EXP, so a quest can never move a loan's money (C71). The Faucet holds test tokens only.
 
 ### 2. A loan's life
 
@@ -230,19 +305,25 @@ flowchart TB
 
 ## Try it in two minutes
 
-No wallet is needed to follow this path, and nothing in it spends anything.
+Start with a wallet and no tokens. Any wallet app works, on a phone or a laptop.
+
+1. Open [Quests](https://dojis.site/quests) and press "Connect wallet". The page reads your wallet's ledger from the chain.
+2. Open the first quest, "Claim your starter kit", and press Claim. After a Cloudflare check, 0.001 test BTC and 25 test MUSD reach your wallet in a few seconds, and Doji pays the fee.
+3. Follow the next quest, "Lock Bitcoin and borrow". Lock 0.0005 test BTC, borrow 10 MUSD, and the seal lands in your ledger once the chain shows the loan.
+
+The rest of this path needs no wallet, and nothing in it spends anything.
 
 1. Open [the live app](https://dojis.site). The first screen says what Doji does and shows live numbers: Bitcoin locked as veBTC on Mezo, MUSD on offer in Doji, the best fixed rate and the latest block.
 2. Scroll once. Mezo's FAQ asks "Can I use my locked BTC as collateral?" and answers "No." The seal stamps "Yes. At the same time." beside a real open loan whose lock, votes and rewards are read live.
-3. Click "Borrow MUSD". The offers by date and rate are there before any wallet. Type a BTC amount and an MUSD amount to see exactly what you would owe on that Thursday; borrowing for real needs a wallet and test BTC from the [faucet](https://faucet.test.mezo.org).
+3. Click "Borrow MUSD". The offers by date and rate are there before any wallet. Type a BTC amount and an MUSD amount to see exactly what you would owe on that Thursday; borrowing for real needs a wallet and a starter kit from [Quests](https://dojis.site/quests).
 4. Click "Lend" in the top bar: dates, best rates, and an offer summary with the protocol's 10% share of the interest.
 5. Open [an example loan's page](https://dojis.site/loans/389): its owed amount, collateral, auction line, lock, votes, rewards and its own terms. A loan in auction shows the live price and a Buy button; the landing page's auction chart links to any open one. Two example loans, [405](https://dojis.site/loans/405) and [406](https://dojis.site/loans/406), were left unpaid on purpose: nobody bought them at auction, the keeper settled both on 1 November 2026, and the lender at 29 October has redeemed its units for that date's MUSD and Bitcoin.
-6. Open [loan 411](https://dojis.site/loans/411), on the Wave 2 pair. Its pay-down panel shows PayDown named as the position's reward operator and lists every harvest. The first can run once the epoch turns on Thursday 5 November 2026 00:00 UTC, because Mezo pays an epoch's incentives only after it ends.
+6. Open [loan 411](https://dojis.site/loans/411), on the Wave 2 pair. Its pay-down panel shows PayDown named as the position's reward operator and lists every harvest. Mezo pays an epoch's incentives only after it ends, so the first keeper harvest ran on 5 November 2026, after the epoch turned ([the record](docs/proof/wave2-live-2026-11-04.md#the-first-harvests-5-november-2026)).
 7. Back on Lend, the "Earn in sMUSD while it waits" switch posts an offer whose MUSD earns in Mezo's savings vault until a borrower takes it, and "Credit units for sale" lists Wave 2 units that lenders are selling before their date.
 8. Click "Try to break it" in the top bar, then "Run all". Twelve attacks are simulated against the live contracts, and each card shows the contract's refusal and the block it ran on.
 9. Open [Check it yourself](https://dojis.site/docs/proof) in the docs: every claim mapped to a screen, a file and a transaction.
 
-The Wave 2 contracts' first live transactions, from the deploy to two parked offers, the pay-down loan 411 and a units sale, are in [docs/proof/wave2-live-2026-11-04.md](docs/proof/wave2-live-2026-11-04.md). The same day on the 20 October pair, a veBTC locked directly on Mezo was deposited, borrowed against and taken back, fresh offers were posted and lenders were paid out: [docs/proof/live-paths-2026-11-04.md](docs/proof/live-paths-2026-11-04.md).
+The Wave 2 contracts' first live transactions, from the deploy to two parked offers, the pay-down loan 411, a units sale and the first harvests, are in [docs/proof/wave2-live-2026-11-04.md](docs/proof/wave2-live-2026-11-04.md). The Faucet, the claim route's live claim and the market seeded for testers are in [docs/proof/quests-2026-11-06.md](docs/proof/quests-2026-11-06.md). The same day on the 20 October pair, a veBTC locked directly on Mezo was deposited, borrowed against and taken back, fresh offers were posted and lenders were paid out: [docs/proof/live-paths-2026-11-04.md](docs/proof/live-paths-2026-11-04.md).
 
 Then prove the main promise on the live network yourself. By default the script acts on the Wave 2 pair in `deployments/31611-wave2.json`. It needs bash, Python 3, Foundry and one testnet wallet of your own:
 
@@ -250,6 +331,8 @@ Then prove the main promise on the live network yourself. By default the script 
 2. Run `cp packages/contracts/.env.example packages/contracts/.env` and set only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` to that wallet. The other wallets in the file belong to the deploy and seed scripts.
 3. Claim test BTC for that address from the [Mezo faucet](https://faucet.test.mezo.org), which has a CAPTCHA. The run needs at least 0.0008 test BTC.
 4. Get a few cents of test MUSD for the interest. The faucet gives only BTC, so borrow 10 MUSD on [Borrow](https://dojis.site/borrow) with the same wallet, or swap BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). The script checks both balances before it sends anything.
+
+A starter kit also covers steps 3 and 4, if you import this wallet into a wallet app and claim on [Quests](https://dojis.site/quests): 0.001 test BTC and 25 test MUSD, once per wallet.
 
 More detail is in [Run the proof yourself](https://dojis.site/docs/developers/run-the-proof).
 
@@ -284,7 +367,7 @@ forge test                            # everything, including the Mezo mainnet f
 forge test --match-path "test/fork/*" -vv
 ```
 
-The fork tests use the public RPCs named in `foundry.toml`: `https://mezo-mainnet.boar.network` for Mezo mainnet and `https://rpc.test.mezo.org` for testnet. They need no key. When a public node is overloaded, a fork test fails with an HTTP error such as 504 or a reset connection. If the dropped read was inside a call to a Mezo contract, it shows as `EvmError: Revert`; the `-vvvv` trace and the ERROR line above it name the HTTP failure. `forge test --no-match-path "test/fork/*"` runs the 391 tests that need no network. To switch node, set `MEZO_MAINNET_RPC` (or `MEZO_TESTNET_RPC`) for one run, for example `MEZO_MAINNET_RPC=https://mezo.drpc.org forge test --match-path "test/fork/*"`. A value in the shell wins over `packages/contracts/.env`, and each suite checks the chain id after the switch, so a mainnet variable pointed at testnet fails at once.
+The fork tests use the public RPCs named in `foundry.toml`: `https://mezo-mainnet.boar.network` for Mezo mainnet and `https://rpc.test.mezo.org` for testnet. They need no key. When a public node is overloaded, a fork test fails with an HTTP error such as 504 or a reset connection. If the dropped read was inside a call to a Mezo contract, it shows as `EvmError: Revert`; the `-vvvv` trace and the ERROR line above it name the HTTP failure. `forge test --no-match-path "test/fork/*"` runs the 463 tests that need no network. To switch node, set `MEZO_MAINNET_RPC` (or `MEZO_TESTNET_RPC`) for one run, for example `MEZO_MAINNET_RPC=https://mezo.drpc.org forge test --match-path "test/fork/*"`. A value in the shell wins over `packages/contracts/.env`, and each suite checks the chain id after the switch, so a mainnet variable pointed at testnet fails at once.
 
 Web app (needs Node 20.12 or newer):
 
@@ -294,7 +377,7 @@ npm ci
 npm run dev                           # http://localhost:3001
 ```
 
-The app reads the chain directly and needs no environment variables. It takes its addresses from the deployment records in `packages/contracts/deployments`.
+The app reads the chain directly and runs with no environment variables. It takes its addresses from the deployment records in `packages/contracts/deployments`. [packages/web/.env.example](packages/web/.env.example) lists the four that turn on the rest: the WalletConnect project ID for phone wallets, the Cloudflare Turnstile site key and secret, and the relayer's key. Without them the Phone wallet row stays hidden and every claim is refused.
 
 Keeper:
 
@@ -306,7 +389,7 @@ npm run keeper:dry                    # one pass that only simulates; needs no k
 
 ## Contracts
 
-The full NatSpec, with every custom error, is in [ILoanManager.sol](packages/contracts/src/interfaces/ILoanManager.sol), [ICreditMarkets.sol](packages/contracts/src/interfaces/ICreditMarkets.sol), [IPayDown.sol](packages/contracts/src/interfaces/IPayDown.sol) and [IUnitMarket.sol](packages/contracts/src/interfaces/IUnitMarket.sol). The interfaces describe the Wave 2 pair. Rows marked "Wave 2" do not exist on the 20 October pair.
+The full NatSpec, with every custom error, is in [ILoanManager.sol](packages/contracts/src/interfaces/ILoanManager.sol), [ICreditMarkets.sol](packages/contracts/src/interfaces/ICreditMarkets.sol), [IPayDown.sol](packages/contracts/src/interfaces/IPayDown.sol), [IUnitMarket.sol](packages/contracts/src/interfaces/IUnitMarket.sol) and [IFaucet.sol](packages/contracts/src/interfaces/IFaucet.sol). The interfaces describe the Wave 2 pair. Rows marked "Wave 2" do not exist on the 20 October pair.
 
 ### LoanManager
 
@@ -393,27 +476,43 @@ A market for Wave 2 credit units before their date. A listing price is the selle
 | `transferOwnership(newOwner)`, `acceptOwnership()` | owner, then the new owner | Two-step ownership transfer. `renounceOwnership()` always reverts. |
 | `listingOf`, `quoteBuy`, `nextListingId`, `treasuryOwed`, `feeBps`, `paused`, `creditMarkets`, `musd`, `guardian`, `treasury` | anyone (views) | Listings, exact quotes and settings. |
 
+### Faucet
+
+One starter kit per wallet, for the quests. It stands apart from the pairs, no Doji contract reads it, and it holds test tokens only, owed to nobody.
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `claim(to)` | the relayer | Pays one whole kit to `to`, once ever for that address. The record and the day's count are written first, MUSD is paid, then BTC with a fixed 50,000 gas allowance and no return data. Any failure reverts the whole claim. Refused while paused, for the zero address and for the Faucet itself. |
+| `setKit(btc, musdAmount)` | owner | The kit, neither part zero, at most 0.01 BTC and 100 MUSD. |
+| `setDailyLimit(newDailyLimit)` | owner | Claims released each UTC day, at most 500. Zero closes the Faucet. |
+| `setRelayer(newRelayer)` | owner | Replaces the relayer, which is how a stolen relayer key is cut off. |
+| `pause()`, `unpause()` | owner | Stops or restarts `claim` and nothing else. |
+| `withdraw(btc, musdAmount)` | owner | Pays BTC and MUSD to the owner and no one else. |
+| `rescueToken(token, amount)` | owner | Sends a stray ERC-20 other than MUSD to the owner. |
+| `transferOwnership(newOwner)`, `acceptOwnership()` | owner, then the new owner | Two-step ownership transfer. `renounceOwnership()` always reverts. |
+| `claimsOpen`, `nextOpenAt`, `claimsToday`, `claimed`, `claimsOnDay`, `btcPerClaim`, `musdPerClaim`, `dailyLimit`, `relayer`, `paused`, `musd`, `MAX_BTC_PER_CLAIM`, `MAX_MUSD_PER_CLAIM`, `MAX_DAILY_LIMIT`, `RECIPIENT_GAS` | anyone (views) | The claims open now, when the next one opens, who has claimed, the settings and the caps. None of them reverts on a paused or empty Faucet. |
+
 Every event, view and setting is listed in the [Contracts](https://dojis.site/docs/developers/contracts) docs page.
 
 ## Tests
 
-The run of 4 November 2026, on the contracts deployed that day, from `packages/contracts`:
+The run of 6 November 2026, on the deployed contracts, from `packages/contracts`:
 
 ```text
 $ forge test --no-match-path "test/fork/*"
-Ran 22 test suites in 19.87s (43.27s CPU time): 391 tests passed, 0 failed, 0 skipped (391 total tests)
+Ran 26 test suites in 46.99s (196.68s CPU time): 463 tests passed, 0 failed, 0 skipped (463 total tests)
 
 $ MEZO_MAINNET_RPC=https://mezo.drpc.org forge test --match-path "test/fork/*"
-Ran 6 test suites in 128.50s (235.35s CPU time): 18 tests passed, 0 failed, 0 skipped (18 total tests)
+Ran 7 test suites in 179.41s (359.02s CPU time): 21 tests passed, 0 failed, 0 skipped (21 total tests)
 ```
 
 - Unit tests for the public functions, their reverts and their events. Each test file opens with what it does not cover.
-- Fuzz tests at 1,000 runs each: units always equal the face, sale and settle splits always add up, early and late lenders get the same total per unit, one lender who mixes early payouts and redeem never gets more than its share, no sale pays the market below the smaller of the debt and the value at the time of sale, the parked-offer books hold after every step, every harvest gain is either repaid or reaches the borrower, and a dust buy of units never costs zero.
-- Invariant tests at 256 runs of depth 64: random sequences of plain and parked posts, borrows, repays, rolls, auctions, settles, redemptions, early withdrawals, vault yield, pull-outs and yield withdrawals across three dates, with the accounting rules checked after every call; and random listings, buys, cancels, returns, fee changes and pauses on UnitMarket, checking that its units and MUSD always match its listings and fees.
-- Fork tests against real Mezo state. On mainnet: real veBTC positions, PoolsVoter and ValidatorsVoter, the fee distributor, MUSD and the sMUSD vault, including a sale half way down the curve, a settle of a real lock, a vote cleared through the real voter, a roll, real pool fees forwarded to the borrower, and two offers parked in the real vault. On testnet: a real `lockAndBorrow`, and PayDown selling BTC and mT rewards through Mezo's real Router and pools, refusing both once a pool is pushed 5% off.
+- Fuzz tests at 1,000 runs each: units always equal the face, sale and settle splits always add up, early and late lenders get the same total per unit, one lender who mixes early payouts and redeem never gets more than its share, no sale pays the market below the smaller of the debt and the value at the time of sale, the parked-offer books hold after every step, every harvest gain is either repaid or reaches the borrower, a dust buy of units never costs zero, and no time of day lets the Faucet's claims pass what has been released.
+- Invariant tests at 256 runs of depth 64: random sequences of plain and parked posts, borrows, repays, rolls, auctions, settles, redemptions, early withdrawals, vault yield, pull-outs and yield withdrawals across three dates, with the accounting rules checked after every call; random listings, buys, cancels, returns, fee changes and pauses on UnitMarket, checking that its units and MUSD always match its listings and fees; and random claims on the Faucet, checking that what it paid is exactly the kits claimed and that no address claims twice.
+- Fork tests against real Mezo state. On mainnet: real veBTC positions, PoolsVoter and ValidatorsVoter, the fee distributor, MUSD and the sMUSD vault, including a sale half way down the curve, a settle of a real lock, a vote cleared through the real voter, a roll, real pool fees forwarded to the borrower, and two offers parked in the real vault. On testnet: a real `lockAndBorrow`, PayDown selling BTC and mT rewards through Mezo's real Router and pools, refusing both once a pool is pushed 5% off, and the Faucet paying a fresh address real MUSD.
 - The seven audit regression tests, written to fail on the code each review read: four from 20 October and three from 4 November.
 
-Static analysis of the Wave 2 code with slither 0.11.6: the deploy gate run found 57 results (5 High, 11 Medium, 37 Low, 4 Informational), and a wider run that keeps Doji's own libraries finds 13 more. Every one, with where it is and why it is safe, is in [docs/security/slither-2026-11-04.md](docs/security/slither-2026-11-04.md).
+Static analysis of the Wave 2 code with slither 0.11.6: the deploy gate run found 57 results (5 High, 11 Medium, 37 Low, 4 Informational), and a wider run that keeps Doji's own libraries finds 13 more. The Faucet adds 12 (1 High, 2 Medium, 3 Low, 6 Informational), so on 6 November 2026 the same two runs read 69 and 82. Every one, with where it is and why it is safe, is in [docs/security/slither-2026-11-04.md](docs/security/slither-2026-11-04.md).
 
 The 20 October pair, by slither on 2026-10-21 (dependencies excluded): 38 results, 0 High, 9 Medium, 27 Low, 2 Informational. Each Medium was read and kept on purpose:
 
@@ -434,7 +533,7 @@ The live website test drove the real site in a headless Chrome on Mezo testnet w
 
 ## Gas
 
-Execution gas of the main user actions, measured by the test suite on 4 November 2026 with `forge test --no-match-path "test/fork/*" --gas-report`. The median is over every call the 391 tests make, including the ones that are meant to revert, so the range shows the real spread. Mezo's own contracts are test stand-ins here, so calls into the real veBTC, vault or pools cost more on chain, and a real transaction adds the 21,000 base cost and its calldata.
+Execution gas of the main user actions, measured by the test suite on 4 November 2026 with `forge test --no-match-path "test/fork/*" --gas-report`, on the 391 tests of that day, and for `Faucet.claim` on 6 November 2026 with `forge test --match-path test/unit/Faucet.t.sol --gas-report`. The median is over every call those tests make, including the ones that are meant to revert, so the range shows the real spread. Mezo's own contracts are test stand-ins here, so calls into the real veBTC, vault or pools cost more on chain, and a real transaction adds the 21,000 base cost and its calldata.
 
 | Action | What the user does | Median gas | Range in the suite |
 | --- | --- | --- | --- |
@@ -451,8 +550,9 @@ Execution gas of the main user actions, measured by the test suite on 4 November
 | `UnitMarket.buy` | Buys credit units from a listing | 93,767 | 29,634 to 152,847 |
 | List units | Sends units to UnitMarket with a price and an expiry (`safeTransferFrom` into `onERC1155Received`) | 145,549 | 128,377 to 145,561 |
 | `UnitMarket.cancel` | Takes unsold units back | 55,596 | 28,961 to 72,696 |
+| `Faucet.claim` | Doji's relayer sends a new wallet its starter kit. The wallet pays nothing | 136,792 | 21,574 to 181,107 |
 
-The gas report has no row of its own for listing, because a listing runs inside CreditMarkets' `safeTransferFrom`, whose row also counts plain transfers between holders. The listing figures are from the call traces of the 24 successful listings in `test/unit/UnitMarket.t.sol`. At the 292 wei per gas Doji's own testnet transactions paid on 4 November 2026, even a harvest at about 0.6M gas costs about 0.00000000018 test BTC. The keeper's resolution calls run from about 71,000 gas (`cancelAuction`) to 614,000 (`settle`); see the [keeper README](packages/keeper/README.md).
+The gas report has no row of its own for listing, because a listing runs inside CreditMarkets' `safeTransferFrom`, whose row also counts plain transfers between holders. The listing figures are from the call traces of the 24 successful listings in `test/unit/UnitMarket.t.sol`. At the 292 wei per gas Doji's own testnet transactions paid on 4 November 2026, even a harvest at about 0.6M gas costs about 0.00000000018 test BTC. The keeper's resolution calls run from about 71,000 gas (`cancelAuction`) to 614,000 (`settle`); see the [keeper README](packages/keeper/README.md). A starter kit claim costs about 150,000 gas, paid by Doji's relayer: the claim route's live claim used 131,763.
 
 ## Project structure
 
@@ -470,7 +570,8 @@ analysis              the Bitcoin drawdown study and its data
 | Part | Built with |
 | --- | --- |
 | Contracts | Solidity 0.8.28 (EVM cancun), Foundry, OpenZeppelin Contracts 5.7 |
-| App | Next.js 16, React 19, Tailwind CSS 4, wagmi 3.7, viem 2.57, TanStack Query 5 |
+| App | Next.js 16, React 19, Tailwind CSS 4, wagmi 3.7, viem 2.57, TanStack Query 5, WalletConnect 2.26 |
+| Claim route | Next.js route handler, Cloudflare Turnstile, one relayer key on the server |
 | Motion | GSAP 3.15, Lenis 1.3, Motion 14 |
 | Docs | Fumadocs 16 inside the app, Mermaid 12 |
 | Keeper | TypeScript on Node, viem 2.57, run by GitHub Actions |
@@ -480,11 +581,12 @@ analysis              the Bitcoin drawdown study and its data
 
 Custody comes first. Doji holds other people's veBTC positions, and on 5 October 2026 an attacker moved 37 veBTC positions on Mezo mainnet through a trusted-forwarder (meta-transaction) flaw ([Mezo's incident report](https://mezo.org/blog/incident-report-october-5-2026)). Doji has no meta-transaction or forwarder path at all.
 
-- The threat model was written before any contract code, and again at the Wave 2 design stage before any Wave 2 code. Its 53 rules (C1 to C53; C30 to C53 are Wave 2) are the definition of done, each kept by named code and tested: [docs/security/threat-model.md](docs/security/threat-model.md).
+- The threat model was written before any contract code, and again at the Wave 2 design stage before any Wave 2 code. It was written a third time for the quests, before any quest code. Its 82 rules (C1 to C82; C30 to C53 are Wave 2, C54 to C82 the quests) are the definition of done: [docs/security/threat-model.md](docs/security/threat-model.md). C1 to C53 are each kept by named code and tested. For the quests, C81's load check and C82's checks after a production deploy are still to run.
 - An independent review pass on 2026-11-04 read the Wave 2 code, separate from the build and not a third-party audit firm. It found no Critical, High or Medium issue, one Low and six Informational. The Low (earned rewards could not be claimed once a loan was in auction) and three of the Informational findings were fixed before deployment, one is accepted (wei-scale rounding in the yield books) and two are documented in the threat model: [docs/audit/findings-2026-11-04.md](docs/audit/findings-2026-11-04.md).
 - An independent review pass on 2026-10-20, separate from the build and not a third-party audit firm, found no Critical or High issue, one Medium and three Low. Each was fixed with tests that failed before the fix, and the fixed contracts are the ones deployed: [docs/audit/findings-2026-10-20.md](docs/audit/findings-2026-10-20.md). The same commit added early payouts, which that pass never read; two more passes read that code before deployment, and the [audit page](https://dojis.site/docs/security/audit#code-added-with-the-fixes) lists the tests that hold it.
-- Static analysis of the Wave 2 code, every result with its reason: [docs/security/slither-2026-11-04.md](docs/security/slither-2026-11-04.md).
-- Non-goals, stated openly: a flaw or upgrade in Mezo's own contracts, the sMUSD vault and the pools included (while the vault refuses withdrawals, parked offers cannot be cancelled or filled), an oracle outage, Bitcoin price moves after a settle, losses shared across one date, price moves inside PayDown's 1% allowance, and a unit buyer's risk: UnitMarket gives no price and no guarantee, and a buyer takes on that date's shared losses.
+- The Faucet had the reviewer's threat pass and the test suite, not a separate audit. It holds test tokens only, and neither review above read it.
+- Static analysis of the Wave 2 code and the Faucet, every result with its reason: [docs/security/slither-2026-11-04.md](docs/security/slither-2026-11-04.md).
+- Non-goals, stated openly: a flaw or upgrade in Mezo's own contracts, the sMUSD vault and the pools included (while the vault refuses withdrawals, parked offers cannot be cancelled or filled), an oracle outage, Bitcoin price moves after a settle, losses shared across one date, price moves inside PayDown's 1% allowance, a unit buyer's risk: UnitMarket gives no price and no guarantee, and a buyer takes on that date's shared losses, and one person using many wallets on the quests: Turnstile, one claim per address and the daily limit slow that down and do not prove one human.
 - To report a problem, open an issue at [github.com/ramakrishnanhulk20/doji/issues](https://github.com/ramakrishnanhulk20/doji/issues).
 
 The risk limits come from Bitcoin's daily prices since August 2017: [docs/risk/parameters.md](docs/risk/parameters.md).

@@ -1,11 +1,11 @@
 ---
 title: Contracts
-description: Doji's deployed addresses for both pairs, the libraries' code hashes, and every external function and event of LoanManager, CreditMarkets, PayDown and UnitMarket.
+description: Doji's deployed addresses for both pairs and the Faucet, the libraries' code hashes, and every external function and event of LoanManager, CreditMarkets, PayDown, UnitMarket and the Faucet.
 ---
 
 ## Addresses on Mezo testnet
 
-Doji runs as two pairs on Mezo testnet (chain 31611). New offers and new loans go to the Wave 2 pair. The 20 October pair keeps serving every loan, offer, credit unit and auction opened on it. All eight contracts are verified on Mezo's testnet explorer. None of them can be upgraded: there is no proxy and no admin that can replace code.
+Doji runs as two pairs on Mezo testnet (chain 31611). New offers and new loans go to the Wave 2 pair. The 20 October pair keeps serving every loan, offer, credit unit and auction opened on it. All eight contracts are verified on Mezo's testnet explorer, and so is the [Faucet](#faucet), which stands apart from the pairs. None of them can be upgraded: there is no proxy and no admin that can replace code.
 
 | Contract | Wave 2 pair | 20 October pair |
 | --- | --- | --- |
@@ -24,7 +24,7 @@ Doji runs as two pairs on Mezo testnet (chain 31611). New offers and new loans g
 - Deployer: `0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e`. At deployment it is the owner and the guardian of every Doji contract, and the treasury of each CreditMarkets and of UnitMarket. That is a testnet setup: before any mainnet use the owner becomes a multisig and the guardian a separate key.
 - Solidity 0.8.28, EVM version cancun, OpenZeppelin Contracts 5.7.0. LoanManager and CreditMarkets fix each other's address in their constructors, PayDown fixes its LoanManager and Router, and UnitMarket fixes its CreditMarkets, so there is no setter a first caller could front-run.
 
-The full NatSpec, including every custom error, is in [ILoanManager.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ILoanManager.sol), [ICreditMarkets.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ICreditMarkets.sol), [IPayDown.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/IPayDown.sol) and [IUnitMarket.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/IUnitMarket.sol). They describe the Wave 2 pair. Rows marked "Wave 2" below do not exist on the 20 October pair.
+The full NatSpec, including every custom error, is in [ILoanManager.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ILoanManager.sol), [ICreditMarkets.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/ICreditMarkets.sol), [IPayDown.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/IPayDown.sol), [IUnitMarket.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/IUnitMarket.sol) and [IFaucet.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/src/interfaces/IFaucet.sol). The first four describe the Wave 2 pair. Rows marked "Wave 2" below do not exist on the 20 October pair.
 
 ## LoanManager
 
@@ -285,4 +285,65 @@ A market for Wave 2 credit units before their date. It accepts units only from t
 | `FeesClaimed(address indexed treasury, uint256 amount)` | The treasury collected its fees. |
 | `FeeBpsSet(uint16 feeBps)`, `TreasurySet(address indexed treasury)`, `GuardianSet(address indexed guardian)`, `PausedSet(bool paused)` | A setting changed. |
 | `Rescued(address indexed token, address indexed to, uint256 amount)` | The owner moved a stray token. |
+| `OwnershipTransferStarted`, `OwnershipTransferred` | The two steps of an ownership transfer. |
+
+## Faucet
+
+One starter kit per wallet, for the [quests](/docs/getting-started/quests). It holds test tokens only, owed to nobody. No Doji contract reads it, so it can touch no loan, offer or unit. It had the reviewer's threat pass and the test suite, not a separate audit.
+
+| Setting | Value |
+| --- | --- |
+| Faucet | [0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa](https://explorer.test.mezo.org/address/0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa), verified |
+| Relayer, the one address that can call `claim` | [0x837Fbb9E11f47293fF31F4F79AD5D5E3EC29aEbA](https://explorer.test.mezo.org/address/0x837Fbb9E11f47293fF31F4F79AD5D5E3EC29aEbA) |
+| Owner | The deployer, `0xd338Ad588D6c3aE127FD5eEC6843A468d3a7aa6e` |
+| Deployed | 5 November 2026, block 16,590,424 |
+| Record | [deployments/31611-faucet.json](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/deployments/31611-faucet.json) |
+| Kit | 0.001 test BTC and 25 test MUSD |
+| Daily limit | 40 claims each UTC day |
+
+### The rules
+
+- One whole kit, to one address, once ever. A claim that cannot pay in full reverts and leaves the address free to try again (C54).
+- Only the relayer can claim, so a wallet with no gas can get its first gas. `POST /api/faucet` asks the relayer to send a claim after a Cloudflare Turnstile check and a simulation. The chain does not see that check: only the relayer key stands behind it (C59 to C65).
+- Claims are released evenly through each UTC day: the limit times the seconds so far, divided by a day, plus one, up to the limit. Unused ones carry over within that day, and each new UTC day starts again, so a sweep at midnight takes one kit (C57).
+- The BTC payment forwards a fixed 50,000 gas, enough for a heavy smart wallet's receive, and copies no return data, so a hostile recipient has a fixed price. There is no is-it-a-contract check (C55).
+- BTC is read one way, the Faucet's native balance, because native BTC and Mezo's BTC ERC-20 are the same coins. BTC or MUSD sent in is funding, credited to nobody (C58).
+
+### Functions
+
+| Function | Who may call | What it does |
+| --- | --- | --- |
+| `claim(address to)` | the relayer | Pays one whole kit to `to`, once ever for that address. `claimed[to]` and the day's count are written and `Claimed` is emitted first, MUSD is paid, then BTC last. Any failure reverts the whole transaction. Under the reentrancy lock. Reverts `NotRelayer`, `EnforcedPause`, `BadRecipient` for the zero address or the Faucet, `AlreadyClaimed`, `NoClaimOpen` or `BtcPaymentFailed`. Not payable. |
+| `setKit(uint128 btc, uint128 musdAmount)` | owner | The kit every later claim pays, neither part zero, at most `MAX_BTC_PER_CLAIM` 0.01 BTC and `MAX_MUSD_PER_CLAIM` 100 MUSD. Works while paused. |
+| `setDailyLimit(uint32 newDailyLimit)` | owner | Claims each UTC day releases, at most `MAX_DAILY_LIMIT` 500. Takes effect at once, and zero closes the Faucet. Works while paused. |
+| `setRelayer(address newRelayer)` | owner | Replaces the relayer, which is how a stolen relayer key is cut off. Never zero. |
+| `pause()`, `unpause()` | owner | Stops or restarts `claim` and nothing else. |
+| `withdraw(uint256 btc, uint256 musdAmount)` | owner | Pays BTC and MUSD to the owner and no one else. An amount of zero skips that coin. Under the reentrancy lock. |
+| `rescueToken(address token, uint256 amount)` | owner | Sends a stray ERC-20 other than MUSD to the owner. MUSD leaves only through `withdraw`, so every MUSD exit emits `Withdrawn`. |
+| `transferOwnership(address newOwner)`, `acceptOwnership()` | owner, then the new owner | Two-step ownership transfer. |
+| `renounceOwnership()` | nobody | Always reverts `RenounceDisabled`. |
+
+### Views
+
+None of these reverts on a paused or empty Faucet. A MUSD balance that cannot be read counts as none held.
+
+| Function | Returns |
+| --- | --- |
+| `claimsOpen()` | How many claims could land now. 0 when paused, when the Faucet cannot pay one full kit, when the limit is zero, or when today's count has reached what has been released. |
+| `nextOpenAt()` | The unix second the next claim opens: now when one is open. 0 when paused, short of a kit, or at a limit of zero, because waiting alone opens nothing then. |
+| `claimsToday()`, `claimsOnDay(uint256 day)` | Claims paid today, or on a day numbered as unix time divided by one day. |
+| `claimed(address account)` | True once an address took its kit. |
+| `btcPerClaim()`, `musdPerClaim()`, `dailyLimit()`, `relayer()`, `paused()`, `owner()`, `pendingOwner()` | The current settings and roles. |
+| `musd()` | Fixed at deployment. |
+| `MAX_BTC_PER_CLAIM`, `MAX_MUSD_PER_CLAIM`, `MAX_DAILY_LIMIT`, `RECIPIENT_GAS` | The hard-coded caps: 0.01 BTC, 100 MUSD, 500, and 50,000 gas. |
+
+### Events
+
+| Event | Emitted when |
+| --- | --- |
+| `Claimed(address indexed to, uint256 btc, uint256 musd, uint256 indexed day)` | A wallet received its kit. |
+| `KitSet(uint128 btc, uint128 musd)`, `DailyLimitSet(uint32 dailyLimit)`, `RelayerSet(address indexed relayer)` | A setting changed. |
+| `Withdrawn(address indexed to, uint256 btc, uint256 musd)` | The owner took funding out. |
+| `Rescued(address indexed token, address indexed to, uint256 amount)` | The owner moved a stray token. |
+| `Paused`, `Unpaused` | Claims stopped or restarted (OpenZeppelin). |
 | `OwnershipTransferStarted`, `OwnershipTransferred` | The two steps of an ownership transfer. |

@@ -1,6 +1,6 @@
 ---
 title: Run the proof yourself
-description: The prove-it command against the live testnet, the fork tests, the explorer verification of both pairs, the live proof pages and the website test, with what each one prints.
+description: The prove-it command against the live testnet, the fork tests, the explorer verification of both pairs, the live proof pages, the website test and the Faucet's proof, with what each one prints.
 ---
 
 Everything Doji claims can be checked with commands in the repository. Each one says what it does not cover.
@@ -9,7 +9,8 @@ Everything Doji claims can be checked with commands in the repository. Each one 
 
 Each page lists every transaction with an explorer link and the chain reads that check it.
 
-- [Wave 2 live, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md): the Wave 2 deploy, two offers parked in Mezo's sMUSD vault and a borrow paid out of the vault, the pay-down demo loan 411 with PayDown as its reward operator and incentives posted on both its pools, and a sale of credit units on UnitMarket. The pay-down harvest itself can run only after the epoch turns on 5 November, because Mezo pays an epoch's incentives once it ends; the page says so and adds it once it has run.
+- [Wave 2 live, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/wave2-live-2026-11-04.md): the Wave 2 deploy, two offers parked in Mezo's sMUSD vault and a borrow paid out of the vault, the pay-down demo loan 411 with PayDown as its reward operator and incentives posted on both its pools, and a sale of credit units on UnitMarket. Mezo pays an epoch's incentives once it ends, so the first harvests ran on 5 November: the keeper's on #411 and one from the website on #412. Both are on the page.
+- [Quests, 6 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/quests-2026-11-06.md): the Faucet's deploy, its first claim and every refusal, the claim route's live claim, the Faucet's filling, offers 5 to 8, seed loans #415 to #417 and #412's repayment, with what the page does not prove.
 - [Prove it on Wave 2, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/prove-it-2026-11-04.md): the one-command proof on the Wave 2 pair, 12 of 12, including a borrow paid out of an offer parked in sMUSD (the vault's parked MUSD fell from 60.00 to 50.00) and PayDown named as the reward operator.
 - [Live paths, 4 November 2026](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/live-paths-2026-11-04.md), on the 20 October pair: a veBTC locked directly on Mezo, deposited, borrowed against, repaid and taken back; fresh offers for the next three Thursdays; and a lender paid out after two settles. It also records why `claimRewards` was refused there (F36), the reason the Wave 2 claim checks `isReward` instead.
 
@@ -33,7 +34,7 @@ One command exercises the main promise against the deployed contracts on Mezo te
 - W3: the borrower's `setRewardOperator(position, PayDown)` is sent and `positionOf(position).rewardOperator` reads PayDown.
 - W4: after the position is taken back, `positionOf(position)` reads borrower zero and reward operator zero.
 
-It sends real testnet transactions from a borrower wallet you control, and needs bash, Python 3 and Foundry. Make a fresh testnet wallet with `cast wallet new`. Copy `packages/contracts/.env.example` to `packages/contracts/.env` and fill in only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` for that wallet; the other wallets in the file belong to the deploy and seed scripts. It needs at least 0.0008 test BTC (0.0005 to lock, the rest for gas) from the [faucet](https://faucet.test.mezo.org), and a few cents of MUSD for the interest. The faucet gives only BTC, so get the MUSD by borrowing 10 MUSD on [Borrow](/borrow) with the same wallet, or by swapping BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). The script checks both balances before it sends anything.
+It sends real testnet transactions from a borrower wallet you control, and needs bash, Python 3 and Foundry. Make a fresh testnet wallet with `cast wallet new`. Copy `packages/contracts/.env.example` to `packages/contracts/.env` and fill in only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` for that wallet; the other wallets in the file belong to the deploy and seed scripts. It needs at least 0.0008 test BTC (0.0005 to lock, the rest for gas) from the [faucet](https://faucet.test.mezo.org), and a few cents of MUSD for the interest. The faucet gives only BTC, so get the MUSD by borrowing 10 MUSD on [Borrow](/borrow) with the same wallet, or by swapping BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). A [starter kit](/docs/getting-started/quests) covers both, if you import this wallet into a wallet app and claim. The script checks both balances before it sends anything.
 
 ```bash
 bash packages/contracts/script/prove-it.sh
@@ -83,10 +84,10 @@ They fork Mezo mainnet and testnet through the public RPCs named in `foundry.tom
 MEZO_MAINNET_RPC=https://mezo.drpc.org forge test --match-path "test/fork/*"
 ```
 
-Other public mainnet nodes are `https://mezo-mainnet.boar.network` (the default) and `https://mainnet.mezo.public.validationcloud.io`. A value in the shell wins over `packages/contracts/.env`, only the node's host is logged, and each suite checks the chain id after the switch, so a mainnet variable pointed at testnet fails at once. The run of 4 November 2026 on dRPC ended with:
+Other public mainnet nodes are `https://mezo-mainnet.boar.network` (the default) and `https://mainnet.mezo.public.validationcloud.io`. A value in the shell wins over `packages/contracts/.env`, only the node's host is logged, and each suite checks the chain id after the switch, so a mainnet variable pointed at testnet fails at once. The run of 6 November 2026 on dRPC ended with:
 
 ```text
-Ran 6 test suites in 128.50s (235.35s CPU time): 18 tests passed, 0 failed, 0 skipped (18 total tests)
+Ran 7 test suites in 179.41s (359.02s CPU time): 21 tests passed, 0 failed, 0 skipped (21 total tests)
 ```
 
 | Suite | What it proves |
@@ -96,6 +97,7 @@ Ran 6 test suites in 128.50s (235.35s CPU time): 18 tests passed, 0 failed, 0 sk
 | [ResolutionFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/ResolutionFork.t.sol) | An unsafe loan sells half way down its curve; an unsold auction settles the real lock and lenders redeem Bitcoin; a real vote is cleared through the real PoolsVoter once the epoch turns; a loan rolls. |
 | [PassThroughFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PassThroughFork.t.sol) | The borrower votes, collects a real incentive, extends the lock and claims from the real fee distributor through LoanManager; a BoostVoter vote leaves veBTC's voted flag alone; a permanent position voted on both voters (mainnet, where ValidatorsVoter exists) is cleared and settled; `lockAndBorrow` mints a real testnet position into LoanManager; real pool fees reach the borrower. |
 | [SavingsFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/SavingsFork.t.sol) | On mainnet, a lender parks two offers in the real sMUSD vault; a real position's owner borrows from the first and is paid exactly the principal out of the vault, and the lender cancels the second and gets exactly its amount back. |
+| [FaucetFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/FaucetFork.t.sol) | On testnet, with the real MUSD token: a new Faucet pays a fresh address real MUSD and native BTC, a recipient the real MUSD refuses leaves the claim whole, and the views match the release rule on the fork's clock. |
 | [PayDownFork.t.sol](https://github.com/ramakrishnanhulk20/doji/blob/main/packages/contracts/test/fork/PayDownFork.t.sol) | On testnet, against Mezo's real Router and pools: a harvest sells a BTC reward through the real BTC/MUSD pool at or above the oracle floor, and reverts once a large swap pushes that pool 5% under the oracle; a borrower's `harvestAndSwap` sells an mT reward at the borrower's minimum, and reverts once that pool is pushed 5%. |
 
 Each suite ends with a line that starts "Suite result: ok." when every test in it passes, and prints FAIL with the reason when one does not.
@@ -111,10 +113,10 @@ forge test --no-match-path "test/fork/*"
 forge test --match-path "test/audit/*" -vv
 ```
 
-The first runs everything that needs no network. On 4 November 2026 it ended with:
+The first runs everything that needs no network. On 6 November 2026 it ended with:
 
 ```text
-Ran 22 test suites in 19.87s (43.27s CPU time): 391 tests passed, 0 failed, 0 skipped (391 total tests)
+Ran 26 test suites in 46.99s (196.68s CPU time): 463 tests passed, 0 failed, 0 skipped (463 total tests)
 ```
 
 Fuzz tests run 1,000 cases each and invariant tests 256 runs of depth 64 (`foundry.toml`). The audit suite holds the tests written for the [audit findings](/docs/security/audit) of both reviews. Every test file opens with a comment that says what it does not cover.
@@ -141,3 +143,33 @@ npx tsx scripts/check-attacks.ts
 ```
 
 It prints one line per attack with the contract's refusal and the block it ran on, then a total of how many were refused with the expected error.
+
+## 6. The Faucet and the quests
+
+The Faucet has its own live proof. From `packages/contracts`:
+
+```bash
+bash script/faucet-live.sh
+```
+
+It reads the deployment back from the chain, checks that the relayer is no other wallet of Doji's, funds the Faucet with one kit, has the relayer claim for a fresh address, and shows each refusal: a second claim, a stranger, a Faucet too short for a kit, and a paused Faucet, which it then resumes. It records every transaction in a progress file, so a rerun sends nothing: it repeats the chain read-back and reprints what it recorded. On 6 November 2026 a rerun left the deployer's nonce at 119 and the relayer's at 2. Its record is the [quests proof page](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/quests-2026-11-06.md).
+
+That script needs Doji's own deployer and relayer keys and the private progress file, so a stranger cannot repeat it. These need no key and send nothing. From `packages/contracts`:
+
+```bash
+cast call 0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa "claimsOpen()(uint256)" --rpc-url https://rpc.test.mezo.org
+cast call 0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa "claimed(address)(bool)" 0xCFD41eb3Cd90BB5E8e583182333a8Dc2DB0992B4 --rpc-url https://rpc.test.mezo.org
+forge test --match-path "test/unit/Faucet*.t.sol"
+forge test --match-path "test/fork/FaucetFork.t.sol"
+```
+
+The first `forge test` line ran 72 tests on 6 November 2026: every revert, hostile recipients, a smart-contract wallet, and random claim times across days. From `packages/web` after `npm ci`:
+
+```bash
+npx tsx scripts/check-faucet-route.ts
+npx tsx scripts/check-quests.ts
+```
+
+The first runs the claim route against mocks, with no network and no real key, and ends with `all checks passed`. The second runs the quest engine on fixtures and then read-only on the live chain, and ends with `all quest checks passed`.
+
+What these do not cover: a claim through the real Cloudflare widget, the route on the production site, or a same-nonce replacement on Mezo's own node. The [proof page](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/quests-2026-11-06.md) lists the rest.

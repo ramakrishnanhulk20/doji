@@ -1,6 +1,6 @@
 # Doji architecture
 
-Doji lends MUSD against veBTC on Mezo at a fixed rate until a fixed Thursday. Each deployment is a pair of immutable contracts: `CreditMarkets` (lender offers and one market per Thursday, with ERC-1155 credit units) and `LoanManager` (custody of veBTC positions, loans, auctions and settlement). The Wave 2 pair, deployed on 4 November 2026, adds two more: `PayDown` (a position's pool rewards repay its loan) and `UnitMarket` (credit units for sale before their date), and its CreditMarkets can park an offer's waiting MUSD in Mezo's sMUSD vault. New offers and new loans go to the Wave 2 pair; the 20 October pair keeps serving every loan, offer, unit and auction opened on it. A keeper script on GitHub Actions calls the same public functions anyone can call, for both pairs. The website reads the chain directly; there is no backend and no database.
+Doji lends MUSD against veBTC on Mezo at a fixed rate until a fixed Thursday. Each deployment is a pair of immutable contracts: `CreditMarkets` (lender offers and one market per Thursday, with ERC-1155 credit units) and `LoanManager` (custody of veBTC positions, loans, auctions and settlement). The Wave 2 pair, deployed on 4 November 2026, adds two more: `PayDown` (a position's pool rewards repay its loan) and `UnitMarket` (credit units for sale before their date), and its CreditMarkets can park an offer's waiting MUSD in Mezo's sMUSD vault. New offers and new loans go to the Wave 2 pair; the 20 October pair keeps serving every loan, offer, unit and auction opened on it. A keeper script on GitHub Actions calls the same public functions anyone can call, for both pairs. The website reads the chain directly and there is no database. Since 5 November 2026 a small server side backs the quests: a `Faucet` contract pays a new wallet one starter kit, a claim route on the site checks Cloudflare Turnstile and has a relayer send the claim, and a quest engine turns contract logs and one public bonus file into EXP.
 
 ## 1. How the pieces connect
 
@@ -10,7 +10,17 @@ flowchart LR
     B[Borrower wallet]
     L[Lender wallet]
     X["Anyone: buyer, unit buyer or keeper"]
+    N["New wallet with no gas"]
   end
+
+  subgraph Site["dojis.site, no database"]
+    CR["Claim route: POST /api/faucet"]
+    QE["Quest engine: EXP from logs and the bonus file"]
+  end
+
+  CF["Cloudflare Turnstile"]
+  BF["Public bonus file: bonus-exp.json"]
+  FA["Faucet: one starter kit per wallet"]
 
   subgraph Doji["Doji on Mezo, the Wave 2 pair"]
     LM["LoanManager: custody, loans, auctions, settle"]
@@ -57,9 +67,23 @@ flowchart LR
   CM -- "escrow and pay out" --> MUSD
   LM -- "pull and pay out" --> MUSD
   LM -- "lock and settle" --> BTC
+  N -- "address and Turnstile token" --> CR
+  CR -- "check the token" --> CF
+  CR -- "claim, sent and paid for by the relayer" --> FA
+  FA -- "0.001 test BTC and 25 test MUSD" --> N
+  FA -- "pay the kit" --> MUSD
+  QE -- "read logs" --> FA
+  QE -- "read logs" --> LM
+  QE -- "read logs" --> CM
+  QE -- "read logs" --> PD
+  QE -- "read logs" --> UM
+  QE -- "read Voted logs" --> PV
+  QE -- "read bonus entries" --> BF
 ```
 
 The 20 October pair has the same LoanManager, CreditMarkets and PassThrough without the Wave 2 parts: no PayDown, no UnitMarket, no sMUSD vault and no reward operator, and its reward claims accept only PoolsVoter's whitelisted tokens. ValidatorsVoter exists only on Mezo mainnet: both testnet records hold the zero address for it, so on testnet Doji passes votes to PoolsVoter only.
+
+The Faucet, the claim route and the quest engine stand apart from the pairs. No Doji contract reads the Faucet or EXP, so a quest can never move a loan's money (C71). The Faucet holds test tokens only.
 
 ## 2. A loan's life
 
@@ -122,7 +146,7 @@ Each Thursday is its own market, so a loss on one date never touches another. In
 
 ## 4. Contracts and addresses
 
-Mezo testnet (chain 31611), every Doji contract verified on the explorer, none upgradeable.
+Mezo testnet (chain 31611), every Doji contract verified on the explorer, none upgradeable. The Faucet stands apart from the pairs.
 
 | Contract | Wave 2 pair (4 Nov 2026, block 16,564,749) | 20 October pair (block 16,259,280) |
 |---|---|---|
@@ -132,7 +156,9 @@ Mezo testnet (chain 31611), every Doji contract verified on the explorer, none u
 | PayDown | [0xf0dbbD5167F9852234883aD58109dC80692a18DE](https://explorer.test.mezo.org/address/0xf0dbbD5167F9852234883aD58109dC80692a18DE) | none |
 | UnitMarket | [0xC50ff38f0a51Cda01BFB2c7E6324c30Cf5a16e18](https://explorer.test.mezo.org/address/0xC50ff38f0a51Cda01BFB2c7E6324c30Cf5a16e18) | none |
 
-Mezo contracts Doji calls on testnet: veBTC `0xB63fcCd03521Cf21907627bd7fA465C129479231`, PoolsVoter `0x72F8dd7F44fFa19E45955aa20A5486E8EB255738`, fee distributor `0x10B0E7b3411F4A38ca2F6BB697aA28D607924729`, MUSD PriceFeed `0x86bCF0841622a5dAC14A313a15f96A95421b9366`, MUSD `0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503`, BTC ERC-20 `0x7b7C000000000000000000000000000000000000`, and for the Wave 2 pair only the sMUSD vault (MUSDSavingsRate) `0x6f461c68B2c5492C0F5CCEc5a264d692aA7A8e16` and the Router `0x9a1ff7FE3a0F69959A3fBa1F1e5ee18e1A9CD7E9` with its default pool factory `0x4947243CC818b627A5D06d14C4eCe7398A23Ce1A`. ValidatorsVoter is Mezo mainnet only: both testnet records hold the zero address for it, so on testnet Doji passes votes to PoolsVoter only. The full records, with each library's code hash, are `packages/contracts/deployments/31611-wave2.json` and `packages/contracts/deployments/31611.json`.
+Faucet [0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa](https://explorer.test.mezo.org/address/0xCd80D2ef1D47db5c5bc784DE5Ac7a980F8E97BAa), deployed 5 November 2026 at block 16,590,424, relayer [0x837Fbb9E11f47293fF31F4F79AD5D5E3EC29aEbA](https://explorer.test.mezo.org/address/0x837Fbb9E11f47293fF31F4F79AD5D5E3EC29aEbA), record `packages/contracts/deployments/31611-faucet.json`.
+
+Mezo contracts Doji calls on testnet: veBTC `0xB63fcCd03521Cf21907627bd7fA465C129479231`, PoolsVoter `0x72F8dd7F44fFa19E45955aa20A5486E8EB255738`, fee distributor `0x10B0E7b3411F4A38ca2F6BB697aA28D607924729`, MUSD PriceFeed `0x86bCF0841622a5dAC14A313a15f96A95421b9366`, MUSD `0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503`, BTC ERC-20 `0x7b7C000000000000000000000000000000000000`, and for the Wave 2 pair only the sMUSD vault (MUSDSavingsRate) `0x6f461c68B2c5492C0F5CCEc5a264d692aA7A8e16` and the Router `0x9a1ff7FE3a0F69959A3fBa1F1e5ee18e1A9CD7E9` with its default pool factory `0x4947243CC818b627A5D06d14C4eCe7398A23Ce1A`. ValidatorsVoter is Mezo mainnet only: both testnet records hold the zero address for it, so on testnet Doji passes votes to PoolsVoter only. The full records of the pairs, with each library's code hash, are `packages/contracts/deployments/31611-wave2.json` and `packages/contracts/deployments/31611.json`.
 
 How the Wave 2 contracts depend on each other:
 
@@ -140,6 +166,7 @@ How the Wave 2 contracts depend on each other:
 - CreditMarkets fixes the sMUSD vault at deployment. It approves the vault for exactly the amount it deposits and resets the approval to zero, and it judges every vault call by the measured change in its own balances (C30, C34).
 - PayDown fixes LoanManager, the Router and its factory, and reads MUSD, BTC and the PriceFeed from LoanManager at deployment (C42). LoanManager knows nothing about PayDown: PayDown is just an address a borrower may name as the reward operator (C36, C37).
 - UnitMarket fixes the Wave 2 CreditMarkets and reads MUSD from it. It accepts units from that contract alone, so 20 October units cannot be listed (C43).
+- The Faucet fixes MUSD at deployment and calls nothing else on Mezo. It reads BTC one way, its own native balance (C58), and no Doji contract reads the Faucet.
 
 ## 5. What the website reads and writes
 
@@ -153,6 +180,8 @@ The app (`packages/web`) talks to the chain through wagmi and viem, reads addres
 | My loans | positions from Deposited logs with `positionOf`, `loanOf`, `owedOf`, `collateralValue`, `lockOf`, `isUnsafe`, `isOverdue`, veBTC `voted`, fee distributor `claimable`, `claimableMusd`, `claimableBtc` | MUSD `approve`, `repay`, `roll`, `extendLock`, `vote`, `resetVotes`, `claimRewards`, `claimRebase`, `withdrawCollateral`, `claim` |
 | Loan page | the same for any id, plus `auctionOf` and `auctionPrice` | MUSD `approve` and `purchase`, `startAuction`, `cancelAuction`, `prepareSettle`, `settle`; for the loan's borrower, the My loans writes |
 | Try to break it | live targets | none: twelve simulated calls that the contracts refuse |
+| Quests | the wallet's quest logs from Mezo's explorer and RPC, through one decoder (C67); Faucet `claimed`, `btcPerClaim`, `musdPerClaim` and the `Claimed` event of a claim; `/api/leaderboard` for the rankings | `POST /api/faucet` with the address and a Turnstile token, which the relayer turns into `claim`. The wallet signs nothing. The other quests link to Borrow, Lend and My loans, whose writes are above |
+| A wallet's ledger, `/quests/<address>` | the same logs for that address; the share image reads the leaderboard's snapshot | none: an address from a URL is only ever displayed (C76) |
 
 The Wave 2 parts of those screens, under rules C49 and C50:
 
@@ -164,6 +193,14 @@ The Wave 2 parts of those screens, under rules C49 and C50:
 
 The pay-down switch only ever names the PayDown in the address book, and a position whose operator is any other address shows a warning (C50).
 
+Three things run on the server, none with a database.
+
+- `POST /api/faucet` takes an address and a Turnstile token. It checks the format, then Cloudflare, then the chain, then simulates the exact call, and only then signs one `claim`, the only transaction it can sign (C59 to C64).
+- `GET /api/leaderboard` returns the top 50 wallets, with Doji's own removed, from at most one scan a minute (C73, C75).
+- The share image at `/quests/<address>` reads that snapshot and carries only values the code computed (C73, C77).
+
+The quest engine is one module, [table.ts](packages/web/src/lib/quests/table.ts) and [exp.ts](packages/web/src/lib/quests/exp.ts), used by the browser, the leaderboard and the image, so all three give the same EXP from the same logs (C68, C69). A log counts only if a contract in the quest table emitted it at or after the Wave 2 deploy block (C67). An incomplete read is never shown as a final number (C70).
+
 ## 6. Rules the code keeps
 
-The full standard is `docs/security/threat-model.md`: 53 invariants, each pointing to the code that keeps it, and the non-goals. C1 to C29 cover custody, valuation, resolution, credit markets, funds and governance; C30 to C53 cover Wave 2: parked offers, the reward operator, PayDown, UnitMarket, and the keeper and website across two pairs. The independent reviews and their fixes are in `docs/audit/findings-2026-10-20.md` and `docs/audit/findings-2026-11-04.md`, static analysis of the Wave 2 code is in `docs/security/slither-2026-11-04.md`, and the live proofs are in `docs/proof/`.
+The full standard is `docs/security/threat-model.md`: 82 invariants and the non-goals. C1 to C29 cover custody, valuation, resolution, credit markets, funds and governance; C30 to C53 cover Wave 2: parked offers, the reward operator, PayDown, UnitMarket, and the keeper and website across two pairs; C54 to C82 cover the quests: the Faucet, the claim route, the quest engine, the leaderboard and bonus file, the share page, phone wallets, seed wallets, load and deploy. The independent reviews and their fixes are in `docs/audit/findings-2026-10-20.md` and `docs/audit/findings-2026-11-04.md`, static analysis of the Wave 2 code and the Faucet is in `docs/security/slither-2026-11-04.md`, and the live proofs are in `docs/proof/`. The Faucet had the reviewer's threat pass and the test suite, not a separate audit.

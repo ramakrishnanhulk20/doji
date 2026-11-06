@@ -1,6 +1,6 @@
 ---
 title: Security overview
-description: Custody first, the October 5 incident, the 53 rules the app keeps (C30 to C53 for Wave 2), static analysis, and what Doji does not defend against.
+description: Custody first, the October 5 incident, the 82 rules the app keeps (C30 to C53 for Wave 2, C54 to C82 for the quests), static analysis, and what Doji does not defend against.
 ---
 
 Doji holds other people's veBTC positions. Custody comes first, because a contract that holds many positions concentrates one kind of risk: a single flaw can reach every one of them at once.
@@ -9,11 +9,11 @@ Doji holds other people's veBTC positions. Custody comes first, because a contra
 On 5 October 2026 an attacker moved 37 veBTC positions on Mezo mainnet through a trusted-forwarder (meta-transaction) sender-check flaw ([Mezo's incident report](https://mezo.org/blog/incident-report-october-5-2026)). Meta-transactions on veBTC are now disabled. Doji has no meta-transaction or forwarder path at all, and it names a flaw in veBTC itself as a non-goal: the guardian can stop new borrows, but cannot reverse a theft.
 </Callout>
 
-The full standard is [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md). It was written before any contract code, from a plain description of the system, and written again the same way for Wave 2 before any Wave 2 code. Section C is the definition of done: a contract is finished only when every rule is upheld and a test shows it. The contracts cannot be upgraded, so a bug or a Mezo change cannot be fixed in place; the only answer is to pause new risk and launch a new deployment that users move to themselves. That is what Wave 2 is: a new pair, deployed on 4 November 2026, that takes new offers and loans while the 20 October pair keeps serving what was opened on it.
+The full standard is [docs/security/threat-model.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md). It was written before any contract code, from a plain description of the system, and written again the same way for Wave 2 before any Wave 2 code and for the quests before any quest code. Section C is the definition of done: a contract is finished only when every rule is upheld and a test shows it. The contracts cannot be upgraded, so a bug or a Mezo change cannot be fixed in place; the only answer is to pause new risk and launch a new deployment that users move to themselves. That is what Wave 2 is: a new pair, deployed on 4 November 2026, that takes new offers and loans while the 20 October pair keeps serving what was opened on it.
 
 ## The rules, as the threat model groups them
 
-C1 to C29 cover both pairs. The Wave 2 rules, C30 to C53, follow them.
+C1 to C29 cover both pairs. The Wave 2 rules, C30 to C53, follow them, and the quest rules, C54 to C82, come last.
 
 ### Custody and identity
 
@@ -114,12 +114,67 @@ Each rule links to its full text in the threat model.
 - [C50](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c50). The website shows an offer's yield and whether its MUSD is in the vault from contract views, names only the address-book PayDown, and asks for an exact allowance for a buy.
 - [C51](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c51). The deploy checked the vault, the Router and every fixed address before sending anything.
 - [C52](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c52). During a vault outage the website builds borrows and rolls from plain offers only. If the guardian's pull-out cannot run, parking stops and lenders cancel parked offers one by one.
+- [C53](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c53). No write sends a bound looser than the one on screen: a re-read quote, minimum or price goes out as the tighter of the fresh value and the one the user saw.
 
 Wave 2 also changes a few earlier rules: the borrower check (C4) now lets the operator claim, and a claim runs during an auction; a reward claim (C10) pays the caller; the guardian (C19) can also stop parking and pull out; and CreditMarkets never rescues sMUSD (C25). The [threat model](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md) lists every change.
 
+## The quest rules, by feature
+
+Each rule links to its full text in the threat model. No contract, keeper step or faucet limit reads EXP, so a wrong EXP cannot move money (C71). The Faucet had the reviewer's threat pass and the test suite, not a separate audit. C81's load check and C82's checks after a production deploy are still to run.
+
+### The Faucet
+
+- [C54](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c54). A claim is one whole kit, to one address, once ever, and only the relayer can call it. Every record is written before any value moves, and a failed payment reverts the whole claim.
+- [C55](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c55). Recipient code has a fixed price: the BTC payment forwards a fixed gas allowance and copies no return data. There is no is-it-a-contract check, because that would block smart wallets.
+- [C56](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c56). The Faucet's views tell the truth and never revert. One function turns block time into the UTC day, for `claim` and the views alike.
+- [C57](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c57). No burst can take a whole day: claims so far today never pass what has been released so far.
+- [C58](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c58). The owner's reach is bounded and the Faucet owes nobody. Setters stay under hard-coded caps, pause stops `claim` only, withdraw pays only the owner, and BTC is read one way.
+
+### The claim route
+
+- [C59](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c59). The route can sign one shape of transaction: `claim` of a parsed address, to the address-book Faucet, on chain 31611, at value zero, under fixed gas limits. Nothing in it comes from the request.
+- [C60](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c60). No verified token, no signature. Every path to the signer passes one Cloudflare check, and any doubt is a refusal.
+- [C61](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c61). The address sent to Cloudflare is only the one the platform sets. Doji stores no IP and logs no IP or token.
+- [C62](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c62). Only a transaction that simulates gets sent. The other reads choose the refusal message and never permit a send.
+- [C63](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c63). Wasted relayer gas is bounded with no database: a small fixed number in flight, read from the chain, and the loser of a race gets a refusal, never a hash.
+- [C64](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c64). Input is checked cheap-first and the reply is a closed list. The browser shows success only when the chain confirms it.
+- [C65](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c65). Keys stay in one place and do one job: production only, on the server only, and a stolen relayer key reaches one day's claims until the owner replaces it.
+
+### The quest engine
+
+- [C66](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c66). One address parser for every source, so one wallet has one row and one total however it is spelled.
+- [C67](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c67). Only Doji's contracts can earn EXP. A look-alike contract or an old-pair log earns nothing.
+- [C68](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c68). One quest table. A wallet comes from the event's own field and never from the transaction's sender, and a quest is decided from logs alone.
+- [C69](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c69). One EXP function for the browser, the leaderboard and the image. Each quest counts once per wallet, and anyone can rebuild a wallet's EXP from the repository and the chain.
+- [C70](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c70). An incomplete read is never shown as a final number.
+- [C71](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c71). EXP decides nothing today. Every page and image says no more than the published sentence.
+- [C72](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c72). Outbound calls have a fixed shape: constant hosts, no redirects, and caps on size, time and pages.
+
+### The leaderboard and the bonus file
+
+- [C73](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c73). Public routes do fixed work. No volume or variety of requests raises upstream calls above a fixed rate, and an address has one URL.
+- [C74](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c74). A bad bonus file fails the build and is never partly applied. An entry is added only with the reporter's yes.
+- [C75](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c75). Doji's wallets are one list that the rankings remove. It covers Doji's own keys, not a friend's wallet.
+
+### The share page and image
+
+- [C76](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c76). An address from a URL is only ever displayed. Every button acts for the connected wallet alone.
+- [C77](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c77). The image and metadata carry only values this code computed. Raw URL text never reaches them.
+- [C78](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c78). Upstream values are checked as input to the page, other sites cannot frame quest pages, and Cloudflare's widget loads only when a person reaches the claim step.
+
+### Phone wallets
+
+- [C79](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c79). Phone wallets get the same rules as browser wallets. The account and chain are checked before every write, and connecting and claiming ask for no signature.
+
+### Seed wallets, load and deploy
+
+- [C80](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c80). Seed wallets are ordinary users with no role. The site warns before a tester lends at a date that holds a seed loan, and seed loans carry collateral above their debt.
+- [C81](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c81). Earlier limits are rechecked at quest volume: a month of full claims must leave the keeper's bounds and the app's reads holding.
+- [C82](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c82). Deploy checks: the Faucet's code, MUSD, amounts and relayer are checked, and each production deploy must refuse a made-up token and land one real claim.
+
 ## Static analysis
 
-Slither 0.11.6 on the Wave 2 code found 57 results at the deploy gate, and a wider run that also covers Doji's own libraries finds 13 more. Every one, with where it is and why it is safe, is in [docs/security/slither-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/slither-2026-11-04.md).
+Slither 0.11.6 on the Wave 2 code found 57 results at the deploy gate, and a wider run that also covers Doji's own libraries finds 13 more. The Faucet adds 12, so on 6 November 2026 the same two runs read 69 and 82. Every one, with where it is and why it is safe, is in [docs/security/slither-2026-11-04.md](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/slither-2026-11-04.md).
 
 ## What Doji does not defend against
 
@@ -148,7 +203,20 @@ Added for Wave 2:
 - A borrower who names a hostile operator: they lose that position's rewards, never its collateral or debt. A borrower who wants MUSD-only pay-down without BTC sales has no switch for it today, other than naming no operator.
 - One key holding every role at deployment. That is a testnet setup: before any mainnet use the owner becomes a multisig and the guardian a separate key.
 
+Added for the quests:
+
+- One person using many wallets. Turnstile, one claim per address and the daily limit slow that down and do not prove one human. A paid solving service can still keep claims scarce.
+- A claim for an address the caller does not own, which only gives that address a kit.
+- Two wallets of one person completing "a stranger borrows from your offer" or trading units between them, and dust actions, which count unless a quest says otherwise.
+- A lying explorer or RPC changing the EXP shown, which is why EXP decides nothing today. An explorer outage makes quests and the rankings unavailable.
+- A stolen relayer key within its limit, an owner key compromise, which reaches the whole Faucet, and the Faucet running out through honest use.
+- Reuse of the WalletConnect project ID by a look-alike site, since the ID is public and open to any origin. A wallet's own prompt shows which site is asking.
+- A compromise of Cloudflare, Reown, Vercel, GitHub or the wallet app beyond lockfile pinning, and a wallet that hides what it signs.
+- Screenshots, fake images and vanity addresses. A wallet's page shows the full address.
+- Legal terms for any future use of EXP, which do not exist yet.
+
 ## More
 
 - [Audit](/docs/security/audit): the findings of both independent reviews, 4 November and 20 October, and how each was settled.
+- [The quests' live proof](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/quests-2026-11-06.md): the Faucet and the claim route on Mezo testnet, and what that does not prove.
 - [Try to break it](/docs/security/try-to-break-it): twelve attacks you can run against the live contracts.
