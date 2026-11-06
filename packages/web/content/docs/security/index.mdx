@@ -120,7 +120,7 @@ Wave 2 also changes a few earlier rules: the borrower check (C4) now lets the op
 
 ## The quest rules, by feature
 
-Each rule links to its full text in the threat model. No contract, keeper step or faucet limit reads EXP, so a wrong EXP cannot move money (C71). The Faucet had the reviewer's threat pass and the test suite, not a separate audit. C81's load check and C82's checks after a production deploy are still to run.
+Each rule links to its full text in the threat model. No contract, keeper step or faucet limit reads EXP, so a wrong EXP cannot move money (C71). The Faucet had the reviewer's threat pass and the test suite, not a separate audit. C81's [load check](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/proof/load-check-2026-11-06.md) ran on a fork on 6 November 2026. C82's checks after a production deploy are still to run.
 
 ### The Faucet
 
@@ -169,7 +169,7 @@ Each rule links to its full text in the threat model. No contract, keeper step o
 ### Seed wallets, load and deploy
 
 - [C80](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c80). Seed wallets are ordinary users with no role. The site warns before a tester lends at a date that holds a seed loan, and seed loans carry collateral above their debt.
-- [C81](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c81). Earlier limits are rechecked at quest volume: a month of full claims must leave the keeper's bounds and the app's reads holding.
+- [C81](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c81). Earlier limits are rechecked at quest volume: 300 offers, 300 loans and 100 live auctions leave the keeper's bounds and the app's reads holding, and a run past a bound turns red.
 - [C82](https://github.com/ramakrishnanhulk20/doji/blob/main/docs/security/threat-model.md#c82). Deploy checks: the Faucet's code, MUSD, amounts and relayer are checked, and each production deploy must refuse a made-up token and land one real claim.
 
 ## Static analysis

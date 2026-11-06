@@ -135,6 +135,9 @@ function Chart({ settings, auctions, width, height }: ChartProps) {
   );
 }
 
+// 101 open auctions ran 2,300 px on a phone in the load check and pushed the chart off the screen.
+const AUCTIONS_LISTED = 6;
+
 export function AuctionChart() {
   const settings = useRiskSettings();
   const auctions = useOpenAuctions();
@@ -142,6 +145,7 @@ export function AuctionChart() {
   const [wrapRef, seen] = useInViewOnce<HTMLDivElement>(0.4);
   const frameRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1000);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -156,6 +160,7 @@ export function AuctionChart() {
   const height = width < 768 ? CHART_HEIGHT.phone : CHART_HEIGHT.desktop;
   const data = settings.data;
   const live = auctions.data ?? [];
+  const listed = showAll ? live : live.slice(0, AUCTIONS_LISTED);
 
   const bar = <span className="inline-bar shimmer" aria-hidden="true" />;
   const gone = <span className="is-unavailable">unavailable</span>;
@@ -172,11 +177,16 @@ export function AuctionChart() {
 
         <div ref={wrapRef} className="chart-wrap" data-drawn={reduced || seen}>
           <div className="chart-live" aria-live="polite">
-            {live.map((auction) => (
+            {listed.map((auction) => (
               <Link key={String(auction.tokenId)} className="link-draw" href={`/loans/${auction.tokenId}`}>
                 Loan {String(auction.tokenId)} is in auction now: {formatMusd(auction.price)} MUSD
               </Link>
             ))}
+            {listed.length < live.length && (
+              <button type="button" className="link-draw" onClick={() => setShowAll(true)}>
+                Show all {live.length} auctions
+              </button>
+            )}
           </div>
           <div ref={frameRef}>
             {data ? (

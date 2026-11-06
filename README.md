@@ -118,7 +118,7 @@ A new wallet needs no gas. Pressing Claim sends `POST /api/faucet`, the route ch
 
 Doji connects phone wallets through WalletConnect: a QR code on a laptop, or the wallet app on a phone. The founder tested this on a real phone on 6 November 2026.
 
-Every live transaction behind this section, and what they do not prove, is in [docs/proof/quests-2026-11-06.md](docs/proof/quests-2026-11-06.md).
+Every live transaction behind this section, and what they do not prove, is in [docs/proof/quests-2026-11-06.md](docs/proof/quests-2026-11-06.md). A [load check on a fork](docs/proof/load-check-2026-11-06.md) ran the keeper and the app's pages at 300 offers, 300 loans and 100 live auctions.
 
 ## Testnet deployment
 

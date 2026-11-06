@@ -291,12 +291,21 @@
   margin-bottom: 12px;
 }
 
-.chart-live a {
+.chart-live a,
+.chart-live button {
   padding-bottom: 2px;
   font-family: var(--font-plex-mono), ui-monospace, monospace;
   font-size: 12px;
   line-height: 1.4;
   color: var(--paper);
+}
+
+.chart-live button {
+  padding-inline: 0;
+  padding-top: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
 }
 
 .chart-svg {
