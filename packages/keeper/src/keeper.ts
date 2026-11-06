@@ -100,6 +100,13 @@ export interface PassSummary {
   tokenIds: number;
   openLoans: number;
   maturities: number;
+  // Open loans and loan dates past the per-run read bounds. Either one above 0 exits 5.
+  loansNotRead: number;
+  datesNotRead: number;
+  // Read this run but not reached, because MAX_ACTIONS ran out first.
+  loansLeft: number;
+  loansLeftDue: number;
+  datesLeft: number;
   actions: number;
   harvestPositions: number;
   harvests: number;
@@ -638,8 +645,8 @@ function collectLoanLogs(pass: Pass, head: bigint): Promise<{ logs: LoanLog[]; t
 
 // Every weekly loan date a loan can be open at: week multiples (Thursdays 00:00 UTC, as 1970-01-01 was a Thursday)
 // from the first at or after deployment up to the furthest date a new loan can pick now, the most recent
-// MAX_MATURITIES_PER_RUN of them.
-async function loanDates(pass: Pass): Promise<bigint[]> {
+// MAX_MATURITIES_PER_RUN of them, and how many older dates fell outside that window.
+async function loanDates(pass: Pass): Promise<{ dates: bigint[]; older: number }> {
   const { reader } = pass.clients;
   const deployed = await reader.getBlock({ blockNumber: pass.record.block });
   const maxTerm = await reader.readContract({
@@ -649,10 +656,12 @@ async function loanDates(pass: Pass): Promise<bigint[]> {
   });
   const first = ((deployed.timestamp + WEEK - 1n) / WEEK) * WEEK;
   const dates: bigint[] = [];
-  for (let m = ((pass.now + BigInt(maxTerm)) / WEEK) * WEEK; m >= first && dates.length < MAX_MATURITIES_PER_RUN; m -= WEEK) {
-    dates.push(m);
+  let older = 0;
+  for (let m = ((pass.now + BigInt(maxTerm)) / WEEK) * WEEK; m >= first; m -= WEEK) {
+    if (dates.length < MAX_MATURITIES_PER_RUN) dates.push(m);
+    else older += 1;
   }
-  return dates.reverse();
+  return { dates: dates.reverse(), older };
 }
 
 // The chain's own count of open loans at each date is the check on the scan. Counts are read at the scanned head
@@ -698,25 +707,40 @@ async function resolvePair(pass: Pass, head: bigint): Promise<void> {
   const { clients, record } = pass;
   const scan = await collectLoanLogs(pass, head);
   const { open, tokenIds, skipped, positions } = selectOpenLoans(scan.logs);
-  const maturities = await loanDates(pass);
+  const { dates: maturities, older } = await loanDates(pass);
   pass.summary.tokenIds += tokenIds.length;
   pass.summary.maturities += maturities.length;
+  pass.summary.loansNotRead += skipped;
+  pass.summary.datesNotRead += older;
   console.log(`${pass.tag} scan: ${scan.text}; ${open.length} open loans of ${positions} positions; ${maturities.length} dates checked`);
   if (skipped > 0) {
     console.log(`${pass.tag} warning: ${skipped} open loans wait for a later pass; this pass reads the ${MAX_POSITIONS_PER_RUN} due first`);
   }
+  if (older > 0) {
+    console.log(`${pass.tag} warning: ${older} older loan dates wait outside this pass's ${MAX_MATURITIES_PER_RUN}`);
+  }
   await checkCompleteness(clients.reader, record.creditMarkets, open, maturities, head, pass.tag);
 
-  for (const tokenId of tokenIds) {
-    if (limitReached(pass)) return;
+  const maturityOf = new Map(open.map((loan) => [loan.tokenId, loan.maturity]));
+  for (const [at, tokenId] of tokenIds.entries()) {
+    if (limitReached(pass)) {
+      const left = tokenIds.slice(at);
+      pass.summary.loansLeft += left.length;
+      pass.summary.loansLeftDue += left.filter((id) => maturityOf.get(id)! <= pass.now).length;
+      pass.summary.datesLeft += maturities.length;
+      return;
+    }
     try {
       await handleLoan(pass, tokenId);
     } catch (err) {
       line(pass, `loan ${tokenId}`, "none", `read failed: ${describeError(err)}`, "skipped");
     }
   }
-  for (const maturity of maturities) {
-    if (limitReached(pass)) return;
+  for (const [at, maturity] of maturities.entries()) {
+    if (limitReached(pass)) {
+      pass.summary.datesLeft += maturities.length - at;
+      return;
+    }
     try {
       await handleMarket(pass, maturity);
     } catch (err) {
@@ -1103,6 +1127,11 @@ export async function runPass(config: Config): Promise<PassSummary> {
     tokenIds: 0,
     openLoans: 0,
     maturities: 0,
+    loansNotRead: 0,
+    datesNotRead: 0,
+    loansLeft: 0,
+    loansLeftDue: 0,
+    datesLeft: 0,
     actions: 0,
     harvestPositions: 0,
     harvests: 0,
@@ -1171,7 +1200,10 @@ export async function runPass(config: Config): Promise<PassSummary> {
   const mode = config.dry ? "simulated" : "sent";
   console.log(
     plainText(
-      `done: ${s.openLoans} open of ${s.tokenIds} positions, ${s.maturities} maturities, ${s.actions} ${mode}; ` +
+      `done: ${s.openLoans} open of ${s.tokenIds} positions read, ` +
+        `${s.loansNotRead} open loans and ${s.datesNotRead} dates past the per-run bounds, ` +
+        `${s.maturities} maturities, ${s.actions} ${mode}; ` +
+        `left for the next run: ${s.loansLeft} loans, ${s.loansLeftDue} of them past their date, and ${s.datesLeft} dates; ` +
         `${s.harvests} harvests ${mode}, ${s.harvestSkips} positions skipped of ${s.harvestPositions} read; ` +
         `${s.failedSimulations} refused in simulation, ${s.unexpectedRefusals} of them unexpected, ` +
         `${s.failedSends} failed sends, ${s.vaultAlerts} vault alerts`,

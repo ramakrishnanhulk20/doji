@@ -42,8 +42,8 @@ A pair is one LoanManager and its CreditMarkets, plus PayDown and UnitMarket fro
 | Bound | Limit |
 | --- | --- |
 | Deployment records | 4 |
-| Open loans read per pair per pass | 150, the ones due first |
-| Loan dates checked per pair | 32 |
+| Open loans read per pair per pass | 150, the ones due first; a run past this exits 5 |
+| Loan dates checked per pair | 32; a run past this exits 5 |
 | Explorer calls per event type | 20, at 1,000 events each |
 | RPC log pages when the explorer is down | 64, of 10,000 blocks each |
 | Loan and date transactions per pass, across all pairs | `MAX_ACTIONS`, 10 by default, at most 50 |
@@ -102,8 +102,9 @@ Exit codes:
 | 2 | A checked date has more open loans on chain than the scan found, or could not be checked. |
 | 3 | A vault check raised a `VAULT ALERT`. |
 | 4 | A harvest was refused for a reason other than the three known BTC refusals, `NotBorrower` when the operator changed mid-run, `HarvestsPaused`, or nothing to claim. Every other job has run by then. |
+| 5 | More open loans or loan dates exist than one run reads, so some wait. Every due job within the bound still ran. |
 
-When more than one applies, 1 wins over 3, 3 over 4, and 4 over 2. A dry run exits 2, 3 and 4 the same way.
+When more than one applies, 1 wins over 3, 3 over 4, 4 over 2, and 2 over 5. A dry run exits 2, 3, 4 and 5 the same way.
 
 ## Run it on GitHub
 

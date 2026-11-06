@@ -44,7 +44,7 @@ It prints one line per decision, starting with the name of the record the object
 31611-wave2 harvest 415            harvest        2.5 MUSD and 0.00001 BTC earned, worth 3.28 MUSD, 4 token(s) from 1 gauge(s) | simulated
 ```
 
-The exit code is 0 when the pass finished, even if some simulations were refused. It is 1 when a setting is missing, a record or the chain does not check out, a live pass finds the keeper key holds a role, a pair's jobs stopped, or a transaction that was sent failed; 3 when a vault check raised a `VAULT ALERT`; 2 when a checked date has more open loans on chain than the scan found or cannot be read; and 4 when a harvest was refused for a reason the keeper does not expect. A dry run exits 2, 3 and 4 the same way. When more than one applies, 1 wins over 3, 3 over 4, and 4 over 2.
+The exit code is 0 when the pass finished, even if some simulations were refused. It is 1 when a setting is missing, a record or the chain does not check out, a live pass finds the keeper key holds a role, a pair's jobs stopped, or a transaction that was sent failed; 3 when a vault check raised a `VAULT ALERT`; 2 when a checked date has more open loans on chain than the scan found or cannot be read; 4 when a harvest was refused for a reason the keeper does not expect; and 5 when more open loans or loan dates exist than one run reads, so some wait. Every due job within the bound still ran. A dry run exits 2, 3, 4 and 5 the same way. When more than one applies, 1 wins over 3, 3 over 4, 4 over 2, and 2 over 5.
 
 ## Run it on your machine
 
