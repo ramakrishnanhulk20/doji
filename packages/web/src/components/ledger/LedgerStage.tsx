@@ -45,9 +45,6 @@ const SCRUB = 0.6;
 const SHADE_PEAK = 0.35;
 const LIGHT_PEAK = 0.22;
 
-// How long the book must hold still before its pages take clicks again.
-const IDLE_MS = 160;
-
 // The right page on the cover's inside face only takes clicks once it has faded in.
 const RIGHT_ONE_LIVE_AT = COVER_END - 0.01;
 
@@ -150,6 +147,10 @@ function PinnedStage({ rank, header, chapters, onOpen, landing }: StageProps) {
     const leaves = Array.from({ length: count }, (_, k) => pick(`[data-leaf="${k}"]`));
     const cover = leaves[0];
     if (!cover) return;
+    const faces = leaves.map((_, k) => ({
+      front: pick(`[data-leaf="${k}"] > .ledger-stage-front`),
+      back: pick(`[data-leaf="${k}"] > .ledger-stage-back`),
+    }));
     const lightOf = (k: number) => pickAll(`[data-light="${k}"]`);
     const shadeOf = (name: string) => pick(`[data-shade="${name}"]`);
 
@@ -169,7 +170,6 @@ function PinnedStage({ rank, header, chapters, onOpen, landing }: StageProps) {
     // The page spread on show is the number of leaves past the halfway turn. Only its two pages take focus and clicks.
     const flips = [COVER_START + (COVER_END - COVER_START) / 2, ...Array.from({ length: count - 1 }, (_, i) => i + 1.5)];
     let lastKey = -1;
-    let idle = 0;
     const track = (time: number) => {
       const spread = flips.filter((at) => time >= at).length;
       const rightOneLive = time >= RIGHT_ONE_LIVE_AT;
@@ -181,14 +181,15 @@ function PinnedStage({ rank, header, chapters, onOpen, landing }: StageProps) {
           const waiting = side === "right" && Number(index) === 1 && !rightOneLive;
           page.inert = Number(index) !== spread || waiting;
         }
+        // backface-visibility hides a face turned away from the reader but leaves it in hit testing, where it can catch the
+        // pointer meant for the page on show. Leaf k has turned once the spread on show is past it.
+        faces.forEach(({ front, back }, k) => {
+          front.inert = k < spread;
+          back.inert = k >= spread;
+        });
       }
       // The headline fades out by scroll, so its buttons must stop taking clicks before they sit invisible over the book.
       head.inert = time >= HEAD_FADE / 2;
-      book.dataset.moving = "true";
-      window.clearTimeout(idle);
-      idle = window.setTimeout(() => {
-        delete book.dataset.moving;
-      }, IDLE_MS);
     };
 
     let intro: gsap.core.Timeline | undefined;
@@ -286,8 +287,6 @@ function PinnedStage({ rank, header, chapters, onOpen, landing }: StageProps) {
       window.cancelAnimationFrame(raf);
       ctx.revert();
       watch.disconnect();
-      window.clearTimeout(idle);
-      delete book.dataset.moving;
       frame.style.removeProperty("--ledger-fit");
     };
   }, [count]);

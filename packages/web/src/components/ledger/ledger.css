@@ -1082,8 +1082,15 @@
   transform-style: preserve-3d;
 }
 
-.ledger-stage-book[data-moving="true"] {
+/* The browser's hit test inside a 3D scene does not always follow the painted depth: an empty layer, or a leaf lower in the
+   pile, can catch the point over the page on show. So nothing in the scene takes the pointer but the tiles. Pages off show
+   and faces turned away are inert, which keeps their tiles out of reach as well. */
+.ledger-stage-drop {
   pointer-events: none;
+}
+
+.ledger-stage-drop .ledger-entry {
+  pointer-events: auto;
 }
 
 /* 1120 by 680, centred on the screen, scaled as one piece by the script to leave a 40px margin. */
