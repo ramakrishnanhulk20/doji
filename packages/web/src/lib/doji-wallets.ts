@@ -15,6 +15,7 @@ const LISTED: readonly string[] = [
   "0xb3a727A0447D2c0168395124cb374a970bDCA524", // claim route proof
   "0xE26ca169c608885406162710AE6731EfBdd41ccA", // first real claim
   "0xd57D8F8A615F35133D8121e58F4ed778A4F612E9", // team test wallet
+  "0xdcF9b05AfCEce0d14fCb4Dcc59A338aC89b01F31", // production claim check
 ];
 
 function parsedList(): ReadonlySet<Address> {
