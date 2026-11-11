@@ -364,6 +364,14 @@
   border-radius: 8px;
 }
 
+/* On a phone about 2.25 cards fit the row, so the third always peeks out and shows that the row scrolls. */
+@media (max-width: 639.98px) {
+  .date-strip .date-card,
+  .date-strip .date-skeleton {
+    flex-basis: calc((100% - 8px) / 2.25);
+  }
+}
+
 @media (min-width: 640px) {
   .date-strip {
     display: grid;

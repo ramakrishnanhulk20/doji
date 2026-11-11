@@ -177,6 +177,9 @@ export function AuctionChart() {
 
         <div ref={wrapRef} className="chart-wrap" data-drawn={reduced || seen}>
           <div className="chart-live" aria-live="polite">
+            {auctions.isSuccess && live.length === 0 && (
+              <span className="chart-live-empty">No loan is in auction right now.</span>
+            )}
             {listed.map((auction) => (
               <Link key={String(auction.tokenId)} className="link-draw" href={`/loans/${auction.tokenId}`}>
                 Loan {String(auction.tokenId)} is in auction now: {formatMusd(auction.price)} MUSD

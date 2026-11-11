@@ -338,9 +338,17 @@
   }
 
   .hero-menu-button {
+    position: relative;
     display: inline-flex;
     align-items: center;
     margin-right: 32px;
+  }
+
+  /* An invisible larger target: the drawn button stays 32px tall, the tap area reaches 44px. */
+  .hero-menu-button::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
   }
 }
 

@@ -131,7 +131,7 @@ export function CollateralStep(props: CollateralStepProps) {
               : (
                 <>
                   Connect a wallet to see your balance. Need test BTC? You can{" "}
-                  <Link className="link-draw" href="/quests">
+                  <Link className="link-draw link-cue" href="/quests">
                     claim a free starter kit
                   </Link>
                   .

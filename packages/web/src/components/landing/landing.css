@@ -308,6 +308,13 @@
   cursor: pointer;
 }
 
+.chart-live-empty {
+  font-family: var(--font-plex-mono), ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--paper-dim);
+}
+
 .chart-svg {
   display: block;
   width: 100%;

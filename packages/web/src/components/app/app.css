@@ -24,6 +24,12 @@
   background-size: 100% 1px;
 }
 
+/* Phones have no hover, and this link is the only way to the next step. */
+.link-cue {
+  color: var(--paper);
+  background-size: 100% 1px;
+}
+
 /* Top bar */
 .topbar {
   position: sticky;
@@ -111,6 +117,7 @@
 }
 
 .topbar-menu-button {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -127,6 +134,13 @@
 
 .topbar-menu-button:hover {
   background: rgba(241, 230, 210, 0.06);
+}
+
+/* An invisible larger target: the drawn button stays 40px, the tap area reaches 44px. */
+.topbar-menu-button::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
 }
 
 .topbar-menu-button span {

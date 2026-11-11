@@ -815,11 +815,12 @@
   }
 }
 
+/* Taller padding makes a 44px tap target; the top offset drops by the same amount so the word stays put. */
 .ledger-slip-close {
   position: absolute;
-  top: 28px;
+  top: 20px;
   right: 24px;
-  padding: 6px 8px;
+  padding: 14px 8px;
   border: 0;
   background: none;
   font-family: var(--font-plex-mono), ui-monospace, monospace;

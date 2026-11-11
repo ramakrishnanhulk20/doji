@@ -22,7 +22,7 @@ export function BtcStrip() {
   return (
     <div className="btc-strip">
       You need a little test BTC for gas.{" "}
-      <Link className="link-draw" href="/quests">
+      <Link className="link-draw link-cue" href="/quests">
         Claim a free starter kit
       </Link>
     </div>
