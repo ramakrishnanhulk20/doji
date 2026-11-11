@@ -1198,13 +1198,18 @@ export async function runPass(config: Config): Promise<PassSummary> {
 
   const s = summary;
   const mode = config.dry ? "simulated" : "sent";
+  // Two lines, because plainText cuts anything past MAX_TEXT and the summary is longer than that.
   console.log(
     plainText(
       `done: ${s.openLoans} open of ${s.tokenIds} positions read, ` +
         `${s.loansNotRead} open loans and ${s.datesNotRead} dates past the per-run bounds, ` +
         `${s.maturities} maturities, ${s.actions} ${mode}; ` +
-        `left for the next run: ${s.loansLeft} loans, ${s.loansLeftDue} of them past their date, and ${s.datesLeft} dates; ` +
-        `${s.harvests} harvests ${mode}, ${s.harvestSkips} positions skipped of ${s.harvestPositions} read; ` +
+        `left for the next run: ${s.loansLeft} loans, ${s.loansLeftDue} of them past their date, and ${s.datesLeft} dates`,
+    ),
+  );
+  console.log(
+    plainText(
+      `then: ${s.harvests} harvests ${mode}, ${s.harvestSkips} positions skipped of ${s.harvestPositions} read; ` +
         `${s.failedSimulations} refused in simulation, ${s.unexpectedRefusals} of them unexpected, ` +
         `${s.failedSends} failed sends, ${s.vaultAlerts} vault alerts`,
     ),

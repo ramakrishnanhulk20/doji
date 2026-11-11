@@ -100,7 +100,7 @@ export function Facts({ view, opened }: FactsProps) {
       </Fact>
 
       {hasLoan && (
-        <Fact label="Limit" wide>
+        <Fact label="Safety" wide>
           <LimitBar
             usedBps={lineUsedBps(view)}
             label={line === null ? "Auction line" : `Auction line at BTC ${musdText(line)} MUSD`}
@@ -112,7 +112,7 @@ export function Facts({ view, opened }: FactsProps) {
         {lock === null ? unavailable : lock.isPermanent ? "permanent" : formatDate(lock.end)}
       </Fact>
       <Fact label="Votes">{view.voted === null ? unavailable : view.voted ? "still counting" : "yours to cast"}</Fact>
-      <Fact label="Rewards">
+      <Fact label="BTC rebase">
         {view.rewards === null ? unavailable : view.rewards > 0n ? `${btcText(view.rewards)} BTC waiting` : "none due yet"}
       </Fact>
 

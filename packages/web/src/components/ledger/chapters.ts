@@ -112,7 +112,7 @@ export const QUEST_COPY: Record<QuestId, QuestCopy> = {
   },
   auction: {
     title: "Buy a loan at auction",
-    steps: ["Find a loan in auction on the landing page chart.", "Open it and check the price.", "Press the Buy button and confirm."],
+    steps: ["Open the landing page: every loan in auction is listed above its auction chart.", "Open it and check the price.", "Press the Buy button and confirm."],
     need: "Enough MUSD for the price.",
     button: { label: "See auctions", href: "/" },
   },

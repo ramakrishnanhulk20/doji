@@ -548,7 +548,7 @@ function LivePanel({ view, now, busy }: PayDownPanelProps) {
                   <i className="paydown-swatch paydown-swatch-borrower" aria-hidden="true" />
                   the borrower
                 </span>
-                <span>of {musdText(view.loan.face)} MUSD owed</span>
+                <span>of the {musdText(view.loan.face)} MUSD first owed</span>
               </div>
             </>
           )}

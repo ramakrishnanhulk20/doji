@@ -325,14 +325,11 @@ The rest of this path needs no wallet, and nothing in it spends anything.
 
 The Wave 2 contracts' first live transactions, from the deploy to two parked offers, the pay-down loan 411, a units sale and the first harvests, are in [docs/proof/wave2-live-2026-11-04.md](docs/proof/wave2-live-2026-11-04.md). The Faucet, the claim route's live claim and the market seeded for testers are in [docs/proof/quests-2026-11-06.md](docs/proof/quests-2026-11-06.md). The same day on the 20 October pair, a veBTC locked directly on Mezo was deposited, borrowed against and taken back, fresh offers were posted and lenders were paid out: [docs/proof/live-paths-2026-11-04.md](docs/proof/live-paths-2026-11-04.md).
 
-Then prove the main promise on the live network yourself. By default the script acts on the Wave 2 pair in `deployments/31611-wave2.json`. It needs bash, Python 3, Foundry and one testnet wallet of your own:
+Then prove the main promise on the live network yourself. By default the script acts on the Wave 2 pair in `deployments/31611-wave2.json`. It needs bash, Python 3, [Foundry](https://book.getfoundry.sh/getting-started/installation), a clone of this repository (see [Quick start for developers](#quick-start-for-developers) below) and one testnet wallet of your own:
 
 1. Run `cast wallet new` to get a fresh address and private key.
 2. Run `cp packages/contracts/.env.example packages/contracts/.env` and set only `BORROWER_PRIVATE_KEY` and `BORROWER_ADDRESS` to that wallet. The other wallets in the file belong to the deploy and seed scripts.
-3. Claim test BTC for that address from the [Mezo faucet](https://faucet.test.mezo.org), which has a CAPTCHA. The run needs at least 0.0008 test BTC.
-4. Get a few cents of test MUSD for the interest. The faucet gives only BTC, so borrow 10 MUSD on [Borrow](https://dojis.site/borrow) with the same wallet, or swap BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). The script checks both balances before it sends anything.
-
-A starter kit also covers steps 3 and 4, if you import this wallet into a wallet app and claim on [Quests](https://dojis.site/quests): 0.001 test BTC and 25 test MUSD, once per wallet.
+3. Fund that wallet. The run needs at least 0.0008 test BTC, and a few cents of test MUSD for the interest. The simplest way is a starter kit: import the wallet into a wallet app and claim on [Quests](https://dojis.site/quests) for 0.001 test BTC and 25 test MUSD, once per wallet. The [Mezo faucet](https://faucet.test.mezo.org) also gives test BTC, behind a CAPTCHA, but no MUSD, so with it alone you would also need to swap a little BTC for MUSD in Mezo's testnet app at [testnet.mezo.org](https://testnet.mezo.org). The script checks both balances before it sends anything.
 
 More detail is in [Run the proof yourself](https://dojis.site/docs/developers/run-the-proof).
 
@@ -358,7 +355,7 @@ git submodule update --init
 
 The submodule step fetches forge-std and OpenZeppelin Contracts into `packages/contracts/lib`. `forge install` with no arguments does the same.
 
-Contracts (needs [Foundry](https://book.getfoundry.sh) 1.8 or newer; the full `forge test` takes 2 to 3 minutes and prints its summary at the end):
+Contracts (needs [Foundry](https://book.getfoundry.sh) 1.8 or newer; the full `forge test` takes about 4 minutes and prints its summary at the end):
 
 ```bash
 cd packages/contracts
