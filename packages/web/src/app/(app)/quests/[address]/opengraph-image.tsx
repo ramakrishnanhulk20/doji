@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 // Long enough for a first scan to finish after the reply, because `after` keeps the function alive for it.
 export const maxDuration = 60;
 
-const SHARED_CACHE = "public, s-maxage=60, stale-while-revalidate=600";
+const SHARED_CACHE = "public, s-maxage=60, stale-while-revalidate=60";
 
 // Long enough for a usual scan, short enough that a link preview is still waiting.
 const READ_CEILING_MS = 9_000;

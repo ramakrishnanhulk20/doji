@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const KEEP_EVERY_SECONDS = 60;
-const SHARED_CACHE = "public, s-maxage=60, stale-while-revalidate=600";
+const SHARED_CACHE = "public, s-maxage=60, stale-while-revalidate=60";
 
 type Board = Pick<ExpSnapshot, "asOf" | "rows">;
 

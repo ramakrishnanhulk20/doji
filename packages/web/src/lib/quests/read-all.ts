@@ -50,6 +50,7 @@ export function leaderboardRows(wallets: readonly WalletProgress[]): BoardRow[] 
 
 const SNAPSHOT_EVERY_MS = 60_000;
 const SNAPSHOT_EVERY_SECONDS = 60;
+const FRESH_FOR_SECONDS = 2 * SNAPSHOT_EVERY_SECONDS;
 // New reads stop here and the slowest one running takes 10 s more, which lands under the 60 s maxDuration of both routes.
 const SNAPSHOT_BUDGET_MS = 45_000;
 
@@ -93,6 +94,10 @@ const cachedSnapshot = unstable_cache(snapshotAtMostOnceAMinute, ["quest-exp-sna
  * The one cached scan (C73): the leaderboard route reads its rows and the share image its wallets, so neither scans on
  * its own. Takes no input, so every caller gets one answer.
  */
-export function readExpSnapshot(): Promise<ExpSnapshot> {
-  return cachedSnapshot();
+export async function readExpSnapshot(): Promise<ExpSnapshot> {
+  const cached = await cachedSnapshot();
+  // unstable_cache hands back its saved entry first and scans in the background, so after a quiet spell the first caller
+  // would get a board hours old. That caller waits for this instance's one scan a minute instead, so C73 still holds.
+  if (Math.floor(Date.now() / 1000) - cached.asOf <= FRESH_FOR_SECONDS) return cached;
+  return snapshotAtMostOnceAMinute();
 }

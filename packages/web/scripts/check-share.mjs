@@ -31,7 +31,7 @@ const NO_EXP_ONE = "0x1111111111111111111111111111111111111111";
 const NO_EXP_TWO = "0x2222222222222222222222222222222222222222";
 const WALLET_A = "0x1111111111111111111111111111111111111111";
 const SEED_DATE = "Thu 12 Nov";
-const SHARED_CACHE = "public, s-maxage=60, stale-while-revalidate=600";
+const SHARED_CACHE = "public, s-maxage=60, stale-while-revalidate=60";
 const PAPER_DIM = "rgb(185, 174, 156)";
 const INK = "rgb(14, 12, 11)";
 const BURST = 500;
