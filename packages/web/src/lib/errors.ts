@@ -233,8 +233,26 @@ export function findRevert(error: unknown): Revert | null {
   };
 }
 
+// A browser wallet wraps its own node's refusal as "Internal JSON-RPC error." and keeps the node's words in `data`,
+// either directly or under `originalError` or `cause`. The deepest such message is the one that says why.
+function walletDataWords(error: unknown): string | undefined {
+  let found: string | undefined;
+  let current: unknown = error;
+  for (let depth = 0; depth < 10 && typeof current === "object" && current !== null; depth++) {
+    const data = (current as { data?: unknown }).data;
+    if (typeof data === "object" && data !== null) {
+      const nested = data as { message?: unknown; originalError?: { message?: unknown }; cause?: { message?: unknown } };
+      for (const message of [nested.message, nested.originalError?.message, nested.cause?.message]) {
+        if (typeof message === "string" && message.trim()) found = message;
+      }
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return found;
+}
+
 function wordsOf(error: unknown): string | undefined {
-  const firstLine = error instanceof BaseError ? error.details?.split("\n")[0] : undefined;
+  const firstLine = (walletDataWords(error) ?? (error instanceof BaseError ? error.details : undefined))?.split("\n")[0];
   const words = firstLine?.trim().slice(0, 160).trimEnd();
   return words ? words : undefined;
 }
