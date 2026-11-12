@@ -204,7 +204,7 @@ const knownAbi = [
   ...routerErrorsAbi,
 ] as unknown as Abi;
 
-export type Revert = { name: string; args: Args; reason?: string };
+export type Revert = { name: string; args: Args; reason?: string; bare?: true };
 
 /** The contract error behind a failed call, decoded with every ABI Doji knows, or null when it was not a revert. */
 export function findRevert(error: unknown): Revert | null {
@@ -225,7 +225,27 @@ export function findRevert(error: unknown): Revert | null {
       return { name: reverted.signature ?? reverted.raw.slice(0, 10), args: [], reason: reverted.reason };
     }
   }
-  return { name: reverted.signature ?? "unknown error", args: [], reason: reverted.reason };
+  return {
+    name: reverted.signature ?? "unknown error",
+    args: [],
+    reason: reverted.reason,
+    ...(reverted.signature === undefined ? { bare: true as const } : {}),
+  };
+}
+
+function wordsOf(error: unknown): string | undefined {
+  const firstLine = error instanceof BaseError ? error.details?.split("\n")[0] : undefined;
+  const words = firstLine?.trim().slice(0, 160).trimEnd();
+  return words ? words : undefined;
+}
+
+function saysReverted(words: string | undefined): boolean {
+  return /execution reverted/i.test(words ?? "");
+}
+
+/** True when a node or wallet stumbled rather than the contract refusing: an internal error with no revert data. */
+export function isNodeHiccup(error: unknown): boolean {
+  return findRevert(error)?.bare === true && !saysReverted(wordsOf(error));
 }
 
 function isRejection(error: unknown): boolean {
@@ -274,6 +294,21 @@ const NODE_REFUSALS: readonly { pattern: RegExp; detail: string }[] = [
   },
 ];
 
+const withFullStop = (words: string): string => (words.endsWith(".") ? words : `${words}.`);
+
+// viem files a wallet's or node's internal error (-32603) as a revert with no data and keeps their words in `details`.
+function walletRefusal(words: string | undefined): string {
+  return words
+    ? `Your wallet refused to send it: ${withFullStop(words)}`
+    : "Your wallet refused to send it without saying why. Try again, or connect another wallet.";
+}
+
+function nodeRefusal(words: string | undefined): string {
+  return words
+    ? `A Mezo node could not check it: ${withFullStop(words)} Try again in a few seconds.`
+    : "A Mezo node could not check it. Try again in a few seconds.";
+}
+
 /** The plain-words text for a failed write, with the title the toast shows. */
 export function explainError(error: unknown, context: ErrorContext = {}): Explained {
   const title: Explained["title"] = context.phase === "receipt" ? "Failed" : "Not sent";
@@ -300,10 +335,17 @@ export function explainError(error: unknown, context: ErrorContext = {}): Explai
   if (revert) {
     const known = REVERTS[revert.name];
     if (known) return { title, detail: known(revert.args), refresh: REFRESH.has(revert.name) || undefined };
+    const words = wordsOf(error);
+    if (revert.bare && !saysReverted(words) && context.phase !== "receipt") {
+      return { title, detail: context.phase === "wallet" ? walletRefusal(words) : nodeRefusal(words) };
+    }
     if (context.action === "lock") {
       return { title, detail: `Mezo's veBTC refused the lock: ${revert.reason ?? revert.name}.` };
     }
-    return { title, detail: `The transaction would fail: ${revert.name}.` };
+    return {
+      title,
+      detail: revert.bare ? "The transaction would fail, and the contract gave no reason." : `The transaction would fail: ${revert.name}.`,
+    };
   }
 
   if (context.phase === "receipt") {

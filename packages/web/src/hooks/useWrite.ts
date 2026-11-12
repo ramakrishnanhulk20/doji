@@ -7,7 +7,7 @@ import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { dismissToast, showToast } from "../components/app/toast-store";
 import { addressBook } from "../lib/addresses";
 import { confirmTransaction, fetchRevertData, type Confirmation } from "../lib/confirm";
-import { AppError, explainError, explainReverted, type ErrorContext } from "../lib/errors";
+import { AppError, explainError, explainReverted, isNodeHiccup, type ErrorContext } from "../lib/errors";
 import { APP_CHAIN_ID } from "../lib/wagmi";
 import { getPending, setPending, usePendingConfirmation } from "./pending";
 
@@ -56,6 +56,8 @@ let queryClientRef: QueryClient | null = null;
 let lastConfirmedAt = 0;
 const CATCH_UP_WINDOW_MS = 10 * 60_000;
 const CATCH_UP_WAIT_MS = 90_000;
+// A node's internal error is not the contract's answer, so even a first write asks again before refusing.
+const HICCUP_WAIT_MS = 15_000;
 const CATCH_UP_POLL_MS = 3_000;
 const GAS_HEADROOM_PERCENT = 125n;
 // A node that has not caught up can estimate a contract call as if no code ran (21,204 gas for a settle on
@@ -208,9 +210,15 @@ export function useWrite() {
             }
             break;
           } catch (error) {
-            const catchingUp = Date.now() - lastConfirmedAt < CATCH_UP_WINDOW_MS;
-            if (!catchingUp || Date.now() - askedAt >= CATCH_UP_WAIT_MS) return fail(error, { phase: "simulate" });
-            showToast({ id, kind: "sending", title: "Checking", detail: "Waiting for Mezo's nodes to catch up with your last step" });
+            const catchingUp = Date.now() - lastConfirmedAt < CATCH_UP_WINDOW_MS && Date.now() - askedAt < CATCH_UP_WAIT_MS;
+            const stumbled = isNodeHiccup(error) && Date.now() - askedAt < HICCUP_WAIT_MS;
+            if (!catchingUp && !stumbled) return fail(error, { phase: "simulate" });
+            showToast({
+              id,
+              kind: "sending",
+              title: "Checking",
+              detail: catchingUp ? "Waiting for Mezo's nodes to catch up with your last step" : "A Mezo node stumbled. Asking again.",
+            });
             await sleep(CATCH_UP_POLL_MS);
           }
         }
