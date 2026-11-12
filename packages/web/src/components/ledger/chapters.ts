@@ -30,14 +30,23 @@ export const QUEST_COPY: Record<QuestId, QuestCopy> = {
   },
   borrow: {
     title: "Lock Bitcoin and borrow",
-    steps: ["Open Borrow.", "Lock 0.0005 test BTC.", "Pick a Thursday and borrow 10 MUSD.", "Confirm in your wallet."],
+    steps: [
+      "Open Borrow.",
+      "Lock 0.0005 test BTC.",
+      "Pick a Thursday at least two weeks away and borrow 10 MUSD, so you can vote too.",
+      "Confirm in your wallet.",
+    ],
     need: "Your starter kit.",
     button: { label: "Open Borrow", href: "/borrow" },
   },
   vote: {
     title: "Vote with your locked Bitcoin",
-    steps: ["Open your loan.", "Press Vote.", "Pick a pool and confirm."],
-    need: "A loan on Doji. Your Bitcoin keeps its votes while it backs the loan.",
+    steps: [
+      "Open My loans.",
+      "If Votes says closed, press Extend on the Lock row and pick the next Thursday.",
+      "Press Vote, pick a pool and confirm.",
+    ],
+    need: "A loan on Doji. Votes close a week before the lock ends, and Extend reopens them.",
     button: { label: "Open my loans", href: "/loans" },
   },
   paydown: {

@@ -16,6 +16,7 @@ import {
   type PositionView,
 } from "../../lib/loans";
 import { formatDate, formatHours, formatMusd, formatPercentBps } from "../../lib/stats";
+import { votingClosed } from "../../lib/votes";
 import { ArrowOut } from "../ArrowOut";
 import { TweenText } from "../borrow/TweenText";
 import { LimitBar } from "./Status";
@@ -111,7 +112,15 @@ export function Facts({ view, opened }: FactsProps) {
       <Fact label="Lock end">
         {lock === null ? unavailable : lock.isPermanent ? "permanent" : formatDate(lock.end)}
       </Fact>
-      <Fact label="Votes">{view.voted === null ? unavailable : view.voted ? "still counting" : "yours to cast"}</Fact>
+      <Fact label="Votes">
+        {view.voted === null
+          ? unavailable
+          : view.voted
+            ? "still counting"
+            : votingClosed(lock, Math.floor(Date.now() / 1000))
+              ? "closed a week before the lock ends"
+              : "yours to cast"}
+      </Fact>
       <Fact label="BTC rebase">
         {view.rewards === null ? unavailable : view.rewards > 0n ? `${btcText(view.rewards)} BTC waiting` : "none due yet"}
       </Fact>

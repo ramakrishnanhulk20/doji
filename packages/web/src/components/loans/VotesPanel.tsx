@@ -3,7 +3,7 @@
 import { useVotes } from "../../hooks/useVotes";
 import type { PositionView } from "../../lib/loans";
 import { formatDate } from "../../lib/stats";
-import { loanAllowsVoting, percentText, voteCutoff, votingClosed } from "../../lib/votes";
+import { canExtendLock, loanAllowsVoting, percentText, voteCutoff, votingClosed } from "../../lib/votes";
 import { Button } from "../Button";
 import { RowAction } from "./RowAction";
 
@@ -40,7 +40,11 @@ export function VotesPanel({ mode, view, now, locked, busy, acting, onVote, onRe
           ? pools.length > 0
             ? `still counting on ${pools.length} pool${pools.length === 1 ? "" : "s"}`
             : "still counting"
-          : "yours to cast";
+          : closed
+            ? canExtendLock(view, now)
+              ? "closed: press Extend on the Lock row to reopen"
+              : "closed a week before the lock ends"
+            : "yours to cast";
     return (
       <div className="loan-row">
         <dt>Votes</dt>
