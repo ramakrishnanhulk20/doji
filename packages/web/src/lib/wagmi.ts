@@ -107,7 +107,10 @@ function phoneWallet(projectId: string) {
         try {
           return await real.switchChain!(parameters as never);
         } catch (error) {
-          showToast({ id: "phone-wallet-network", kind: "problem", title: "Network not added", detail: ADD_NETWORK_REFUSED });
+          // A no to the once-a-visit ask is the person's choice, not a wallet that cannot add Mezo testnet.
+          if ((error as { code?: unknown } | null)?.code !== USER_REJECTED_CODE) {
+            showToast({ id: "phone-wallet-network", kind: "problem", title: "Network not added", detail: ADD_NETWORK_REFUSED });
+          }
           throw error;
         }
       },

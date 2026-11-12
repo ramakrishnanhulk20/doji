@@ -32,6 +32,8 @@ export type Explained = {
   detail: string;
   /** True when the offers moved, so the screen should reload them. */
   refresh?: boolean;
+  /** True when the wallet itself refused to send, as opposed to a cancel, a revert or a node error. */
+  walletRefused?: true;
 };
 
 /** Problems the app finds before it asks the wallet for anything, and wallet or network state it cannot work with. */
@@ -269,7 +271,7 @@ export function isNodeHiccup(error: unknown): boolean {
   return findRevert(error)?.bare === true && !saysReverted(wordsOf(error));
 }
 
-function isRejection(error: unknown): boolean {
+export function isRejection(error: unknown): boolean {
   if (error instanceof BaseError) {
     if (error.walk((inner) => inner instanceof UserRejectedRequestError)) return true;
   }
@@ -330,6 +332,14 @@ function nodeRefusal(words: string | undefined): string {
     : "A Mezo node could not check it. Try again in a few seconds.";
 }
 
+export const IN_APP_BROWSER_HINT =
+  "Sends from MetaMask's built-in browser can fail on Mezo testnet. Open this page in Safari or Chrome, tap Connect wallet, then Phone wallet, and pick MetaMask.";
+
+/** The way round for a send refused inside MetaMask's phone browser, which names itself "MetaMaskMobile" in its user agent. */
+export function inAppBrowserHint(userAgent: string): string | null {
+  return /MetaMaskMobile/i.test(userAgent) ? IN_APP_BROWSER_HINT : null;
+}
+
 /** The plain-words text for a failed write, with the title the toast shows. */
 export function explainError(error: unknown, context: ErrorContext = {}): Explained {
   const title: Explained["title"] = context.phase === "receipt" ? "Failed" : "Not sent";
@@ -358,7 +368,8 @@ export function explainError(error: unknown, context: ErrorContext = {}): Explai
     if (known) return { title, detail: known(revert.args), refresh: REFRESH.has(revert.name) || undefined };
     const words = wordsOf(error);
     if (revert.bare && !saysReverted(words) && context.phase !== "receipt") {
-      return { title, detail: context.phase === "wallet" ? walletRefusal(words) : nodeRefusal(words) };
+      if (context.phase === "wallet") return { title, detail: walletRefusal(words), walletRefused: true };
+      return { title, detail: nodeRefusal(words) };
     }
     if (context.action === "lock") {
       return { title, detail: `Mezo's veBTC refused the lock: ${revert.reason ?? revert.name}.` };
@@ -372,7 +383,7 @@ export function explainError(error: unknown, context: ErrorContext = {}): Explai
   if (context.phase === "receipt") {
     return { title, detail: "The transaction was sent but failed on chain. Open it on the explorer to see why." };
   }
-  if (context.phase === "wallet") return { title, detail: walletRefusal(wordsOf(error)) };
+  if (context.phase === "wallet") return { title, detail: walletRefusal(wordsOf(error)), walletRefused: true };
   const short = error instanceof BaseError ? error.shortMessage : error instanceof Error ? error.message : String(error);
   return { title, detail: `The transaction would fail: ${short.split("\n")[0]?.slice(0, 160) ?? "unknown error"}.` };
 }

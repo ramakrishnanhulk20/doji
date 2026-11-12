@@ -92,9 +92,19 @@ function ConnectedChip({ address }: { address: `0x${string}` }) {
   );
 }
 
+// Asked once a visit: a wallet that comes back on another network moves to Mezo testnet without a click, and a person
+// who says no is not asked again until the next visit.
+let switchAskedThisVisit = false;
+
 export function WalletButton() {
   const { address, chainId, isConnected } = useAccount();
   const { switchChain, isPending } = useSwitchChain();
+
+  useEffect(() => {
+    if (!isConnected || chainId === undefined || chainId === APP_CHAIN_ID || switchAskedThisVisit) return;
+    switchAskedThisVisit = true;
+    switchChain({ chainId: APP_CHAIN_ID });
+  }, [isConnected, chainId, switchChain]);
 
   if (!isConnected || !address) {
     return (

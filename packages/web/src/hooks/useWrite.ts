@@ -15,7 +15,7 @@ import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { dismissToast, showToast } from "../components/app/toast-store";
 import { addressBook } from "../lib/addresses";
 import { confirmTransaction, fetchRevertData, type Confirmation } from "../lib/confirm";
-import { AppError, explainError, explainReverted, isNodeHiccup, type ErrorContext } from "../lib/errors";
+import { AppError, explainError, explainReverted, inAppBrowserHint, isNodeHiccup, type ErrorContext } from "../lib/errors";
 import { APP_CHAIN_ID } from "../lib/wagmi";
 import { getPending, setPending, usePendingConfirmation } from "./pending";
 
@@ -199,7 +199,14 @@ export function useWrite() {
       queryClientRef = queryClient;
       const fail = (error: unknown, context: ErrorContext): WriteResult => {
         const explained = explainError(error, { ...context, action: request.action });
-        showToast({ id, kind: "problem", title: explained.title, detail: explained.detail });
+        const hint = explained.walletRefused && typeof navigator !== "undefined" ? inAppBrowserHint(navigator.userAgent) : null;
+        showToast({
+          id,
+          kind: "problem",
+          title: explained.title,
+          detail: hint ? `${explained.detail} ${hint}` : explained.detail,
+          action: hint ? { label: "Copy link", run: () => void navigator.clipboard?.writeText(window.location.href) } : undefined,
+        });
         if (explained.refresh) void queryClient.invalidateQueries();
         return { ok: false, refresh: Boolean(explained.refresh) };
       };
