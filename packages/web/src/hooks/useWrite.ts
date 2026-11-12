@@ -2,7 +2,15 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import type { Abi, Address, Hex, TransactionReceipt } from "viem";
+import {
+  encodeFunctionData,
+  numberToHex,
+  type Abi,
+  type Address,
+  type Hex,
+  type TransactionReceipt,
+  type WalletClient,
+} from "viem";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { dismissToast, showToast } from "../components/app/toast-store";
 import { addressBook } from "../lib/addresses";
@@ -154,6 +162,23 @@ export function recheckConfirmation() {
   void settle(current.hash, current.toastId, lineFunctions.get(current.toastId) ?? current.successLine);
 }
 
+export type PlainCall = { from: Address; to: Address; abi: Abi; functionName: string; args: readonly unknown[]; gas?: bigint };
+
+/**
+ * One contract call through eth_sendTransaction, with the same fields viem's writeContract sends. When a wallet refuses
+ * those, viem retries with wallet_sendTransaction and the wallet's answer to the retry replaces the first refusal:
+ * MetaMask on a phone answered "wallet_sendTransaction does not exist", which hid why the send was refused. Never
+ * retried, so a step is never sent twice.
+ */
+export async function sendPlain(walletClient: Pick<WalletClient, "request">, call: PlainCall): Promise<Hex> {
+  const data = encodeFunctionData({ abi: call.abi, functionName: call.functionName, args: call.args } as never);
+  const gas = call.gas === undefined ? {} : { gas: numberToHex(call.gas) };
+  return walletClient.request(
+    { method: "eth_sendTransaction", params: [{ from: call.from, to: call.to, data, ...gas }] },
+    { retryCount: 0 },
+  );
+}
+
 /**
  * One way to send any transaction. It simulates with the connected account first and only then asks the wallet, so a
  * call that would fail never reaches a prompt. Once the wallet returns a hash it never reports a failure unless the
@@ -196,12 +221,11 @@ export function useWrite() {
           functionName: request.functionName,
           args: request.args,
         } as never;
-        let simulated;
         let gas: bigint | undefined;
         const askedAt = Date.now();
         for (;;) {
           try {
-            simulated = await publicClient.simulateContract(call);
+            await publicClient.simulateContract(call);
             gas = undefined;
             for (let tries = 0; tries < ESTIMATE_TRIES && gas === undefined; tries++) {
               const estimate = await publicClient.estimateContractGas(call);
@@ -227,9 +251,8 @@ export function useWrite() {
         let hash: Hex;
         try {
           // The gas is passed so the wallet does not estimate again on a node that may still be behind.
-          const sent = (simulated as unknown as { request: Record<string, unknown> }).request;
           const gasLimit = gas === undefined ? undefined : (gas * GAS_HEADROOM_PERCENT) / 100n;
-          hash = await walletClient.writeContract({ ...sent, gas: gasLimit } as never);
+          hash = await sendPlain(walletClient, { from: address, to, abi: request.abi, functionName: request.functionName, args: request.args, gas: gasLimit });
         } catch (error) {
           return fail(error, { phase: "wallet" });
         }

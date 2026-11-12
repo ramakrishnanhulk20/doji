@@ -251,8 +251,11 @@ function walletDataWords(error: unknown): string | undefined {
   return found;
 }
 
+// Read by shape, not by class: an error from a second copy of viem (a connector's own, or a test harness's) is no
+// instance of this file's BaseError but carries the same `details`.
 function wordsOf(error: unknown): string | undefined {
-  const firstLine = (walletDataWords(error) ?? (error instanceof BaseError ? error.details : undefined))?.split("\n")[0];
+  const details = (error as { details?: unknown } | null)?.details;
+  const firstLine = (walletDataWords(error) ?? (typeof details === "string" ? details : undefined))?.split("\n")[0];
   const words = firstLine?.trim().slice(0, 160).trimEnd();
   return words ? words : undefined;
 }
@@ -369,6 +372,7 @@ export function explainError(error: unknown, context: ErrorContext = {}): Explai
   if (context.phase === "receipt") {
     return { title, detail: "The transaction was sent but failed on chain. Open it on the explorer to see why." };
   }
+  if (context.phase === "wallet") return { title, detail: walletRefusal(wordsOf(error)) };
   const short = error instanceof BaseError ? error.shortMessage : error instanceof Error ? error.message : String(error);
   return { title, detail: `The transaction would fail: ${short.split("\n")[0]?.slice(0, 160) ?? "unknown error"}.` };
 }
