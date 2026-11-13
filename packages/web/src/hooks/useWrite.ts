@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   encodeFunctionData,
+  hexToNumber,
   numberToHex,
   type Abi,
   type Address,
@@ -11,15 +12,27 @@ import {
   type TransactionReceipt,
   type WalletClient,
 } from "viem";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { useAccount, useDisconnect, usePublicClient, useWalletClient } from "wagmi";
+import { openConnectModal } from "../components/app/connect-modal-store";
 import { dismissToast, showToast } from "../components/app/toast-store";
 import { addressBook } from "../lib/addresses";
 import { confirmTransaction, fetchRevertData, type Confirmation } from "../lib/confirm";
-import { AppError, explainError, explainReverted, inAppBrowserHint, isNodeHiccup, type ErrorContext } from "../lib/errors";
+import {
+  AppError,
+  explainError,
+  explainReverted,
+  inAppBrowserHint,
+  isAccountRefusal,
+  isNodeHiccup,
+  isRejection,
+  type ErrorContext,
+} from "../lib/errors";
 import { APP_CHAIN_ID } from "../lib/wagmi";
 import { getPending, setPending, usePendingConfirmation } from "./pending";
 
 const EXPLORER_TX = "https://explorer.test.mezo.org/tx/";
+const REGRANT_DETAIL =
+  "Your wallet has not allowed this account on Mezo testnet yet. Approve it in your wallet, then confirm the transaction.";
 
 export type WriteTarget =
   | "loanManager"
@@ -179,6 +192,41 @@ export async function sendPlain(walletClient: Pick<WalletClient, "request">, cal
   );
 }
 
+/** What the wallet is being asked for, so the toast can say it. */
+export type SendStage = "confirm" | "regrant";
+
+/**
+ * sendPlain, and when the wallet answers that the account is not granted: one request to grant it again, then one more
+ * send. MetaMask 13.55 leaves a site's accounts off a network the site adds after connecting (metamask-extension issue
+ * 47773), so a newcomer's first send on Mezo testnet is refused with 4100 while the site shows as connected. That
+ * refusal comes before any confirmation, so the second send cannot double a step. The new grant can move the wallet to
+ * another network, and a send carries no chain id, so the chain is read again before the second send.
+ */
+export async function sendRegranting(
+  walletClient: Pick<WalletClient, "request">,
+  call: PlainCall,
+  chainId: number,
+  onStage: (stage: SendStage) => void,
+): Promise<Hex> {
+  onStage("confirm");
+  try {
+    return await sendPlain(walletClient, call);
+  } catch (refused) {
+    if (!isAccountRefusal(refused)) throw refused;
+    onStage("regrant");
+    try {
+      await walletClient.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] }, { retryCount: 0 });
+    } catch (declined) {
+      // A wallet without this method keeps the first refusal, whose message offers Reconnect.
+      throw isRejection(declined) ? declined : refused;
+    }
+    const walletChain = await walletClient.request({ method: "eth_chainId" }, { retryCount: 0 });
+    if (hexToNumber(walletChain) !== chainId) throw new AppError("wrongChain");
+    onStage("confirm");
+    return sendPlain(walletClient, call);
+  }
+}
+
 /**
  * One way to send any transaction. It simulates with the connected account first and only then asks the wallet, so a
  * call that would fail never reaches a prompt. Once the wallet returns a hash it never reports a failure unless the
@@ -188,6 +236,7 @@ export function useWrite() {
   const { address, chainId } = useAccount();
   const publicClient = usePublicClient({ chainId: APP_CHAIN_ID });
   const { data: walletClient } = useWalletClient();
+  const { disconnectAsync } = useDisconnect();
   const queryClient = useQueryClient();
   const pending = usePendingConfirmation();
   const [busy, setBusy] = useState(false);
@@ -199,13 +248,28 @@ export function useWrite() {
       queryClientRef = queryClient;
       const fail = (error: unknown, context: ErrorContext): WriteResult => {
         const explained = explainError(error, { ...context, action: request.action });
-        const hint = explained.walletRefused && typeof navigator !== "undefined" ? inAppBrowserHint(navigator.userAgent) : null;
+        const hint =
+          explained.walletRefused && typeof navigator !== "undefined"
+            ? inAppBrowserHint(navigator.userAgent, explained.reconnect)
+            : null;
+        // wagmi's disconnect also asks the wallet to drop this site's permission, so the next connect grants the account
+        // afresh on every network the wallet now has. That is the way out MetaMask's own bug report gives.
+        const reconnect = () => {
+          dismissToast(id);
+          void disconnectAsync()
+            .catch(() => undefined)
+            .finally(openConnectModal);
+        };
         showToast({
           id,
           kind: "problem",
           title: explained.title,
           detail: hint ? `${explained.detail} ${hint}` : explained.detail,
-          action: hint ? { label: "Copy link", run: () => void navigator.clipboard?.writeText(window.location.href) } : undefined,
+          action: explained.reconnect
+            ? { label: "Reconnect", run: reconnect }
+            : hint
+              ? { label: "Copy link", run: () => void navigator.clipboard?.writeText(window.location.href) }
+              : undefined,
         });
         if (explained.refresh) void queryClient.invalidateQueries();
         return { ok: false, refresh: Boolean(explained.refresh) };
@@ -254,12 +318,21 @@ export function useWrite() {
           }
         }
 
-        showToast({ id, kind: "wallet", title: "Confirm in your wallet" });
         let hash: Hex;
         try {
           // The gas is passed so the wallet does not estimate again on a node that may still be behind.
           const gasLimit = gas === undefined ? undefined : (gas * GAS_HEADROOM_PERCENT) / 100n;
-          hash = await sendPlain(walletClient, { from: address, to, abi: request.abi, functionName: request.functionName, args: request.args, gas: gasLimit });
+          hash = await sendRegranting(
+            walletClient,
+            { from: address, to, abi: request.abi, functionName: request.functionName, args: request.args, gas: gasLimit },
+            APP_CHAIN_ID,
+            (stage) =>
+              showToast(
+                stage === "regrant"
+                  ? { id, kind: "wallet", title: "Approve the account again", detail: REGRANT_DETAIL }
+                  : { id, kind: "wallet", title: "Confirm in your wallet" },
+              ),
+          );
         } catch (error) {
           return fail(error, { phase: "wallet" });
         }
@@ -270,7 +343,7 @@ export function useWrite() {
         setBusy(false);
       }
     },
-    [address, chainId, publicClient, queryClient, walletClient],
+    [address, chainId, disconnectAsync, publicClient, queryClient, walletClient],
   );
 
   // The buttons stay off for as long as a sent transaction is unconfirmed, not only while the wallet prompt is open.

@@ -34,6 +34,8 @@ export type Explained = {
   refresh?: boolean;
   /** True when the wallet itself refused to send, as opposed to a cancel, a revert or a node error. */
   walletRefused?: true;
+  /** True when connecting again is the way out, so the toast offers it. */
+  reconnect?: true;
 };
 
 /** Problems the app finds before it asks the wallet for anything, and wallet or network state it cannot work with. */
@@ -295,6 +297,23 @@ function allText(error: unknown): string {
   return parts.join(" ");
 }
 
+// MetaMask's extension answers 4100 and its phone app "must provide an Ethereum address" when the sender is not an
+// account it has granted this site on the transaction's network.
+const ACCOUNT_REFUSAL = /has not been authorized by the user|must provide (an|a permitted) Ethereum address/i;
+
+/** True when a wallet refused a send because it has not granted this site the account on this network. */
+export function isAccountRefusal(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 8 && current; depth++) {
+    if ((current as { code?: unknown }).code === 4100) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return ACCOUNT_REFUSAL.test(allText(error));
+}
+
+export const ACCOUNT_REFUSED =
+  "Your wallet has not allowed this account to send on Mezo testnet. Press Reconnect, approve the account in your wallet, then try again.";
+
 function isOutOfGas(error: unknown): boolean {
   if (error instanceof BaseError && error.walk((inner) => inner instanceof InsufficientFundsError)) return true;
   return /insufficient funds/i.test(allText(error));
@@ -335,9 +354,16 @@ function nodeRefusal(words: string | undefined): string {
 export const IN_APP_BROWSER_HINT =
   "Sends from MetaMask's built-in browser can fail on Mezo testnet. Open this page in Safari or Chrome, tap Connect wallet, then Phone wallet, and pick MetaMask.";
 
-/** The way round for a send refused inside MetaMask's phone browser, which names itself "MetaMaskMobile" in its user agent. */
-export function inAppBrowserHint(userAgent: string): string | null {
-  return /MetaMaskMobile/i.test(userAgent) ? IN_APP_BROWSER_HINT : null;
+export const IN_APP_BROWSER_FALLBACK =
+  "If it is refused again, open this page in Safari or Chrome, tap Connect wallet, then Phone wallet, and pick MetaMask.";
+
+/**
+ * The way round for a send refused inside MetaMask's phone browser, which names itself "MetaMaskMobile" in its user
+ * agent. `afterReconnect` is for a refusal whose first advice is to connect again.
+ */
+export function inAppBrowserHint(userAgent: string, afterReconnect = false): string | null {
+  if (!/MetaMaskMobile/i.test(userAgent)) return null;
+  return afterReconnect ? IN_APP_BROWSER_FALLBACK : IN_APP_BROWSER_HINT;
 }
 
 /** The plain-words text for a failed write, with the title the toast shows. */
@@ -358,6 +384,9 @@ export function explainError(error: unknown, context: ErrorContext = {}): Explai
   }
   if (isOutOfGas(error)) {
     return { title, detail: "Not enough test BTC to pay for gas. Claim a free starter kit on the Quests page." };
+  }
+  if (context.phase === "wallet" && isAccountRefusal(error)) {
+    return { title, detail: ACCOUNT_REFUSED, walletRefused: true, reconnect: true };
   }
   const refusal = NODE_REFUSALS.find((candidate) => candidate.pattern.test(allText(error)));
   if (refusal) return { title, detail: refusal.detail };
