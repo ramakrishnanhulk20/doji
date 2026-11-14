@@ -10,7 +10,7 @@ Borrow MUSD against the Bitcoin you have locked on Mezo, at a fixed rate until a
 
 [Live app](https://dojis.site) · [Quests](https://dojis.site/quests) · [Demo video](https://youtu.be/rLvW37wmeaY) · [Docs](https://dojis.site/docs) · [Try to break it](https://dojis.site/break) · [Architecture](ARCHITECTURE.md)
 
-Mezo's judges ranked Doji 1st in their top 5 for Wave 1 of the Mezo Buildathon ([announcement](https://x.com/MezoNetwork/status/2118444066207854793)). Since then, outside testers have borrowed, voted and repaid on the live site ([their transactions](docs/proof/quests-2026-11-06.md#outside-testers-12-and-13-november-2026)).
+Mezo's judges ranked Doji 1st in their top 5 for Wave 1 of the Mezo Buildathon ([announcement](https://x.com/MezoNetwork/status/2118444066207854793)). Since then, outside testers have borrowed, voted and repaid on the live site ([their transactions](docs/proof/quests-2026-11-06.md#outside-testers-12-to-14-november-2026)).
 
 ## Live deployments
 
